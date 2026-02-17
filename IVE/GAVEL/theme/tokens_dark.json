@@ -1,0 +1,30 @@
+{
+  "color": {
+    "bg": "#0B0F14",
+    "surface": "#101826",
+    "surface_alt": "#0E1622",
+    "border": "#253244",
+    "text": "#E6EDF6",
+    "text_muted": "#A8B3C2",
+    "focus": "#4DA3FF",
+    "selection": "#1B2A41",
+
+    "status_nominal": "#3DDC97",
+    "status_caution": "#F3C969",
+    "status_warning": "#FF9F43",
+    "status_critical": "#FF5C5C",
+    "status_unknown": "#8AA0B6"
+  },
+  "spacing": { "0": 0, "4": 4, "8": 8, "12": 12, "16": 16, "24": 24, "32": 32 },
+  "shape": { "radius_sm": 6, "radius_md": 10, "radius_lg": 14, "border_width": 1 },
+  "typography": {
+    "font_family": "Segoe UI",
+    "font_size_base": 13,
+    "font_size_h1": 18,
+    "font_size_h2": 16,
+    "font_size_h3": 14,
+    "weight_regular": 400,
+    "weight_medium": 500,
+    "weight_bold": 600
+  }
+}
