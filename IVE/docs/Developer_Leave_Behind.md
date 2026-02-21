@@ -4,6 +4,25 @@ This architecture demonstrates a clean layering between views, viewmodels, use c
 
 This document explains how the repository is organized today and how to add new functionality (e.g., a brand-new page with tabs) in a way that respects the architecture rules.
 
+--
+
+## What Already Exists
+
+Before diving in, here's what the sponsor's repos already give us. Knowing this will save you a ton of time.
+
+**shoggoth-validation** — The sponsor's existing command-line pipeline for running autograders and comparing results. Key files:
+- `preparation.py` — Already renames Canvas submission files and runs the shoggoth autograder in bulk, producing JSON for each student.
+- `analysis.py` — Already loads those JSONs, computes "proxy grades" (autograder's best guess at the rubric grade), and prints correlation tables.
+- `analysis_proxy_comparison.py` — Already compares proxy grades to human grades from a Canvas gradebook CSV, computes error/deltas, and generates box plots and histograms.
+- `analysis_proxy_grade_ser222.py` / `ser334.py` — Course-specific logic that maps test pass/fail to rubric criterion scores.
+- `constants.py` — Defines the folder layout (`data_original/`, `data_processed/evaluations/`, `visuals/`).
+
+**palantir-util-public** — Data preprocessing scripts:
+- `anonymize.py` — Strips PII from roster CSV, gradebook CSV, and Gradescope YAML exports. Filters by student consent form.
+- `synthesize.py` — Generates fake (but realistic) roster data matching the Canvas export format so you can test without real student data.
+
+**The bottom line:** Many of the requirements are about *wrapping existing working code* behind the IVE's port/adapter architecture — not writing everything from scratch. When a story says "build a use case for X," look at the shoggoth-validation script that already does X, and adapt it.
+
 ---
 
 ## High-Level Architecture
