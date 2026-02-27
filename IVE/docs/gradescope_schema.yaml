@@ -1,0 +1,12 @@
+submission:
+  id: integer
+  submitters:
+    name: string
+    email: string
+  created_at:
+    utc: timestamp
+    zone:
+        name: string 
+    time: timestamp
+  status: string
+  score: float
