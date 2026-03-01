@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from GAVEL.app.ports.canvas_client import CanvasClient, UnconfiguredCanvasClient
+from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.infra.canvas.http_canvas_client import CanvasApiConfig, HttpCanvasClient
+from GAVEL.infra.canvas.unconfigured_canvas_client import UnconfiguredCanvasClient
 from GAVEL.services.config_service import AppConfig
 from GAVEL.services.logger import AppLogger
 
