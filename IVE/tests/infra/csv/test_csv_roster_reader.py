@@ -1,4 +1,4 @@
-"""Tests for CsvRosterReader (port layer)."""
+"""Tests for CsvRosterReader (infra/csv adapter)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from GAVEL.app.dtos.roster import RosterStudent
-from GAVEL.app.ports.roster_reader import CsvRosterReader
+from GAVEL.infra.csv.csv_roster_reader import CsvRosterReader
 
 EXPECTED_ROW_COUNT = 30
 
