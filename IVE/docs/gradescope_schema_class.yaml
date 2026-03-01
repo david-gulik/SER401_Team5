@@ -1,0 +1,22 @@
+submission_<id>:
+  submitters:
+    - name: string
+      sid: string
+      email: string
+  created_at: datetime
+  score: float
+  status: string
+  results:
+    score:
+    tests:
+      - name: string
+        tags: string
+        score: float
+        number: string
+        output: string
+        status: string
+        max_score: float
+        extra_data: string
+        visibility: string
+        name_format: string
+        output_format: string
