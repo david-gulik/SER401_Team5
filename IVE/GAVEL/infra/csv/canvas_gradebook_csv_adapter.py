@@ -68,11 +68,11 @@ def _parse_score(raw: str) -> float | None:
         return None
 
 
-class LegacyCsvGradebookAdapter:
+class LegacyGradebookCSVReader:
     """
     Parses a Canvas gradebook CSV export from a local file path.
 
-    This adapter handles the 3-row preamble format emitted by Canvas exports:
+    This reader handles the 3-row preamble format emitted by Canvas exports:
       Row 1 (header): column names consumed by csv.DictReader
       Row 2: "Manual Posting" flags - consumed and discarded
       Row 3: "Points Possible" values - consumed to populate column metadata

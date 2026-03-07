@@ -5,8 +5,8 @@ from typing import List
 
 import pandas as pd
 
-from GAVEL.app.dtos.roster import RosterStudent
-from GAVEL.app.ports.roster_reader import RosterReader
+from IVE.GAVEL.app.dtos.asu_roster import RosterStudent
+from IVE.GAVEL.app.ports.asu_roster_reader import RosterReader
 
 # Maps CSV header names to RosterStudent field names.
 _COLUMN_MAP: dict[str, str] = {
@@ -25,7 +25,7 @@ _COLUMN_MAP: dict[str, str] = {
 }
 
 
-class CsvRosterReader(RosterReader):
+class CanvasRosterCSVReader(RosterReader):
     """Reads the MyASU/PeopleSoft ground-truth roster CSV format."""
 
     def read(self, path: Path) -> List[RosterStudent]:

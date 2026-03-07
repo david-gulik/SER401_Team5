@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List
 
-from GAVEL.app.dtos.roster import RosterStudent
+from IVE.GAVEL.app.dtos.asu_roster import RosterStudent
 
 
 class RosterReader(ABC):

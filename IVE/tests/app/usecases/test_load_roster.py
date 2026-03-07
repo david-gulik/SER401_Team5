@@ -10,8 +10,8 @@ from typing import List
 import pandas as pd
 import pytest
 
-from GAVEL.app.dtos.roster import RosterStudent
-from GAVEL.app.ports.roster_reader import RosterReader
+from IVE.GAVEL.app.dtos.asu_roster import RosterStudent
+from IVE.GAVEL.app.ports.asu_roster_reader import RosterReader
 from GAVEL.app.usecases.load_roster import LoadRosterRequest, LoadRosterUseCase
 
 

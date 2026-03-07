@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from GAVEL.app.ports.roster_reader import RosterReader
+from IVE.GAVEL.app.ports.asu_roster_reader import RosterReader
 
 
 @dataclass(frozen=True)

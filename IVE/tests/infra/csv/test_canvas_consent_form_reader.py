@@ -6,8 +6,8 @@ from typing import List
 
 import pytest
 
-from GAVEL.app.dtos.consent_form_entry import ConsentFormEntry
-from GAVEL.infra.csv.canvas_consent_form_reader import CanvasConsentFormReader
+from IVE.GAVEL.app.dtos.canvas_consent_form_entry import ConsentFormEntry
+from IVE.GAVEL.infra.csv.canvas_consent_form_csv_adapter import CanvasConsentFormCSVReader
 
 EXPECTED_ROW_COUNT = 12
 EXPECTED_CONSENTED_COUNT = 7
@@ -15,15 +15,15 @@ EXPECTED_NOT_CONSENTED_COUNT = 5
 
 
 @pytest.fixture(scope="module")
-def reader() -> CanvasConsentFormReader:
-    return CanvasConsentFormReader()
+def reader() -> CanvasConsentFormCSVReader:
+    return CanvasConsentFormCSVReader()
 
 
 @pytest.fixture(scope="module")
 def entries(
-    reader: CanvasConsentFormReader, consent_form_csv_path: Path
+    reader: CanvasConsentFormCSVReader, consent_form_csv_path: Path
 ) -> List[ConsentFormEntry]:
-    return list(reader.load(str(consent_form_csv_path)))
+    return list(reader.read(str(consent_form_csv_path)))
 
 
 class TestCanvasConsentFormReader:

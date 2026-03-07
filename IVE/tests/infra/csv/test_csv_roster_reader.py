@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from GAVEL.app.dtos.roster import RosterStudent
-from GAVEL.infra.csv.csv_roster_reader import CsvRosterReader
+from IVE.GAVEL.app.dtos.asu_roster import RosterStudent
+from IVE.GAVEL.infra.csv.canvas_roster_csv_adapter import CsvRosterReader
 
 EXPECTED_ROW_COUNT = 30
 
