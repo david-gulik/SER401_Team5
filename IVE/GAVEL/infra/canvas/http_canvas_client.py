@@ -16,7 +16,8 @@ class CanvasApiConfig:
 
 
 class HttpCanvasClient(CanvasClient):
-    def __init__(self, config: CanvasApiConfig, session: Optional[requests.Session] = None) -> None:
+    def __init__(self, config: CanvasApiConfig,
+                 session: Optional[requests.Session] = None) -> None:
         self._config = config
         self._session = session or requests.Session()
 
@@ -26,7 +27,8 @@ class HttpCanvasClient(CanvasClient):
 
         course = CanvasCourse(
             id=int(course_json["id"]),
-            name=str(course_json.get("name") or course_json.get("course_code") or ""),
+            name=str(course_json.get("name")
+                     or course_json.get("course_code") or ""),
             course_code=course_json.get("course_code"),
         )
 

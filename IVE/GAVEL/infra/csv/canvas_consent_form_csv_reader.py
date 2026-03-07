@@ -1,8 +1,8 @@
 import csv
 from typing import Sequence
 
-from GAVEL.app.dtos.consent_form_entry import ConsentFormEntry
-from GAVEL.app.ports.consent_form_reader import ConsentFormReader
+from IVE.GAVEL.app.dtos.canvas_consent_form_entry import ConsentFormEntry
+from IVE.GAVEL.app.ports.canvas_consent_form_reader import ConsentFormReader
 
 
 def _find_column(substring: str, fieldnames: Sequence[str]) -> str:
@@ -19,14 +19,14 @@ def _find_column(substring: str, fieldnames: Sequence[str]) -> str:
     return matches[0]
 
 
-class CanvasConsentFormReader(ConsentFormReader):
+class CanvasConsentFormCSVReader(ConsentFormReader):
     """Reads a Canvas quiz student analysis export into
     ConsentFormEntry DTOs."""
 
     _COL_NAME_SUBSTR = "leave blank if"
     _COL_BOOL_SUBSTR = "Do you consent"
 
-    def load(self, path: str) -> Sequence[ConsentFormEntry]:
+    def read(self, path: str) -> Sequence[ConsentFormEntry]:
         entries = []
 
         with open(path, encoding="utf-8") as f:

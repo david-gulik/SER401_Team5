@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from GAVEL.app.dtos.gradescope import GradescopeSubmission
-from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
+from IVE.GAVEL.app.dtos.gradescope import GradescopeSubmission
+from IVE.GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 
 
 @pytest.fixture(scope="module")
@@ -14,9 +14,8 @@ def reader() -> YamlGradescopeReader:
 
 
 @pytest.fixture(scope="module")
-def submissions(reader: YamlGradescopeReader) -> list[GradescopeSubmission]:
-    yaml_path = Path("tests/data/submission_metadata.yml")
-    return reader.read(yaml_path)
+def submissions(reader: YamlGradescopeReader, data_dir: Path) -> list[GradescopeSubmission]:
+    return reader.read(data_dir / "submission_metadata.yml")
 
 
 class TestYamlGradescopeReader:

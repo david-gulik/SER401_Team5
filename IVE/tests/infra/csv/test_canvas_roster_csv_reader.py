@@ -1,29 +1,29 @@
-"""Tests for CsvRosterReader (infra/csv adapter)."""
+"""Tests for CanvasRosterCSVReader (infra/csv adapter)."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
 
-from GAVEL.app.dtos.roster import RosterStudent
-from GAVEL.infra.csv.csv_roster_reader import CsvRosterReader
+from IVE.GAVEL.app.dtos.asu_roster import RosterStudent
+from IVE.GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
 
 EXPECTED_ROW_COUNT = 30
 
 
 @pytest.fixture(scope="module")
-def reader() -> CsvRosterReader:
-    return CsvRosterReader()
+def reader() -> CanvasRosterCSVReader:
+    return CanvasRosterCSVReader()
 
 
 @pytest.fixture(scope="module")
 def students(
-    reader: CsvRosterReader, roster_csv_path: Path
+    reader: CanvasRosterCSVReader, roster_csv_path: Path
 ) -> list[RosterStudent]:
     return reader.read(roster_csv_path)
 
 
-class TestCsvRosterReader:
+class TestCanvasRosterCSVReader:
     def test_returns_one_student_per_row(
         self, students: list[RosterStudent]
     ) -> None:
