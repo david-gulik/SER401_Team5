@@ -20,3 +20,8 @@ def roster_csv_path(data_dir: Path) -> Path:
 @pytest.fixture(scope="session")
 def consent_form_csv_path(data_dir: Path) -> Path:
     return data_dir / "test_consentform.csv"
+
+
+@pytest.fixture(scope="session")
+def gradebook_csv_path(data_dir: Path) -> Path:
+    return data_dir / "test_gradebook.csv"
