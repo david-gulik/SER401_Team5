@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from IVE.GAVEL.app.dtos.asu_roster import RosterStudent
-from IVE.GAVEL.infra.csv.canvas_roster_csv_adapter import CanvasRosterCSVReader
+from IVE.GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
 
 EXPECTED_ROW_COUNT = 30
 

@@ -7,7 +7,7 @@ from typing import List
 import pytest
 
 from IVE.GAVEL.app.dtos.canvas_consent_form_entry import ConsentFormEntry
-from IVE.GAVEL.infra.csv.canvas_consent_form_csv_adapter import CanvasConsentFormCSVReader
+from IVE.GAVEL.infra.csv.canvas_consent_form_csv_reader import CanvasConsentFormCSVReader
 
 EXPECTED_ROW_COUNT = 12
 EXPECTED_CONSENTED_COUNT = 7
