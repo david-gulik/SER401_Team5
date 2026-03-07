@@ -1,4 +1,4 @@
-from GAVEL.app import main
+from GAVEL.app.main import main
 
 
 if __name__ == "__main__":

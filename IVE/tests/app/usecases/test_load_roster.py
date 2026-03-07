@@ -12,7 +12,7 @@ import pytest
 
 from IVE.GAVEL.app.dtos.asu_roster import RosterStudent
 from IVE.GAVEL.app.ports.asu_roster_reader import RosterReader
-from GAVEL.app.usecases.load_roster import LoadRosterRequest, LoadRosterUseCase
+from IVE.GAVEL.app.usecases.load_roster import LoadRosterRequest, LoadRosterUseCase
 
 
 def _make_student(**overrides) -> RosterStudent:
