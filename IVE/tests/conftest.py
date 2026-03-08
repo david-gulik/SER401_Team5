@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+DATA_DIR = Path(__file__).parent / "data"
+
+
+@pytest.fixture(scope="session")
+def data_dir() -> Path:
+    return DATA_DIR
+
+
+@pytest.fixture(scope="session")
+def roster_csv_path(data_dir: Path) -> Path:
+    return data_dir / "test_roster.csv"
+
+
+@pytest.fixture(scope="session")
+def consent_form_csv_path(data_dir: Path) -> Path:
+    return data_dir / "test_consentform.csv"
+
+
+@pytest.fixture(scope="session")
+def gradebook_csv_path(data_dir: Path) -> Path:
+    return data_dir / "test_gradebook.csv"
