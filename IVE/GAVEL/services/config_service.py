@@ -19,6 +19,11 @@ class RosterConfig:
     auth_method: Optional[str] = None   # "selenium" or "cookies"
     cookie_file: Optional[str] = None   # path for cookie-based auth
     token: Optional[str] = None         # pre-existing catalog API token
+    mfa_timeout: int = 120              # seconds to wait for CAS + Duo MFA
+    session_ttl: int = 600              # seconds before cached session expires
+    http_timeout: int = 30              # seconds for HTTP requests
+    page_load_timeout: int = 30         # seconds to wait for initial page load
+    token_exchange_timeout: int = 30    # seconds for SPA to exchange code for JWT
 
 
 @dataclass(frozen=True)
@@ -43,6 +48,11 @@ class ConfigService:
             auth_method=source.get("ROSTER_AUTH_METHOD"),
             cookie_file=source.get("ROSTER_COOKIE_FILE"),
             token=source.get("ROSTER_TOKEN"),
+            mfa_timeout=int(source.get("ROSTER_MFA_TIMEOUT", "120")),
+            session_ttl=int(source.get("ROSTER_SESSION_TTL", "600")),
+            http_timeout=int(source.get("ROSTER_HTTP_TIMEOUT", "30")),
+            page_load_timeout=int(source.get("ROSTER_PAGE_LOAD_TIMEOUT", "30")),
+            token_exchange_timeout=int(source.get("ROSTER_TOKEN_EXCHANGE_TIMEOUT", "30")),
         )
         self._config = AppConfig(canvas=canvas_cfg, roster=roster_cfg)
 

@@ -266,9 +266,11 @@ class CatalogApiClassResolver:
         self,
         api_config: Optional[CatalogApiConfig] = None,
         token_provider: Optional[ServiceAuthTokenProvider] = None,
+        http_timeout: int = 30,
     ):
         self._api = api_config or CatalogApiConfig()
         self._token_provider = token_provider or ServiceAuthTokenProvider()
+        self._http_timeout = http_timeout
         self._session = requests.Session()
         self._session.headers["User-Agent"] = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -328,14 +330,14 @@ class CatalogApiClassResolver:
         self._ensure_token()
 
         logger.debug("GET %s", url)
-        response = self._session.get(url, timeout=20)
+        response = self._session.get(url, timeout=self._http_timeout)
         logger.debug("Response: HTTP %d, %d bytes", response.status_code, len(response.text))
 
         if response.status_code == 401:
             logger.info("Got 401, refreshing token and retrying.")
             self._token = None
             self._ensure_token()
-            response = self._session.get(url, timeout=20)
+            response = self._session.get(url, timeout=self._http_timeout)
 
         if response.status_code != 200:
             raise RuntimeError(

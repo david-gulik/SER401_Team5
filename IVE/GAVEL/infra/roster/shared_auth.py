@@ -6,7 +6,7 @@ then obtains both:
   1. A catalog API JWT (from catalog.apps.asu.edu sessionStorage)
   2. Roster download cookies (from webapp4.asu.edu)
 
-Cached credentials are reused until the TTL expires (default 10 min).
+Cached credentials are reused until the TTL expires.
 """
 
 from __future__ import annotations
@@ -17,21 +17,16 @@ from typing import Optional
 
 import requests
 
-logger = logging.getLogger(__name__)
+from GAVEL.services.config_service import RosterConfig
 
-_DEFAULT_TTL_SECONDS = 600  # 10 minutes
+logger = logging.getLogger(__name__)
 
 
 class SharedAuthProvider:
     """Single Selenium session for both catalog API token and roster cookies."""
 
-    def __init__(
-        self,
-        mfa_timeout_seconds: int = 120,
-        ttl_seconds: int = _DEFAULT_TTL_SECONDS,
-    ) -> None:
-        self._mfa_timeout = mfa_timeout_seconds
-        self._ttl = ttl_seconds
+    def __init__(self, roster_cfg: RosterConfig) -> None:
+        self._cfg = roster_cfg
 
         self._catalog_token: Optional[str] = None
         self._roster_session: Optional[requests.Session] = None
@@ -43,7 +38,7 @@ class SharedAuthProvider:
     def is_valid(self) -> bool:
         if self._authenticated_at is None:
             return False
-        return (time.time() - self._authenticated_at) < self._ttl
+        return (time.time() - self._authenticated_at) < self._cfg.session_ttl
 
     def ensure_authenticated(self) -> None:
         """Authenticate if cached credentials are missing or expired."""
@@ -83,7 +78,7 @@ class SharedAuthProvider:
             # Phase 1: catalog API token
             print(
                 f"[AUTH] Browser opened. Complete CAS login and Duo MFA.\n"
-                f"[AUTH] Waiting up to {self._mfa_timeout}s..."
+                f"[AUTH] Waiting up to {self._cfg.mfa_timeout}s..."
             )
             self._catalog_token = self._obtain_catalog_token(driver)
             print("[AUTH] Catalog API token acquired.")
@@ -119,7 +114,9 @@ class SharedAuthProvider:
         # 1. Load a lightweight page on the catalog domain so we can
         #    write to sessionStorage without the SPA redirecting us away.
         driver.get("https://catalog.apps.asu.edu/favicon.ico")
-        self._wait_for_domain(driver, catalog_domain, timeout=30)
+        self._wait_for_domain(
+            driver, catalog_domain, timeout=self._cfg.page_load_timeout,
+        )
 
         # 2. Seed PKCE params into sessionStorage.
         verifier = generate_code_verifier()
@@ -151,7 +148,7 @@ class SharedAuthProvider:
 
         # 4. Wait for user to complete CAS + Duo MFA and land back on
         #    the catalog domain.  The full MFA timeout applies here.
-        deadline = time.time() + self._mfa_timeout
+        deadline = time.time() + self._cfg.mfa_timeout
         last_printed = ""
         token = None
 
@@ -168,8 +165,7 @@ class SharedAuthProvider:
 
             if catalog_domain in current:
                 # SPA received ?code= and should exchange it for a JWT.
-                # Give it up to 30 s — the exchange can be slow on first load.
-                for _ in range(30):
+                for _ in range(self._cfg.token_exchange_timeout):
                     token = self._read_session_storage(driver, SS_TOKEN_KEY)
                     if token:
                         break
@@ -213,7 +209,7 @@ class SharedAuthProvider:
 
         driver.get(f"{myasu_base}/")
 
-        deadline = time.time() + self._mfa_timeout
+        deadline = time.time() + self._cfg.page_load_timeout
         last_printed_url = ""
         authenticated = False
 

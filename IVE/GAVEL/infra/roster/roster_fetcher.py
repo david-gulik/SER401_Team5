@@ -53,9 +53,11 @@ class SeleniumRosterFetcher:
         self,
         endpoints: Optional[MyASUEndpoints] = None,
         mfa_timeout_seconds: int = 120,
+        http_timeout: int = 30,
     ):
         self._endpoints = endpoints or MyASUEndpoints()
         self._mfa_timeout = mfa_timeout_seconds
+        self._http_timeout = http_timeout
         self._session: Optional[requests.Session] = None
         self._driver = None
 
@@ -128,7 +130,7 @@ class SeleniumRosterFetcher:
             "format": "csv",
         }
         response = self._session.get(
-            self._endpoints.roster_url, params=params, timeout=30
+            self._endpoints.roster_url, params=params, timeout=self._http_timeout,
         )
         self._check_response(response)
         return response.text
@@ -221,9 +223,11 @@ class CookieFileRosterFetcher:
         self,
         cookie_file_path: str,
         endpoints: Optional[MyASUEndpoints] = None,
+        http_timeout: int = 30,
     ):
         self._cookie_path = cookie_file_path
         self._endpoints = endpoints or MyASUEndpoints()
+        self._http_timeout = http_timeout
         self._session: Optional[requests.Session] = None
 
     def authenticate(self) -> None:
@@ -251,7 +255,7 @@ class CookieFileRosterFetcher:
             "format": "csv",
         }
         response = self._session.get(
-            self._endpoints.roster_url, params=params, timeout=30
+            self._endpoints.roster_url, params=params, timeout=self._http_timeout,
         )
         SeleniumRosterFetcher._check_response(response)
         return response.text

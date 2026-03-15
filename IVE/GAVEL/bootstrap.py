@@ -31,7 +31,7 @@ def build_roster_client(cfg: AppConfig, logger: AppLogger) -> RosterClient:
         from GAVEL.infra.roster.asu_roster_adapter import build_selenium_roster_client
 
         logger.info("Configuring ASU Roster client (Selenium auth)")
-        return build_selenium_roster_client(token=roster_cfg.token)
+        return build_selenium_roster_client(roster_cfg=roster_cfg)
 
     if method == "cookies":
         if not roster_cfg.cookie_file:
@@ -45,10 +45,7 @@ def build_roster_client(cfg: AppConfig, logger: AppLogger) -> RosterClient:
         from GAVEL.infra.roster.asu_roster_adapter import build_cookie_roster_client
 
         logger.info("Configuring ASU Roster client (cookie-file auth)")
-        return build_cookie_roster_client(
-            cookie_file=roster_cfg.cookie_file,
-            token=roster_cfg.token,
-        )
+        return build_cookie_roster_client(roster_cfg=roster_cfg)
 
     logger.warning("ROSTER_AUTH_METHOD not set; roster features disabled")
     return UnconfiguredRosterClient()

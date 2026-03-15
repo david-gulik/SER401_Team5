@@ -14,6 +14,7 @@ from GAVEL.infra.roster.roster_fetcher import (
     SeleniumRosterFetcher,
 )
 from GAVEL.infra.roster.shared_auth import SharedAuthProvider
+from GAVEL.services.config_service import RosterConfig
 
 
 class ASURosterClient(RosterClient):
@@ -23,10 +24,12 @@ class ASURosterClient(RosterClient):
         self,
         shared_auth: SharedAuthProvider,
         class_resolver: CatalogApiClassResolver,
+        roster_cfg: RosterConfig,
         endpoints: Optional[MyASUEndpoints] = None,
     ) -> None:
         self._auth = shared_auth
         self._resolver = class_resolver
+        self._cfg = roster_cfg
         self._endpoints = endpoints or MyASUEndpoints()
 
     def list_terms(self) -> Sequence[TermInfo]:
@@ -48,7 +51,9 @@ class ASURosterClient(RosterClient):
             "format": "csv",
         }
         response = session.get(
-            self._endpoints.roster_url, params=params, timeout=30,
+            self._endpoints.roster_url,
+            params=params,
+            timeout=self._cfg.http_timeout,
         )
         SeleniumRosterFetcher._check_response(response)
         return response.text
@@ -58,35 +63,46 @@ class ASURosterClient(RosterClient):
 
 
 def build_selenium_roster_client(
-    token: Optional[str] = None,
+    roster_cfg: RosterConfig,
 ) -> ASURosterClient:
     """Build a roster client with shared Selenium auth (one login for both)."""
-    shared_auth = SharedAuthProvider()
+    shared_auth = SharedAuthProvider(roster_cfg=roster_cfg)
 
-    if token:
+    if roster_cfg.token:
         resolver = CatalogApiClassResolver(
-            token_provider=ManualTokenProvider(token),
+            token_provider=ManualTokenProvider(roster_cfg.token),
+            http_timeout=roster_cfg.http_timeout,
         )
     else:
-        # SharedAuthProvider.obtain_token() is compatible with the
-        # token_provider interface that CatalogApiClassResolver expects.
-        resolver = CatalogApiClassResolver(token_provider=shared_auth)
+        resolver = CatalogApiClassResolver(
+            token_provider=shared_auth,
+            http_timeout=roster_cfg.http_timeout,
+        )
 
-    return ASURosterClient(shared_auth=shared_auth, class_resolver=resolver)
+    return ASURosterClient(
+        shared_auth=shared_auth,
+        class_resolver=resolver,
+        roster_cfg=roster_cfg,
+    )
 
 
 def build_cookie_roster_client(
-    cookie_file: str,
-    token: Optional[str] = None,
+    roster_cfg: RosterConfig,
 ) -> CookieASURosterClient:
     """Build a roster client using cookie-file auth (no Selenium)."""
-    if token:
+    if roster_cfg.token:
         resolver = CatalogApiClassResolver(
-            token_provider=ManualTokenProvider(token),
+            token_provider=ManualTokenProvider(roster_cfg.token),
+            http_timeout=roster_cfg.http_timeout,
         )
     else:
-        resolver = CatalogApiClassResolver()
-    fetcher = CookieFileRosterFetcher(cookie_file_path=cookie_file)
+        resolver = CatalogApiClassResolver(
+            http_timeout=roster_cfg.http_timeout,
+        )
+    fetcher = CookieFileRosterFetcher(
+        cookie_file_path=roster_cfg.cookie_file,
+        http_timeout=roster_cfg.http_timeout,
+    )
     return CookieASURosterClient(class_resolver=resolver, roster_fetcher=fetcher)
 
 
