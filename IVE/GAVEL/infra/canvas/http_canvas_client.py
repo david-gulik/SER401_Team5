@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import requests
+import time
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule
 from GAVEL.app.ports.canvas_client import CanvasClient
@@ -76,6 +77,9 @@ class HttpCanvasClient(CanvasClient):
                 }
             },
         )
+        progress_url = report.get("progress_url")
+        if progress_url:
+            self._poll_progress(progress_url)
         return str(report).encode("utf-8")
     
     def _post(self, path: str, json: Any = None) -> Any:
@@ -91,3 +95,18 @@ class HttpCanvasClient(CanvasClient):
         )
         resp.raise_for_status()
         return resp.json()
+    
+    def _poll_progress(
+            self, progress_url: str,
+            interval: int = 2, 
+            max_attempts: int = 30) -> None:
+        """Poll a Canvas progress URL until completion."""
+        for attempt in range(max_attempts):
+            data = self._get(progress_url)
+            state = data.get("workflow_state")
+            if state == "completed":
+                return
+            if state == "failed":
+                raise RuntimeError("Canvas report generation failed.")
+            time.sleep(interval)
+    raise RuntimeError("Canvas report generation timed out.")
