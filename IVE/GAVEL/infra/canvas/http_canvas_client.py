@@ -63,3 +63,31 @@ class HttpCanvasClient(CanvasClient):
         base = self._config.base_url.rstrip("/")
         suffix = path.lstrip("/")
         return f"{base}/{suffix}"
+    
+    def fetch_quiz_student_analysis(
+            self, course_id: int, quiz_id: int) -> bytes:
+        """Retrieve the student analysis CSV for a Canvas quiz."""
+        report = self._post(
+            f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/reports",
+            json={
+                "quiz_report": {
+                    "report_type": "student_analysis",
+                    "includes_all_versions": True,
+                }
+            },
+        )
+        return str(report).encode("utf-8")
+    
+    def _post(self, path: str, json: Any = None) -> Any:
+        """POST to a Canvas API endpoint and return JSON."""
+        url = self._build_url(path)
+        resp = self._session.post(
+            url,
+            json=json,
+            headers={
+                "Authorization": f"Bearer {self._config.token}",
+                "Accept": "application/json",
+            },
+        )
+        resp.raise_for_status()
+        return resp.json()
