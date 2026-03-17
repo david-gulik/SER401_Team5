@@ -14,3 +14,6 @@ class UnconfiguredCanvasClient(CanvasClient):
 
     def fetch_gradebook(self, course_id: int) -> CanvasGradebook:
         raise RuntimeError(self._message)
+
+    def fetch_gradebook_csv(self, course_id: int) -> bytes:
+        raise RuntimeError(self._message)

@@ -42,6 +42,9 @@ class HttpCanvasClient(CanvasClient):
 
         return CanvasCourseData(course=course, modules=modules)
 
+    def fetch_gradebook_csv(self, course_id: int) -> bytes:
+        raise NotImplementedError("Gradebook CSV export not implemented yet")
+
     def _get(self, path: str) -> Any:
         url = self._build_url(path)
         resp = self._session.get(
