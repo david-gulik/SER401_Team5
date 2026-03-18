@@ -20,4 +20,4 @@ class UnconfiguredCanvasClient(CanvasClient):
     
     def fetch_quiz_student_analysis(
             self, course_id: int, quiz_id: int) -> bytes:
-        
+        raise RuntimeError(self._message)
