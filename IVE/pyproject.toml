@@ -1,3 +1,7 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+addopts = "-m 'not manual'"
+markers = [
+    "manual: requires human interaction (browser MFA) — skipped in CI",
+]
