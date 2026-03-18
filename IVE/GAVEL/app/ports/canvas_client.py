@@ -17,3 +17,10 @@ class CanvasClient(ABC):
     def fetch_gradebook(self, course_id: int) -> CanvasGradebook:
         """Retrieve the gradebook for a Canvas course."""
         raise NotImplementedError
+    
+    @abstractmethod
+    def fetch_quiz_student_analysis(
+            self, course_id: int, quiz_id: int) -> bytes:
+        """Retrieve the student analysis report 
+        for a Canvas quiz consent form."""
+        raise NotImplementedError
