@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 import requests
+import time
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule
 from GAVEL.app.ports.canvas_client import CanvasClient
@@ -13,7 +14,7 @@ from GAVEL.app.ports.canvas_client import CanvasClient
 class CanvasApiConfig:
     base_url: str
     token: str
-    account_id:int
+    account_id: int
     poll_interval_seconds: float = 2.0
     export_timeout_seconds: float = 60.0
 
@@ -46,7 +47,24 @@ class HttpCanvasClient(CanvasClient):
         return CanvasCourseData(course=course, modules=modules)
 
     def fetch_gradebook_csv(self, course_id: int) -> bytes:
-        raise NotImplementedError("Gradebook CSV export not implemented yet")
+        report = self._start_gradebook_export(course_id)
+        report_id = int(report["id"])
+
+        deadline = time.monotonic() + self._config.export_timeout_seconds
+
+        while time.monotonic() < deadline:
+            status = self._get_gradebook_export_status(report_id)
+            workflow_state = str(status.get("workflow_state", "")).lower()
+
+            if workflow_state in {"complete", "completed"}:
+                raise NotImplementedError(f"Export completed: {status}")
+
+            if workflow_state in {"error", "failed"}:
+                raise RuntimeError(f"Canvas gradebook export failed: {status}")
+
+            time.sleep(self._config.poll_interval_seconds)
+
+        raise TimeoutError("Timed out waiting for Canvas gradebook export to complete")
 
     def _get_json(self, path: str) -> Any:
         url = self._build_url(path)
@@ -91,3 +109,17 @@ class HttpCanvasClient(CanvasClient):
         base = self._config.base_url.rstrip("/")
         suffix = path.lstrip("/")
         return f"{base}/{suffix}"
+
+    def _start_gradebook_export(self, course_id: int) -> Any:
+        data = {
+            "parameters[course_id]": str(course_id),
+        }
+        return self._post_json(
+            f"/api/v1/accounts/{self._config.account_id}/reports/grade_export_csv",
+            data=data,
+        )
+
+    def _get_gradebook_export_status(self, report_id: int) -> Any:
+        return self._get_json(
+            f"/api/v1/accounts/{self._config.account_id}/reports/grade_export_csv/{report_id}"
+        )
