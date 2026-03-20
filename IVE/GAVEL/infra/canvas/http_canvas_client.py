@@ -6,8 +6,10 @@ from typing import Any, Optional
 import requests
 import time
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule
+from GAVEL.app.dtos.canvas_course import (
+    CanvasCourse, CanvasCourseData, CanvasModule)
 from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 
 
 @dataclass(frozen=True)
@@ -64,24 +66,7 @@ class HttpCanvasClient(CanvasClient):
         base = self._config.base_url.rstrip("/")
         suffix = path.lstrip("/")
         return f"{base}/{suffix}"
-    
-    def fetch_quiz_student_analysis(
-            self, course_id: int, quiz_id: int) -> bytes:
-        """Retrieve the student analysis CSV for a Canvas quiz."""
-        report = self._post(
-            f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/reports",
-            json={
-                "quiz_report": {
-                    "report_type": "student_analysis",
-                    "includes_all_versions": True,
-                }
-            },
-        )
-        progress_url = report.get("progress_url")
-        if progress_url:
-            self._poll_progress(progress_url)
-        return str(report).encode("utf-8")
-    
+   
     def _post(self, path: str, json: Any = None) -> Any:
         """POST to a Canvas API endpoint and return JSON."""
         url = self._build_url(path)
@@ -109,4 +94,41 @@ class HttpCanvasClient(CanvasClient):
             if state == "failed":
                 raise RuntimeError("Canvas report generation failed.")
             time.sleep(interval)
-    raise RuntimeError("Canvas report generation timed out.")
+        raise RuntimeError("Canvas report generation timed out.")
+    
+    def _download(self, url: str) -> bytes:
+        """Download raw bytes from a URL with auth."""
+        resp = self._session.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {self._config.token}",
+            },
+        )
+        resp. raise_for_status()
+        return resp.content
+    
+    def fetch_quiz_student_analysis(
+            self, course_id: int, quiz_id: int) -> bytes:
+        """Retrieve the student analysis CSV for a Canvas quiz."""
+        report = self._post(
+            f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/reports",
+            json={
+                "quiz_report": {
+                    "report_type": "student_analysis",
+                    "includes_all_versions": True,
+                }
+            },
+        )
+        progress_url = report.get("progress_url")
+        if progress_url:
+            self._poll_progress(progress_url)
+        report_url = (
+            f"/api/v1/courses/{course_id}/quizzes/{quiz_id}"
+            f"/reports/{report['id']}"
+        )
+        report_data = self._get(report_url)
+        csv_url = report_data["file"]["url"]
+        return self._download(csv_url)
+
+    def fetch_gradebook(self, course_id: int) -> CanvasGradebook:
+        raise NotImplementedError
