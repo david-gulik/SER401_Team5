@@ -17,6 +17,7 @@ class CanvasApiConfig:
     account_id: int
     poll_interval_seconds: float = 2.0
     export_timeout_seconds: float = 60.0
+    max_retries: int = 3
 
 
 class HttpCanvasClient(CanvasClient):
@@ -48,7 +49,10 @@ class HttpCanvasClient(CanvasClient):
 
     def fetch_gradebook_csv(self, course_id: int) -> bytes:
         report = self._start_gradebook_export(course_id)
-        report_id = int(report["id"])
+        report_id_raw = report.get("id")
+        if report_id_raw is None:
+            raise RuntimeError(f"Canvas export request did not return a report ID: {report}")
+        report_id = int(report_id_raw)
 
         deadline = time.monotonic() + self._config.export_timeout_seconds
 
@@ -57,7 +61,8 @@ class HttpCanvasClient(CanvasClient):
             workflow_state = str(status.get("workflow_state", "")).lower()
 
             if workflow_state in {"complete", "completed"}:
-                raise NotImplementedError(f"Export completed: {status}")
+                download_url = self._extract_gradebook_export_url(status)
+                return self._get_bytes(download_url)
 
             if workflow_state in {"error", "failed"}:
                 raise RuntimeError(f"Canvas gradebook export failed: {status}")
@@ -66,41 +71,56 @@ class HttpCanvasClient(CanvasClient):
 
         raise TimeoutError("Timed out waiting for Canvas gradebook export to complete")
 
-    def _get_json(self, path: str) -> Any:
-        url = self._build_url(path)
-        resp = self._session.get(
-            url,
-            headers={
-                "Authorization": f"Bearer {self._config.token}",
-                "Accept": "application/json",
-            },
+    def _start_gradebook_export(self, course_id: int) -> dict[str, Any]:
+        data = {
+            "parameters[course_id]": str(course_id),
+        }
+        return self._post_json(
+            f"/api/v1/accounts/{self._config.account_id}/reports/grade_export_csv",
+            data=data,
         )
-        resp.raise_for_status()
+
+    def _get_gradebook_export_status(self, report_id: int) -> dict[str, Any]:
+        return self._get_json(
+            f"/api/v1/accounts/{self._config.account_id}/reports/grade_export_csv/{report_id}"
+        )
+
+    def _extract_gradebook_export_url(self, status: dict[str, Any]) -> str:
+        file_url = status.get("file_url")
+        if isinstance(file_url, str) and file_url.strip():
+            return file_url
+
+        attachment = status.get("attachment")
+        if isinstance(attachment, dict):
+            attachment_url = attachment.get("url")
+            if isinstance(attachment_url, str) and attachment_url.strip():
+                return attachment_url
+
+        raise RuntimeError(f"Canvas export completed but no download URL was returned: {status}")
+
+    def _get_json(self, path: str) -> Any:
+        resp = self._request_with_retries(
+            method="GET",
+            path=path,
+            accept="application/json",
+        )
         return resp.json()
 
     def _get_bytes(self, path: str) -> bytes:
-        url = self._build_url(path)
-        resp = self._session.get(
-            url,
-            headers={
-                "Authorization": f"Bearer {self._config.token}",
-                "Accept": "*/*",
-            },
+        resp = self._request_with_retries(
+            method="GET",
+            path=path,
+            accept="*/*",
         )
-        resp.raise_for_status()
         return resp.content
 
     def _post_json(self, path: str, data: dict[str, Any] | None = None) -> Any:
-        url = self._build_url(path)
-        resp = self._session.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {self._config.token}",
-                "Accept": "application/json",
-            },
+        resp = self._request_with_retries(
+            method="POST",
+            path=path,
+            accept="application/json",
             data=data or {},
         )
-        resp.raise_for_status()
         return resp.json()
 
     def _build_url(self, path: str) -> str:
@@ -110,16 +130,39 @@ class HttpCanvasClient(CanvasClient):
         suffix = path.lstrip("/")
         return f"{base}/{suffix}"
 
-    def _start_gradebook_export(self, course_id: int) -> Any:
-        data = {
-            "parameters[course_id]": str(course_id),
-        }
-        return self._post_json(
-            f"/api/v1/accounts/{self._config.account_id}/reports/grade_export_csv",
-            data=data,
-        )
+    def _request_with_retries(
+            self,
+            method: str,
+            path: str,
+            accept: str,
+            data: dict[str, Any] | None = None,
+    ) -> requests.Response:
+        url = self._build_url(path)
 
-    def _get_gradebook_export_status(self, report_id: int) -> Any:
-        return self._get_json(
-            f"/api/v1/accounts/{self._config.account_id}/reports/grade_export_csv/{report_id}"
-        )
+        for attempt in range(self._config.max_retries + 1):
+            resp = self._session.request(
+                method=method,
+                url=url,
+                headers={
+                    "Authorization": f"Bearer {self._config.token}",
+                    "Accept": accept,
+                },
+                data=data,
+            )
+
+            if resp.status_code == 429 and attempt < self._config.max_retries:
+                retry_after = resp.headers.get("Retry-After")
+                sleep_seconds = float(retry_after) if retry_after else self._config.poll_interval_seconds
+                time.sleep(sleep_seconds)
+                continue
+
+            resp.raise_for_status()
+            return resp
+
+        raise RuntimeError(f"Request failed after retries: {method} {url}")
+
+    def fetch_gradebook(self, course_id: int):
+        raise NotImplementedError("fetch_gradebook not implemented yet")
+
+    def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
+        raise NotImplementedError("fetch_quiz_student_analysis not implemented yet")
