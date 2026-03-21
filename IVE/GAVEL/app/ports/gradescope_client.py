@@ -234,7 +234,7 @@ def build_requests_session(gs_session: GradescopeSession, course_id: int | str) 
     return session
 def gs_downloader(course_id: int):
     bridge = GradescopeClient(
-        course_url="https://canvas.asu.edu/courses/253450",
+        course_url=f"https://canvas.asu.edu/courses/{course_id}",
         headless=False
     )
 
@@ -246,7 +246,6 @@ def gs_downloader(course_id: int):
     session = build_requests_session(gs_session, course_id=gs_course_id)
     resp = session.get(f"https://www.gradescope.com/courses/{gs_course_id}/assignments")
     soup = BeautifulSoup(resp.text, "html.parser")
-    print(resp.status_code)
 
     elements = soup.find_all(attrs={"data-assignment-id": True})
     assignment_ids = [e["data-assignment-id"] for e in elements]
@@ -279,10 +278,8 @@ def gs_downloader(course_id: int):
                 headers={"Referer": f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"}
             )
             soup = BeautifulSoup(resp.text, "html.parser")
-            print(soup)
             data = resp.json()
             file_id = data["generated_file_id"]
-            print(file_id)
 
             url = f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.zip"
             # TODO: Implement better waiting
