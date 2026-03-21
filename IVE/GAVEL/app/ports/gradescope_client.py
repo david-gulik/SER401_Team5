@@ -303,68 +303,6 @@ def gs_downloader(course_id: int):
 def main():
 
     gs_downloader(253450)
-    # bridge = GradescopeClient(
-    #     course_url="https://canvas.asu.edu/courses/253450",
-    #     headless=False
-    # )
-    #
-    # gs_session, gs_course_id = bridge.capture_session(
-    #     username="ENTERYOURPASSWORD",
-    #     password="ENTERYOURPASSWORD",
-    # )
-    #
-    # session = build_requests_session(gs_session, course_id=gs_course_id)
-    # resp = session.get(f"https://www.gradescope.com/courses/{gs_course_id}/assignments")
-    # soup = BeautifulSoup(resp.text, "html.parser")
-    # print(resp.status_code)
-    #
-    # elements = soup.find_all(attrs={"data-assignment-id": True})
-    # assignment_ids = [e["data-assignment-id"] for e in elements]
-    #
-    # for a in assignment_ids:
-    #     resp = session.get(f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades")
-    #     soup = BeautifulSoup(resp.text, "html.parser")
-    #     link = soup.find("a", class_="js-bulkExportModalDownload")
-    #     if (".zip" in link["href"]):
-    #         log.info("Downloading assignment: %s", a)
-    #         resp = session.get("https://www.gradescope.com" + link["href"])
-    #         output_str = a + ".zip"
-    #         with open(output_str, "wb") as f:
-    #             f.write(resp.content)
-    #         print(f"Assignment {a} downloaded!")
-    #     else:
-    #         log.info("Export not created yet; exporting assignment: %s", a)
-    #         review_url = f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
-    #         resp = session.get(review_url)
-    #
-    #         soup = BeautifulSoup(resp.text, "html.parser")
-    #         csrf = soup.find("meta", attrs={"name": "csrf-token"})["content"]
-    #
-    #         session.headers["X-CSRF-Token"] = csrf
-    #
-    #         resp = session.post(
-    #             f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/export",
-    #             headers={"Referer": f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"}
-    #         )
-    #         soup = BeautifulSoup(resp.text, "html.parser")
-    #         print(soup)
-    #         data = resp.json()
-    #         file_id = data["generated_file_id"]
-    #         print(file_id)
-    #
-    #         url = f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.zip"
-    #         #TODO: Implement better waiting
-    #
-    #         while True:
-    #             log.info("Waiting for export...")
-    #             resp = session.get(url)
-    #             time.sleep(5)
-    #             if (resp.status_code == 200):
-    #                 break
-    #         resp = session.get(url)
-    #         output_str = a + ".zip"
-    #         with open(output_str, "wb") as f:
-    #             f.write(resp.content)
 
 if __name__ == "__main__":
     main()
