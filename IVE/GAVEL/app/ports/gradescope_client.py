@@ -297,6 +297,7 @@ def gs_downloader(course_id: int):
             output_str = a + ".zip"
             with open(output_str, "wb") as f:
                 f.write(resp.content)
+            log.info("Export completed!")
 
 
 def main():
