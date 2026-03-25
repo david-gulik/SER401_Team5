@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
 
 
 @dataclass(frozen=True)
@@ -16,8 +15,8 @@ class GradescopeSubmitter:
 class GradescopeTestScore:
     name: str
     score: float
-    max_score: Optional[float] = None
-    number: Optional[str] = None
+    max_score: float | None = None
+    number: str | None = None
 
 
 @dataclass(frozen=True)
@@ -25,4 +24,4 @@ class GradescopeSubmission:
     submission_key: str
     submitter: GradescopeSubmitter
     created_at: datetime
-    tests: List[GradescopeTestScore]
+    tests: list[GradescopeTestScore]

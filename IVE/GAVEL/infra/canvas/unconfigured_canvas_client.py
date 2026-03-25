@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from GAVEL.app.dtos.canvas_course import CanvasCourseData
-from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
+from GAVEL.app.ports.canvas_client import CanvasClient
 
 
 class UnconfiguredCanvasClient(CanvasClient):
@@ -17,7 +17,6 @@ class UnconfiguredCanvasClient(CanvasClient):
 
     def fetch_gradebook_csv(self, course_id: int) -> bytes:
         raise RuntimeError(self._message)
-    
-    def fetch_quiz_student_analysis(
-            self, course_id: int, quiz_id: int) -> bytes:
+
+    def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
         raise RuntimeError(self._message)

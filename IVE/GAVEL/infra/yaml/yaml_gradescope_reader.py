@@ -1,20 +1,15 @@
 from pathlib import Path
-from typing import List
 
 import yaml
 
-from GAVEL.app.dtos.gradescope import (
-    GradescopeSubmission,
-    GradescopeSubmitter,
-    GradescopeTestScore
-)
+from GAVEL.app.dtos.gradescope import GradescopeSubmission, GradescopeSubmitter, GradescopeTestScore
 from GAVEL.app.ports.gradescope_reader import GradescopeReader
 
 
 class YamlGradescopeReader(GradescopeReader):
     """Prototype reader for Gradescope YAML exports."""
 
-    def read(self, path: Path) -> List[GradescopeSubmission]:
+    def read(self, path: Path) -> list[GradescopeSubmission]:
         data = yaml.safe_load(path.read_text())
 
         submissions = []
@@ -25,7 +20,7 @@ class YamlGradescopeReader(GradescopeReader):
             submitter = GradescopeSubmitter(
                 sid=str(submitter_data[":sid"]),
                 email=str(submitter_data[":email"]),
-                name=str(submitter_data[":name"])
+                name=str(submitter_data[":name"]),
             )
 
             tests = [
