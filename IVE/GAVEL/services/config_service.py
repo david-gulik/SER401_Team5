@@ -1,29 +1,29 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping, Optional
 
 from dotenv import load_dotenv
 
 
 @dataclass(frozen=True)
 class CanvasConfig:
-    base_url: Optional[str] = None
-    token: Optional[str] = None
+    base_url: str | None = None
+    token: str | None = None
 
 
 @dataclass(frozen=True)
 class RosterConfig:
-    auth_method: Optional[str] = None   # "selenium" or "cookies"
-    cookie_file: Optional[str] = None   # path for cookie-based auth
-    token: Optional[str] = None         # pre-existing catalog API token
-    mfa_timeout: int = 120              # seconds to wait for CAS + Duo MFA
-    session_ttl: int = 600              # seconds before cached session expires
-    http_timeout: int = 30              # seconds for HTTP requests
-    page_load_timeout: int = 30         # seconds to wait for initial page load
-    token_exchange_timeout: int = 30    # seconds for SPA to exchange code for JWT
+    auth_method: str | None = None  # "selenium" or "cookies"
+    cookie_file: str | None = None  # path for cookie-based auth
+    token: str | None = None  # pre-existing catalog API token
+    mfa_timeout: int = 120  # seconds to wait for CAS + Duo MFA
+    session_ttl: int = 600  # seconds before cached session expires
+    http_timeout: int = 30  # seconds for HTTP requests
+    page_load_timeout: int = 30  # seconds to wait for initial page load
+    token_exchange_timeout: int = 30  # seconds for SPA to exchange code for JWT
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,7 @@ class AppConfig:
 
 
 class ConfigService:
-    def __init__(self, env: Optional[Mapping[str, str]] = None) -> None:
+    def __init__(self, env: Mapping[str, str] | None = None) -> None:
         if env is None:
             _project_root = Path(__file__).resolve().parents[2]
             load_dotenv(_project_root / ".env")

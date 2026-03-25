@@ -30,7 +30,3 @@ select = [
 ignore = [
     "E501",
 ]
-addopts = "-m 'not manual'"
-markers = [
-    "manual: requires human interaction (browser MFA) — skipped in CI",
-]

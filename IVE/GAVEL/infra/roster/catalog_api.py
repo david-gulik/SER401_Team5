@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 from urllib.parse import urlencode
 
 import requests
@@ -18,19 +17,14 @@ logger = logging.getLogger(__name__)
 # OAuth configuration (extracted from catalog SPA bundle.js)
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ServiceAuthConfig:
     """OAuth endpoints and credentials for ASU's serviceauth system."""
 
-    token_url: str = (
-        "https://weblogin.asu.edu/serviceauth/oauth2/native/token"
-    )
-    passive_allow_url: str = (
-        "https://weblogin.asu.edu/serviceauth/oauth2/passive/native/allow"
-    )
-    active_allow_url: str = (
-        "https://weblogin.asu.edu/serviceauth/oauth2/native/allow"
-    )
+    token_url: str = "https://weblogin.asu.edu/serviceauth/oauth2/native/token"
+    passive_allow_url: str = "https://weblogin.asu.edu/serviceauth/oauth2/passive/native/allow"
+    active_allow_url: str = "https://weblogin.asu.edu/serviceauth/oauth2/native/allow"
     client_id: str = "catalog-class-search-app"
     client_secret: str = "serviceauth-public-agent"
     redirect_uri: str = "https://catalog.apps.asu.edu/catalog"
@@ -45,13 +39,13 @@ class ServiceAuthConfig:
 # Catalog API configuration
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class CatalogApiConfig:
     """Endpoint URLs for the catalog search API."""
 
     base_url: str = (
-        "https://eadvs-cscc-catalog-api.apps.asu.edu"
-        "/catalog-microservices/api/v1/search"
+        "https://eadvs-cscc-catalog-api.apps.asu.edu/catalog-microservices/api/v1/search"
     )
 
     @property
@@ -71,6 +65,7 @@ class CatalogApiConfig:
 # Token acquisition
 # ---------------------------------------------------------------------------
 
+
 class ServiceAuthTokenProvider:
     """
     Obtains Bearer tokens via ASU's serviceauth PKCE OAuth flow.
@@ -81,7 +76,7 @@ class ServiceAuthTokenProvider:
 
     def __init__(
         self,
-        config: Optional[ServiceAuthConfig] = None,
+        config: ServiceAuthConfig | None = None,
         mfa_timeout_seconds: int = 120,
     ):
         self._config = config or ServiceAuthConfig()
@@ -89,8 +84,6 @@ class ServiceAuthTokenProvider:
 
     def obtain_token(self) -> str:
         import time
-        import secrets as _secrets
-        from GAVEL.infra.roster.pkce import generate_code_verifier, compute_code_challenge
 
         SS_TOKEN_KEY = "catalog.jwt.token"
         catalog_domain = "catalog.apps.asu.edu"
@@ -159,11 +152,12 @@ class ServiceAuthTokenProvider:
             except Exception:
                 pass
 
-    def _trigger_oauth_flow(self, driver, deadline) -> Optional[str]:
-        import time
+    def _trigger_oauth_flow(self, driver, deadline) -> str | None:
         import secrets as _secrets
+        import time
         from urllib.parse import urlencode as _urlencode
-        from GAVEL.infra.roster.pkce import generate_code_verifier, compute_code_challenge
+
+        from GAVEL.infra.roster.pkce import compute_code_challenge, generate_code_verifier
 
         SS_TOKEN_KEY = "catalog.jwt.token"
 
@@ -172,13 +166,9 @@ class ServiceAuthTokenProvider:
         state = _secrets.token_urlsafe(16)
 
         driver.execute_script(
-            f"sessionStorage.setItem('catalog.serviceauth.codeVerifier', "
-            f"'{verifier}');"
+            f"sessionStorage.setItem('catalog.serviceauth.codeVerifier', '{verifier}');"
         )
-        driver.execute_script(
-            f"sessionStorage.setItem('catalog.serviceauth.state', "
-            f"'{state}');"
-        )
+        driver.execute_script(f"sessionStorage.setItem('catalog.serviceauth.state', '{state}');")
 
         allow_params = {
             "response_type": "code",
@@ -189,9 +179,7 @@ class ServiceAuthTokenProvider:
             "code_challenge": challenge,
             "scope": " ".join(self._config.scopes),
         }
-        allow_url = (
-            f"{self._config.active_allow_url}?{_urlencode(allow_params)}"
-        )
+        allow_url = f"{self._config.active_allow_url}?{_urlencode(allow_params)}"
 
         print("[AUTH] Navigating to serviceauth allow endpoint...")
         driver.get(allow_url)
@@ -218,11 +206,9 @@ class ServiceAuthTokenProvider:
         return None
 
     @staticmethod
-    def _read_session_storage(driver, key: str) -> Optional[str]:
+    def _read_session_storage(driver, key: str) -> str | None:
         try:
-            value = driver.execute_script(
-                f"return sessionStorage.getItem('{key}');"
-            )
+            value = driver.execute_script(f"return sessionStorage.getItem('{key}');")
             if value and isinstance(value, str) and len(value) > 10:
                 return value
         except Exception:
@@ -232,11 +218,10 @@ class ServiceAuthTokenProvider:
     @staticmethod
     def _create_driver():
         from selenium import webdriver
+
         options = webdriver.ChromeOptions()
         options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option(
-            "excludeSwitches", ["enable-automation"]
-        )
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
         return webdriver.Chrome(options=options)
 
 
@@ -254,6 +239,7 @@ class ManualTokenProvider:
 # Catalog API client (ClassResolver)
 # ---------------------------------------------------------------------------
 
+
 class CatalogApiClassResolver:
     """
     Resolves class sections via ASU's catalog JSON API.
@@ -264,8 +250,8 @@ class CatalogApiClassResolver:
 
     def __init__(
         self,
-        api_config: Optional[CatalogApiConfig] = None,
-        token_provider: Optional[ServiceAuthTokenProvider] = None,
+        api_config: CatalogApiConfig | None = None,
+        token_provider: ServiceAuthTokenProvider | None = None,
         http_timeout: int = 30,
     ):
         self._api = api_config or CatalogApiConfig()
@@ -275,11 +261,14 @@ class CatalogApiClassResolver:
         self._session.headers["User-Agent"] = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         )
-        self._token: Optional[str] = None
+        self._token: str | None = None
 
     def list_terms(self) -> list[TermInfo]:
         data = self._authed_get(self._api.terms_url)
-        logger.debug("Terms raw response keys: %s", list(data.keys()) if isinstance(data, dict) else type(data))
+        logger.debug(
+            "Terms raw response keys: %s",
+            list(data.keys()) if isinstance(data, dict) else type(data),
+        )
 
         current_terms = []
         if isinstance(data, dict):
@@ -295,11 +284,13 @@ class CatalogApiClassResolver:
         terms = []
         for item in full_list:
             code = str(item.get("value", item.get("strm", "")))
-            terms.append(TermInfo(
-                code=code,
-                name=str(item.get("label", item.get("descr", ""))),
-                default=code in current_codes,
-            ))
+            terms.append(
+                TermInfo(
+                    code=code,
+                    name=str(item.get("label", item.get("descr", ""))),
+                    default=code in current_codes,
+                )
+            )
         return terms
 
     def find_sections(
@@ -341,8 +332,7 @@ class CatalogApiClassResolver:
 
         if response.status_code != 200:
             raise RuntimeError(
-                f"Catalog API error: HTTP {response.status_code} "
-                f"for {url} - {response.text[:300]}"
+                f"Catalog API error: HTTP {response.status_code} for {url} - {response.text[:300]}"
             )
 
         return response.json()
@@ -353,16 +343,18 @@ class CatalogApiClassResolver:
         sections = []
         for item in classes_raw:
             clas = item.get("CLAS", item)
-            sections.append(ClassSection(
-                class_number=str(clas.get("CLASSNBR", "")),
-                subject=str(clas.get("SUBJECT", "")),
-                catalog_number=str(clas.get("CATALOGNBR", "")),
-                title=str(clas.get("COURSETITLELONG", clas.get("DESCR", ""))),
-                instructor=str(clas.get("INSTRUCTORSLIST", "")),
-                days_times=str(clas.get("DAYSTIMES", "")),
-                session=str(clas.get("SESSIONCODE", "")),
-                campus=str(clas.get("CAMPUS", "")),
-                seats_open=int(clas.get("ENRLCAP", 0)) - int(clas.get("ENRLTOT", 0)),
-                component=str(clas.get("COMPONENTPRIMARY", "")),
-            ))
+            sections.append(
+                ClassSection(
+                    class_number=str(clas.get("CLASSNBR", "")),
+                    subject=str(clas.get("SUBJECT", "")),
+                    catalog_number=str(clas.get("CATALOGNBR", "")),
+                    title=str(clas.get("COURSETITLELONG", clas.get("DESCR", ""))),
+                    instructor=str(clas.get("INSTRUCTORSLIST", "")),
+                    days_times=str(clas.get("DAYSTIMES", "")),
+                    session=str(clas.get("SESSIONCODE", "")),
+                    campus=str(clas.get("CAMPUS", "")),
+                    seats_open=int(clas.get("ENRLCAP", 0)) - int(clas.get("ENRLTOT", 0)),
+                    component=str(clas.get("COMPONENTPRIMARY", "")),
+                )
+            )
         return sections

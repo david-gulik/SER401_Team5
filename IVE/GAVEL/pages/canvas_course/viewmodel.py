@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -20,7 +19,7 @@ class CanvasCourseUiState:
     is_busy: bool
     status: Status
     message: str
-    last_saved_path: Optional[str]
+    last_saved_path: str | None
 
 
 @dataclass(frozen=True)
@@ -112,7 +111,7 @@ class CanvasCourseViewModel(QObject):
         )
         self.state_changed.emit(self._state)
 
-    def _set_idle(self, status: Status, message: str, saved_path: Optional[str]) -> None:
+    def _set_idle(self, status: Status, message: str, saved_path: str | None) -> None:
         self._state = replace(
             self._state,
             is_busy=False,

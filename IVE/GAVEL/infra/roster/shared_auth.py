@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Optional
 
 import requests
 
@@ -34,9 +33,9 @@ class SharedAuthProvider:
     def __init__(self, roster_cfg: RosterConfig) -> None:
         self._cfg = roster_cfg
 
-        self._catalog_token: Optional[str] = None
-        self._roster_session: Optional[requests.Session] = None
-        self._authenticated_at: Optional[float] = None
+        self._catalog_token: str | None = None
+        self._roster_session: requests.Session | None = None
+        self._authenticated_at: float | None = None
         self._driver = None
         self._keepalive_stop = threading.Event()
 
@@ -156,13 +155,13 @@ class SharedAuthProvider:
             # sessionStorage.
             driver.get("https://catalog.apps.asu.edu/favicon.ico")
             self._wait_for_domain(
-                driver, catalog_domain, timeout=self._cfg.page_load_timeout,
+                driver,
+                catalog_domain,
+                timeout=self._cfg.page_load_timeout,
             )
 
             # Clear the old token so we know if we get a fresh one.
-            driver.execute_script(
-                f"sessionStorage.removeItem('{SS_TOKEN_KEY}');"
-            )
+            driver.execute_script(f"sessionStorage.removeItem('{SS_TOKEN_KEY}');")
 
             # Seed fresh PKCE parameters.
             verifier = generate_code_verifier()
@@ -187,9 +186,7 @@ class SharedAuthProvider:
                 "code_challenge": challenge,
                 "scope": " ".join(config.scopes),
             }
-            passive_url = (
-                f"{config.passive_allow_url}?{urlencode(allow_params)}"
-            )
+            passive_url = f"{config.passive_allow_url}?{urlencode(allow_params)}"
 
             driver.get(passive_url)
 
@@ -246,12 +243,12 @@ class SharedAuthProvider:
                     location = resp.headers.get("Location", "")
                     if resp.status_code in (301, 302) and "cas/login" in location:
                         logger.warning(
-                            "Roster keepalive: redirected to CAS login — "
-                            "session expired."
+                            "Roster keepalive: redirected to CAS login — session expired."
                         )
                         return
                     logger.debug(
-                        "Roster keepalive: HTTP %d", resp.status_code,
+                        "Roster keepalive: HTTP %d",
+                        resp.status_code,
                     )
                 except Exception as exc:
                     logger.debug("Roster keepalive error: %s", exc)
@@ -279,7 +276,9 @@ class SharedAuthProvider:
         #    write to sessionStorage without the SPA redirecting us away.
         driver.get("https://catalog.apps.asu.edu/favicon.ico")
         self._wait_for_domain(
-            driver, catalog_domain, timeout=self._cfg.page_load_timeout,
+            driver,
+            catalog_domain,
+            timeout=self._cfg.page_load_timeout,
         )
 
         # 2. Seed PKCE params into sessionStorage.
@@ -290,9 +289,7 @@ class SharedAuthProvider:
         driver.execute_script(
             f"sessionStorage.setItem('catalog.serviceauth.codeVerifier', '{verifier}');"
         )
-        driver.execute_script(
-            f"sessionStorage.setItem('catalog.serviceauth.state', '{state}');"
-        )
+        driver.execute_script(f"sessionStorage.setItem('catalog.serviceauth.state', '{state}');")
 
         # 3. Jump straight to the serviceauth login — goes to CAS
         #    immediately instead of waiting for the SPA to detect no auth.
@@ -406,9 +403,7 @@ class SharedAuthProvider:
                 last_url = driver.current_url
             except Exception:
                 last_url = last_printed_url
-            raise RuntimeError(
-                f"MyASU authentication failed.\nLast URL: {last_url}"
-            )
+            raise RuntimeError(f"MyASU authentication failed.\nLast URL: {last_url}")
 
         return self._transfer_cookies(driver)
 
@@ -420,9 +415,7 @@ class SharedAuthProvider:
 
         options = webdriver.ChromeOptions()
         options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option(
-            "excludeSwitches", ["enable-automation"]
-        )
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
         return webdriver.Chrome(options=options)
 
     def _quit_driver(self) -> None:
@@ -435,11 +428,9 @@ class SharedAuthProvider:
             self._driver = None
 
     @staticmethod
-    def _read_session_storage(driver, key: str) -> Optional[str]:
+    def _read_session_storage(driver, key: str) -> str | None:
         try:
-            value = driver.execute_script(
-                f"return sessionStorage.getItem('{key}');"
-            )
+            value = driver.execute_script(f"return sessionStorage.getItem('{key}');")
             if value and isinstance(value, str) and len(value) > 10:
                 return value
         except Exception:
@@ -456,7 +447,5 @@ class SharedAuthProvider:
                 domain=cookie.get("domain", ""),
                 path=cookie.get("path", "/"),
             )
-        session.headers.update({
-            "User-Agent": driver.execute_script("return navigator.userAgent")
-        })
+        session.headers.update({"User-Agent": driver.execute_script("return navigator.userAgent")})
         return session

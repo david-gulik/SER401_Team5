@@ -20,7 +20,7 @@ class AppServices:
         canvas_client: CanvasClient,
         roster_client: RosterClient,
         logger: AppLogger,
-    ) -> "AppServices":
+    ) -> AppServices:
         logger.info("AppServices: initializing use cases")
         download_uc = DownloadCourseDataUseCase(canvas_client)
         return cls(
