@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import QApplication
 
 from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
-from GAVEL.bootstrap import build_canvas_client
+from GAVEL.bootstrap import build_canvas_client, build_roster_client
 from GAVEL.core.main_window import MainWindow
 from GAVEL.core.page_registry import PageRegistry
 from GAVEL.pages.canvas_course.page import CanvasCoursePage  # noqa: F401
@@ -34,7 +34,8 @@ def main() -> None:
     logger = AppLogger()
 
     canvas_client = build_canvas_client(config_service.get(), logger)
-    services = AppServices.build(canvas_client, logger)
+    roster_client = build_roster_client(config_service.get(), logger)
+    services = AppServices.build(canvas_client, roster_client, logger)
 
     ctx = AppContext(
         theme=theme,
