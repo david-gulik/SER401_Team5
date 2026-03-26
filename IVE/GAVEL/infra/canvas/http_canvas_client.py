@@ -82,9 +82,9 @@ class HttpCanvasClient(CanvasClient):
                 user.get("id", ""),
             ]
 
-            row.extend(["" for _ in assignments]) # scores TODO
+            row.extend(["" for _ in assignments])  # scores TODO
 
-            row.extend(["", "", "", "", grades.get("final_grade", "")]) # totals TODO
+            row.extend(["", "", "", "", grades.get("final_grade", "")])  # totals TODO
 
             writer.writerow(row)
 
