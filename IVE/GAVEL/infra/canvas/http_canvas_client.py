@@ -47,28 +47,56 @@ class HttpCanvasClient(CanvasClient):
         return CanvasCourseData(course=course, modules=modules)
 
     def fetch_gradebook_csv(self, course_id: int) -> bytes:
-        report = self._start_gradebook_export(course_id)
-        report_id_raw = report.get("id")
-        if report_id_raw is None:
-            raise RuntimeError(f"Canvas export request did not return a report ID: {report}")
-        report_id = int(report_id_raw)
+        enrollments = self._get_json(
+            f"/api/v1/courses/{course_id}/enrollments?per_page=100"
+        )
+        assignments = self._get_json(
+            f"/api/v1/courses/{course_id}/assignments?per_page=100"
+        )
 
-        deadline = time.monotonic() + self._config.export_timeout_seconds
+        import csv
+        from io import StringIO
 
-        while time.monotonic() < deadline:
-            status = self._get_gradebook_export_status(report_id)
-            workflow_state = str(status.get("workflow_state", "")).lower()
+        output = StringIO()
+        writer = csv.writer(output)
 
-            if workflow_state in {"complete", "completed"}:
-                download_url = self._extract_gradebook_export_url(status)
-                return self._get_bytes(download_url)
+        header = ["Student Name", "Student ID"]
 
-            if workflow_state in {"error", "failed"}:
-                raise RuntimeError(f"Canvas gradebook export failed: {status}")
+        assignment_names = [a.get("name", "") for a in assignments]
+        header.extend(assignment_names)
 
-            time.sleep(self._config.poll_interval_seconds)
+        header.extend([
+            "Activities Total",
+            "Cairns Total",
+            "Homework (all) Total",
+            "Homework (Gradescope) Total",
+            "Final Grade"
+        ])
 
-        raise TimeoutError("Timed out waiting for Canvas gradebook export to complete")
+        writer.writerow(header)
+
+        for student in enrollments:
+            user = student.get("user", {})
+            grades = student.get("grades", {})
+
+            row = [
+                user.get("name", ""),
+                user.get("id", ""),
+            ]
+
+            row.extend(["" for _ in assignments])
+
+            row.extend([
+                "",
+                "",
+                "",
+                "",
+                grades.get("final_grade", "")
+            ])
+
+            writer.writerow(row)
+
+        return output.getvalue().encode("utf-8")
 
     def _start_gradebook_export(self, course_id: int) -> dict[str, Any]:
         data = {
