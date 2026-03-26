@@ -47,12 +47,8 @@ class HttpCanvasClient(CanvasClient):
         return CanvasCourseData(course=course, modules=modules)
 
     def fetch_gradebook_csv(self, course_id: int) -> bytes:
-        enrollments = self._get_json(
-            f"/api/v1/courses/{course_id}/enrollments?per_page=100"
-        )
-        assignments = self._get_json(
-            f"/api/v1/courses/{course_id}/assignments?per_page=100"
-        )
+        enrollments = self._get_json(f"/api/v1/courses/{course_id}/enrollments?per_page=100")
+        assignments = self._get_json(f"/api/v1/courses/{course_id}/assignments?per_page=100")
 
         import csv
         from io import StringIO
@@ -65,13 +61,15 @@ class HttpCanvasClient(CanvasClient):
         assignment_names = [a.get("name", "") for a in assignments]
         header.extend(assignment_names)
 
-        header.extend([
-            "Activities Total",
-            "Cairns Total",
-            "Homework (all) Total",
-            "Homework (Gradescope) Total",
-            "Final Grade"
-        ])
+        header.extend(
+            [
+                "Activities Total",
+                "Cairns Total",
+                "Homework (all) Total",
+                "Homework (Gradescope) Total",
+                "Final Grade",
+            ]
+        )
 
         writer.writerow(header)
 
@@ -84,15 +82,9 @@ class HttpCanvasClient(CanvasClient):
                 user.get("id", ""),
             ]
 
-            row.extend(["" for _ in assignments])
+            row.extend(["" for _ in assignments]) # scores TODO
 
-            row.extend([
-                "",
-                "",
-                "",
-                "",
-                grades.get("final_grade", "")
-            ])
+            row.extend(["", "", "", "", grades.get("final_grade", "")]) # totals TODO
 
             writer.writerow(row)
 
