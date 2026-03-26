@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from argparse import Namespace
 from pathlib import Path
-from typing import Optional
 
 from GAVEL.app.dtos.roster import RosterRequest
 from GAVEL.app_context import AppContext
@@ -47,18 +46,14 @@ def handle_roster_download(ctx: AppContext, args: Namespace) -> int:
         return 2
 
     if args.info_only:
-        print(
-            f"\n[INFO] Resolved: term={request.term}, "
-            f"class_number={request.class_number}"
-        )
+        print(f"\n[INFO] Resolved: term={request.term}, class_number={request.class_number}")
         return 0
 
     # Authenticate and download
     try:
         client.authenticate()
         print(
-            f"[ROSTER] Downloading roster for term={request.term}, "
-            f"class={request.class_number}..."
+            f"[ROSTER] Downloading roster for term={request.term}, class={request.class_number}..."
         )
         csv_text = client.fetch_roster(request)
     except RuntimeError as exc:
@@ -79,18 +74,18 @@ def handle_roster_download(ctx: AppContext, args: Namespace) -> int:
 
 
 def _lookup_and_select(
-    ctx: AppContext, args: Namespace,
-) -> Optional[RosterRequest]:
+    ctx: AppContext,
+    args: Namespace,
+) -> RosterRequest | None:
     """Query the catalog API and let the user select a section."""
     client = ctx.services.roster_client
 
-    print(
-        f"[LOOKUP] Searching for {args.subject} {args.catalog_number} "
-        f"in term {args.term}..."
-    )
+    print(f"[LOOKUP] Searching for {args.subject} {args.catalog_number} in term {args.term}...")
     try:
         sections = client.find_sections(
-            args.term, args.subject, args.catalog_number,
+            args.term,
+            args.subject,
+            args.catalog_number,
         )
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -111,9 +106,7 @@ def _lookup_and_select(
     print()
 
     while True:
-        choice = input(
-            f"Select a section (1-{len(sections)}), or 'q' to quit: "
-        ).strip()
+        choice = input(f"Select a section (1-{len(sections)}), or 'q' to quit: ").strip()
         if choice.lower() == "q":
             return None
         try:
@@ -122,7 +115,8 @@ def _lookup_and_select(
                 selected = sections[idx]
                 print(f"[LOOKUP] Selected: {selected.display_label}")
                 return RosterRequest(
-                    term=args.term, class_number=selected.class_number,
+                    term=args.term,
+                    class_number=selected.class_number,
                 )
         except ValueError:
             pass

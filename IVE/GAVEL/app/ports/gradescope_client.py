@@ -3,30 +3,29 @@ from typing import List
 from IVE.GAVEL.app.dtos.gradescope_assignment import GradescopeAssignment
 import time
 import logging
+import time
 from dataclasses import dataclass
-import doctest
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from bs4 import BeautifulSoup
+
 import requests
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.common.exceptions import TimeoutException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 # -------------------------
 # Logging Setup
 # -------------------------
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("GradescopeClient")
 
 
 # -------------------------
 # Data Class
 # -------------------------
+
 
 @dataclass
 class GradescopeSession:
@@ -38,6 +37,7 @@ class GradescopeSession:
 # -------------------------
 # Main Bridge Class
 # -------------------------
+
 
 class GradescopeClient:
     """
@@ -151,11 +151,14 @@ class GradescopeClient:
             token=token,
             all_cookies=cookies,
         )
+
     # -------------------------
     # Main Flow
     # -------------------------
 
-    def capture_session(self, username: str, password: str, timeout: int = 40) -> tuple[GradescopeSession, str]:
+    def capture_session(
+        self, username: str, password: str, timeout: int = 40
+    ) -> tuple[GradescopeSession, str]:
         self._driver = self._build_driver()
         wait = WebDriverWait(self._driver, timeout)
 
@@ -211,6 +214,7 @@ class GradescopeClient:
         course_id = parts[parts.index("courses") + 1]
         return course_id
 
+
 def build_requests_session(gs_session: GradescopeSession, course_id: int | str) -> requests.Session:
     session = requests.Session()
 
@@ -219,14 +223,16 @@ def build_requests_session(gs_session: GradescopeSession, course_id: int | str) 
         session.cookies.set(name, value, domain="www.gradescope.com")
 
     # Headers that make the request look like the browser
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
-        ),
-        "Referer": f"https://www.gradescope.com/courses/{course_id}",
-    })
+    session.headers.update(
+        {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/122.0.0.0 Safari/537.36"
+            ),
+            "Referer": f"https://www.gradescope.com/courses/{course_id}",
+        }
+    )
 
     # extract the CSRF token
     if gs_session.token:
@@ -241,8 +247,7 @@ def build_requests_session(gs_session: GradescopeSession, course_id: int | str) 
 def gs_downloader(course_id: int):
 
     bridge = GradescopeClient(
-        course_url=f"https://canvas.asu.edu/courses/{course_id}",
-        headless=False
+        course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
     )
 
     gs_session, gs_course_id = bridge.capture_session(
@@ -265,17 +270,13 @@ def gs_downloader(course_id: int):
     # exist or not exist] and either download the extant file or post for an export and poll until ready for download
 
     for a in assignment_ids:
-
-        # go to grade review page, look for a "bulkExportModalDownload" (that means the export exists already)
-
-        resp = session.get(f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades")
+        resp = session.get(
+            f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
+        )
         soup = BeautifulSoup(resp.text, "html.parser")
         link = soup.find("a", class_="js-bulkExportModalDownload")
-
-        # if found, download it!
-
         if ".zip" in link["href"]:
-            log.info("Downloading assignment: %s...", a)
+            log.info("Downloading assignment: %s", a)
             resp = session.get("https://www.gradescope.com" + link["href"])
             output_str = a + ".zip"
             with open(output_str, "wb") as f:
@@ -286,8 +287,10 @@ def gs_downloader(course_id: int):
         # and poll the submission until ready for download; then, download!
 
         else:
-            log.info("Export not created yet; exporting assignment: %s...", a)
-            review_url = f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
+            log.info("Export not created yet; exporting assignment: %s", a)
+            review_url = (
+                f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
+            )
             resp = session.get(review_url)
 
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -297,7 +300,9 @@ def gs_downloader(course_id: int):
 
             resp = session.post(
                 f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/export",
-                headers={"Referer": f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"}
+                headers={
+                    "Referer": f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
+                },
             )
             data = resp.json()
             file_id = data["generated_file_id"]
@@ -328,6 +333,7 @@ def gs_downloader(course_id: int):
 def main():
 
     gs_downloader(253450)
+
 
 if __name__ == "__main__":
     main()

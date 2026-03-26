@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional
 
 
 @dataclass(frozen=True)
 class CanvasCourse:
     id: int
     name: str
-    course_code: Optional[str] = None
+    course_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -20,4 +19,4 @@ class CanvasModule:
 @dataclass(frozen=True)
 class CanvasCourseData:
     course: CanvasCourse
-    modules: List[CanvasModule]
+    modules: list[CanvasModule]

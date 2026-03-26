@@ -12,8 +12,8 @@ from GAVEL.app.dtos.canvas_gradebook import (
 
 # Canvas export preamble row indices (0-based after the header row is consumed
 # by DictReader, so these are the first two next() calls on the reader).
-_PREAMBLE_POSTING_ROW = 0   # "Manual Posting" flags row
-_PREAMBLE_POINTS_ROW = 1    # "Points Possible" row
+_PREAMBLE_POSTING_ROW = 0  # "Manual Posting" flags row
+_PREAMBLE_POINTS_ROW = 1  # "Points Possible" row
 
 _SENTINEL_STUDENT = "Student, Test"
 _READ_ONLY_MARKER = "(read only)"
@@ -34,9 +34,7 @@ def _is_assignment_column(header: str) -> bool:
     return ":" in header and bool(_ASSIGNMENT_ID_RE.search(header))
 
 
-def _parse_assignment_column(
-    header: str, points_raw: str
-) -> GradebookAssignmentColumn:
+def _parse_assignment_column(header: str, points_raw: str) -> GradebookAssignmentColumn:
     """Extract metadata from an assignment column header and its points cell."""
     match = _ASSIGNMENT_ID_RE.search(header)
     canvas_id = int(match.group(1))
@@ -94,14 +92,10 @@ class LegacyGradebookCSVReader:
             # Consume the "Points Possible" row to extract column point values.
             points_row = next(reader)
 
-            assignment_headers = [
-                h for h in reader.fieldnames or []
-                if _is_assignment_column(h)
-            ]
+            assignment_headers = [h for h in reader.fieldnames or [] if _is_assignment_column(h)]
 
             columns = tuple(
-                _parse_assignment_column(h, points_row.get(h, ""))
-                for h in assignment_headers
+                _parse_assignment_column(h, points_row.get(h, "")) for h in assignment_headers
             )
 
             rows = tuple(
