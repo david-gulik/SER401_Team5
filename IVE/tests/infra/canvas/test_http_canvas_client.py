@@ -60,67 +60,41 @@ def make_client(session: FakeSession) -> HttpCanvasClient:
     )
     return HttpCanvasClient(config=config, session=session)
 
-
-def test_fetch_gradebook_csv_success():
+def test_fetch_gradebook_csv_builds_csv_from_enrollments_and_assignments():
     session = FakeSession(
         [
-            FakeResponse(json_data={"id": 99}),  # POST start export
-            FakeResponse(json_data={"workflow_state": "running"}),  # poll 1
             FakeResponse(
-                json_data={  # poll 2 complete
-                    "workflow_state": "complete",
-                    "file_url": "https://canvas.example.com/file.csv",
-                }
+                json_data=[
+                    {
+                        "user": {"name": "Jane Doe", "id": 1},
+                        "grades": {"final_grade": "95"},
+                    }
+                ]
             ),
-            FakeResponse(content=b"Student,ID\nJane,1\n"),  # download CSV
+            FakeResponse(
+                json_data=[
+                    {"id": 10, "name": "Assignment A"},
+                    {"id": 11, "name": "Assignment B"},
+                ]
+            ),
         ]
     )
 
     client = make_client(session)
+    result = client.fetch_gradebook_csv(course_id=456).decode("utf-8")
 
-    result = client.fetch_gradebook_csv(course_id=456)
-
-    assert result == b"Student,ID\nJane,1\n"
-    assert len(session.calls) == 4
-    assert session.calls[0]["method"] == "POST"
-
-
-def test_fetch_gradebook_csv_failed():
-    session = FakeSession(
-        [
-            FakeResponse(json_data={"id": 99}),
-            FakeResponse(json_data={"workflow_state": "failed"}),
-        ]
+    expected_header = (
+        "Student Name,Student ID,Assignment A,Assignment B,"
+        "Activities Total,Cairns Total,Homework (all) Total,"
+        "Homework (Gradescope) Total,Final Grade"
     )
 
-    client = make_client(session)
-
-    with pytest.raises(RuntimeError, match="failed"):
-        client.fetch_gradebook_csv(course_id=456)
-
-
-def test_fetch_gradebook_csv_timeout():
-    session = FakeSession(
-        [
-            FakeResponse(json_data={"id": 99}),
-            FakeResponse(json_data={"workflow_state": "running"}),
-            FakeResponse(json_data={"workflow_state": "running"}),
-        ]
-    )
-
-    config = CanvasApiConfig(
-        base_url="https://canvas.example.com",
-        token="fake-token",
-        account_id=123,
-        poll_interval_seconds=0.0,
-        export_timeout_seconds=0.0,
-    )
-
-    client = HttpCanvasClient(config=config, session=session)
-
-    with pytest.raises(TimeoutError):
-        client.fetch_gradebook_csv(course_id=456)
-
+    assert expected_header in result
+    assert "Jane Doe,1,,,,,,,95" in result
+    assert len(session.calls) == 2
+    assert session.calls[0]["method"] == "GET"
+    assert "/enrollments" in session.calls[0]["url"]
+    assert "/assignments" in session.calls[1]["url"]
 
 TEST_COURSE_ID = 101
 TEST_QUIZ_ID = 5
