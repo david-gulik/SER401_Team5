@@ -187,6 +187,7 @@ class HttpCanvasClient(CanvasClient):
                 "quiz_report": {
                     "report_type": "student_analysis",
                     "includes_all_versions": True,
+                    "includes_sis_ids": True,
                 }
             },
         )
