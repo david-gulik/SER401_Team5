@@ -60,6 +60,7 @@ def make_client(session: FakeSession) -> HttpCanvasClient:
     )
     return HttpCanvasClient(config=config, session=session)
 
+
 def test_fetch_gradebook_csv_builds_csv_from_enrollments_and_assignments():
     session = FakeSession(
         [
@@ -95,6 +96,7 @@ def test_fetch_gradebook_csv_builds_csv_from_enrollments_and_assignments():
     assert session.calls[0]["method"] == "GET"
     assert "/enrollments" in session.calls[0]["url"]
     assert "/assignments" in session.calls[1]["url"]
+
 
 TEST_COURSE_ID = 101
 TEST_QUIZ_ID = 5
