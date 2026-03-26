@@ -1,4 +1,7 @@
-# from app.dtos.gradescope_assignment import GradescopeAssignment
+from abc import ABC, abstractmethod
+from typing import List
+from IVE.GAVEL.app.dtos.gradescope_assignment import GradescopeAssignment
+import time
 import logging
 import time
 from dataclasses import dataclass
@@ -79,7 +82,7 @@ class GradescopeClient:
                     (By.XPATH, "//*[contains(text(), 'No, other people use this device')]")
                 )
             )
-            log.info("Clicking 'No, other people use this device'.")
+            log.info("Clicking 'No, other people use this device'...")
             no_btn.click()
         except TimeoutException:
             log.info("No trusted device prompt detected.")
@@ -94,14 +97,14 @@ class GradescopeClient:
 
         log.info("Performing CAS login...")
 
-        user_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
-        pass_field = self._driver.find_element(By.ID, "password")
+        # user_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
+        # pass_field = self._driver.find_element(By.ID, "password")
 
-        user_field.send_keys(username)
-        pass_field.send_keys(password)
+        # user_field.send_keys(username)
+        # pass_field.send_keys(password)
 
-        log.info("Submitting CAS login form.")
-        self._driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
+        log.info("Submitting CAS login form...")
+        # self._driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
         self._handle_duo(wait)
         log.info("CAS login + Duo complete.")
 
@@ -124,7 +127,7 @@ class GradescopeClient:
 
         handles = self._driver.window_handles
         self._driver.switch_to.window(handles[-1])
-        log.info("Switched to Gradescope tab.")
+        log.info("Switched to Gradescope tab...")
 
     # -------------------------
     # Extract Cookies
@@ -191,7 +194,7 @@ class GradescopeClient:
             ) from e
 
         finally:
-            log.info("Closing browser.")
+            log.info("Cookies extracted! Closing browser...")
             self._driver.quit()
 
     def _extract_gradescope_course_id(self) -> str:
@@ -231,13 +234,18 @@ def build_requests_session(gs_session: GradescopeSession, course_id: int | str) 
         }
     )
 
+    # extract the CSRF token
     if gs_session.token:
         session.headers["X-CSRF-Token"] = gs_session.token
 
     return session
 
+# -------------------------
+# Downloader Function: takes in a course_id as an argument and downloads all assignment bulk submission zips to [TBD]
+# -------------------------
 
 def gs_downloader(course_id: int):
+
     bridge = GradescopeClient(
         course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
     )
@@ -248,13 +256,18 @@ def gs_downloader(course_id: int):
     )
 
     session = build_requests_session(gs_session, course_id=gs_course_id)
+
+    # Fetch assignments
+
     resp = session.get(f"https://www.gradescope.com/courses/{gs_course_id}/assignments")
     soup = BeautifulSoup(resp.text, "html.parser")
-
     elements = soup.find_all(attrs={"data-assignment-id": True})
     assignment_ids = [e["data-assignment-id"] for e in elements]
 
     ##TODO: Determine file save directory
+
+    # For each assignment, find out if the export already exists [via the bulkExportModalDownload object, which will either
+    # exist or not exist] and either download the extant file or post for an export and poll until ready for download
 
     for a in assignment_ids:
         resp = session.get(
@@ -268,7 +281,11 @@ def gs_downloader(course_id: int):
             output_str = a + ".zip"
             with open(output_str, "wb") as f:
                 f.write(resp.content)
-            print(f"Assignment {a} downloaded!")
+            log.info(f"Assignment {a} downloaded!")
+
+        # if not, send a post request to bulk export the submissions (requires some cookie refreshing)
+        # and poll the submission until ready for download; then, download!
+
         else:
             log.info("Export not created yet; exporting assignment: %s", a)
             review_url = (
@@ -287,25 +304,31 @@ def gs_downloader(course_id: int):
                     "Referer": f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
                 },
             )
-            soup = BeautifulSoup(resp.text, "html.parser")
             data = resp.json()
             file_id = data["generated_file_id"]
 
-            url = f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.zip"
-            # TODO: Implement better waiting
+            url = f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.json"
+
+            # polling
 
             while True:
-                log.info("Waiting for export...")
                 resp = session.get(url)
-                time.sleep(5)
-                if resp.status_code == 200:
+                data = resp.json()
+                progress = data["progress"]
+                if progress == 1.0:
+                    log.info("Export completed!")
                     break
+                log.info("Waiting for export...(%s%% complete)", str(int(progress*100)))
+                time.sleep(1)
+
+            url = f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.zip"
             resp = session.get(url)
             output_str = a + ".zip"
             with open(output_str, "wb") as f:
                 f.write(resp.content)
-            log.info("Export completed!")
+            log.info(f"Assignment {a} downloaded!")
 
+    log.info("Download of class %s complete!", course_id)
 
 def main():
 
