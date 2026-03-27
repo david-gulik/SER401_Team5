@@ -1,7 +1,4 @@
-from abc import ABC, abstractmethod
-from typing import List
 from IVE.GAVEL.app.dtos.gradescope_assignment import GradescopeAssignment
-import time
 import logging
 import time
 from dataclasses import dataclass
@@ -263,29 +260,26 @@ def gs_downloader(course_id: int):
     soup = BeautifulSoup(resp.text, "html.parser")
     elements = soup.find_all(attrs={"data-assignment-id": True})
     assignment_ids = [e["data-assignment-id"] for e in elements]
+    assignments = {}
+    for e in elements:
+        assignments[e.get_text(strip=True)] = e["data-assignment-id"]
 
     ##TODO: Determine file save directory
 
-    # For each assignment, find out if the export already exists [via the bulkExportModalDownload object, which will either
-    # exist or not exist] and either download the extant file or post for an export and poll until ready for download
-
-    for a in assignment_ids:
+    for q in assignments:
+        a = assignments.get(q)
         resp = session.get(
             f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
         )
         soup = BeautifulSoup(resp.text, "html.parser")
         link = soup.find("a", class_="js-bulkExportModalDownload")
         if ".zip" in link["href"]:
-            log.info("Downloading assignment: %s", a)
+            log.info("Downloading assignment: %s", q)
             resp = session.get("https://www.gradescope.com" + link["href"])
             output_str = a + ".zip"
             with open(output_str, "wb") as f:
                 f.write(resp.content)
-            log.info(f"Assignment {a} downloaded!")
-
-        # if not, send a post request to bulk export the submissions (requires some cookie refreshing)
-        # and poll the submission until ready for download; then, download!
-
+            log.info("Assignment %s downloaded!", q)
         else:
             log.info("Export not created yet; exporting assignment: %s", a)
             review_url = (
