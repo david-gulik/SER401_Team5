@@ -1,4 +1,4 @@
-# from app.dtos.gradescope_assignment import GradescopeAssignment
+from IVE.GAVEL.app.dtos.gradescope_assignment import GradescopeAssignment
 import logging
 import time
 from dataclasses import dataclass
@@ -253,22 +253,26 @@ def gs_downloader(course_id: int):
 
     elements = soup.find_all(attrs={"data-assignment-id": True})
     assignment_ids = [e["data-assignment-id"] for e in elements]
+    assignments = {}
+    for e in elements:
+        assignments[e.get_text(strip=True)] = e["data-assignment-id"]
 
     ##TODO: Determine file save directory
 
-    for a in assignment_ids:
+    for q in assignments:
+        a = assignments.get(q)
         resp = session.get(
             f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
         )
         soup = BeautifulSoup(resp.text, "html.parser")
         link = soup.find("a", class_="js-bulkExportModalDownload")
         if ".zip" in link["href"]:
-            log.info("Downloading assignment: %s", a)
+            log.info("Downloading assignment: %s", q)
             resp = session.get("https://www.gradescope.com" + link["href"])
             output_str = a + ".zip"
             with open(output_str, "wb") as f:
                 f.write(resp.content)
-            print(f"Assignment {a} downloaded!")
+            log.info("Assignment %s downloaded!", q)
         else:
             log.info("Export not created yet; exporting assignment: %s", a)
             review_url = (
