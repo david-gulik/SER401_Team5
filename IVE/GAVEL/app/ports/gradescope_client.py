@@ -1,12 +1,12 @@
 import logging
-import time
 import os
 import re
+import time
 from dataclasses import dataclass
-from dotenv import load_dotenv
 
 import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
