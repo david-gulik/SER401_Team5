@@ -33,7 +33,7 @@ class CanvasCoursePage(BasePage):
         tab = CanvasCourseTab(ctx.theme, vm)
 
         self._tabs = QTabWidget()
-        self._tabs.addTab(tab, "Download")
+        self._tabs.addTab(tab, "Test")
 
         root = QVBoxLayout(self)
         root.addWidget(self._tabs)
