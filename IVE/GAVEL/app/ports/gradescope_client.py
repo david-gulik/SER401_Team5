@@ -49,7 +49,7 @@ class GradescopeClient:
     def __init__(self, course_url: str, headless: bool = True):
         self.course_url = course_url
         self.headless = headless
-        self._driver: webdriver.Chrome | None = None # noqa:
+        self._driver: webdriver.Chrome | None = None  # noqa:
 
     # -------------------------
     # Driver
@@ -238,9 +238,11 @@ def build_requests_session(gs_session: GradescopeSession, course_id: int | str) 
 
     return session
 
+
 # -------------------------
 # Downloader Function: takes in a course_id as an argument and downloads all assignment bulk submission zips to [TBD]
 # -------------------------
+
 
 def gs_downloader(course_id: int):
     load_dotenv()
@@ -249,11 +251,11 @@ def gs_downloader(course_id: int):
         course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
     )
 
-    #TODO: Clean this up, decide on login process
+    # TODO: Clean this up, decide on login process
 
     gs_session, gs_course_id = bridge.capture_session(
-        username="ENTERYOURUSERNAME", # noqa:
-        password="ENTERYOURPASSWORD", # noqa:
+        username="ENTERYOURUSERNAME",  # noqa:
+        password="ENTERYOURPASSWORD",  # noqa:
     )
 
     session = build_requests_session(gs_session, course_id=gs_course_id)
@@ -279,7 +281,7 @@ def gs_downloader(course_id: int):
         if ".zip" in link["href"]:
             log.info("Downloading assignment: %s", q)
             resp = session.get("https://www.gradescope.com" + link["href"])
-            q_no_colon = re.sub(r'[\\/:*?"<>|]', '', q)
+            q_no_colon = re.sub(r'[\\/:*?"<>|]', "", q)
             output_str = q_no_colon + ".zip"
             output_full = os.path.join(sub_folder, output_str)
             with open(output_full, "wb") as f:
@@ -306,7 +308,9 @@ def gs_downloader(course_id: int):
             data = resp.json()
             file_id = data["generated_file_id"]
 
-            url = f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.json"
+            url = (
+                f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.json"
+            )
 
             # polling
 
@@ -317,12 +321,12 @@ def gs_downloader(course_id: int):
                 if progress == 1.0:
                     log.info("Export completed!")
                     break
-                log.info("Waiting for export...(%s%% complete)", str(int(progress*100)))
+                log.info("Waiting for export...(%s%% complete)", str(int(progress * 100)))
                 time.sleep(1)
 
             url = f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.zip"
             resp = session.get(url)
-            q_no_colon = re.sub(r'[\\/:*?"<>|]', '', q)
+            q_no_colon = re.sub(r'[\\/:*?"<>|]', "", q)
             output_str = q_no_colon + ".zip"
             output_full = os.path.join(sub_folder, output_str)
             with open(output_full, "wb") as f:
@@ -330,6 +334,7 @@ def gs_downloader(course_id: int):
             log.info(f"Assignment {a} downloaded!")
 
     log.info("Download of class %s complete!", course_id)
+
 
 def main():
 
