@@ -47,48 +47,226 @@ class HttpCanvasClient(CanvasClient):
         return CanvasCourseData(course=course, modules=modules)
 
     def fetch_gradebook_csv(self, course_id: int) -> bytes:
-        enrollments = self._get_json(f"/api/v1/courses/{course_id}/enrollments?per_page=100")
-        assignments = self._get_json(f"/api/v1/courses/{course_id}/assignments?per_page=100")
-
         import csv
         from io import StringIO
+
+        enrollments = self._get_all_pages(
+            f"/api/v1/courses/{course_id}/enrollments",
+            params={
+                "type[]": ["StudentEnrollment"],
+                "state[]": ["active", "completed", "invited"],
+                "include[]": ["email", "avatar_url"],
+            },
+        )
+
+        assignment_groups = self._get_all_pages(
+            f"/api/v1/courses/{course_id}/assignment_groups",
+            params={
+                "include[]": ["assignments", "submission"],
+            },
+        )
+
+        grouped_submissions = self._get_all_pages(
+            f"/api/v1/courses/{course_id}/students/submissions",
+            params={
+                "student_ids[]": ["all"],
+                "grouped": "true",
+                "include[]": ["total_scores"],
+                "enrollment_state": "active",
+            },
+        )
+
+        assignment_columns, assignment_group_columns = self._build_gradebook_columns(
+            assignment_groups
+        )
+
+        grouped_lookup = self._build_grouped_submission_lookup(
+            grouped_submissions,
+            assignment_columns,
+        )
 
         output = StringIO()
         writer = csv.writer(output)
 
         header = ["Student Name", "Student ID"]
-
-        assignment_names = [a.get("name", "") for a in assignments]
-        header.extend(assignment_names)
-
-        header.extend(
-            [
-                "Activities Total",
-                "Cairns Total",
-                "Homework (all) Total",
-                "Homework (Gradescope) Total",
-                "Final Grade",
-            ]
-        )
-
+        header.extend([col["name"] for col in assignment_columns])
+        header.extend([col["name"] for col in assignment_group_columns])
+        header.append("Final Grade")
         writer.writerow(header)
 
-        for student in enrollments:
-            user = student.get("user", {})
-            grades = student.get("grades", {})
+        for enrollment in enrollments:
+            user = enrollment.get("user", {}) or {}
+            student_id = user.get("id") or enrollment.get("user_id") or ""
+            student_name = user.get("name") or user.get("sortable_name") or ""
 
-            row = [
-                user.get("name", ""),
-                user.get("id", ""),
-            ]
+            student_submission_bundle = grouped_lookup.get(student_id, {})
+            assignment_scores = student_submission_bundle.get("assignment_scores", {})
+            group_totals = student_submission_bundle.get("group_totals", {})
 
-            row.extend(["" for _ in assignments])  # scores TODO
+            row = [student_name, student_id]
 
-            row.extend(["", "", "", "", grades.get("final_grade", "")])  # totals TODO
+            for col in assignment_columns:
+                row.append(assignment_scores.get(col["assignment_id"], ""))
 
+            for col in assignment_group_columns:
+                row.append(group_totals.get(col["group_name"], ""))
+
+            final_score = student_submission_bundle.get("computed_final_score", "")
+            row.append(round(final_score, 2) if isinstance(final_score, float) else final_score)
             writer.writerow(row)
 
         return output.getvalue().encode("utf-8")
+
+    def _build_gradebook_columns(
+        self,
+        assignment_groups: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        assignment_columns: list[dict[str, Any]] = []
+        assignment_group_columns: list[dict[str, Any]] = []
+
+        sorted_groups = sorted(
+            assignment_groups,
+            key=lambda g: (
+                g.get("position", 0),
+                str(g.get("name", "")).lower(),
+            ),
+        )
+
+        for group in sorted_groups:
+            group_name = str(group.get("name") or "").strip()
+            if not group_name:
+                continue
+
+            assignment_group_columns.append(
+                {
+                    "name": f"{group_name} Total",
+                    "group_name": group_name,
+                }
+            )
+
+            assignments = group.get("assignments", []) or []
+            assignments = sorted(
+                assignments,
+                key=lambda a: (
+                    a.get("position", 0),
+                    str(a.get("name", "")).lower(),
+                ),
+            )
+
+            for assignment in assignments:
+                if assignment.get("omit_from_final_grade"):
+                    continue
+
+                assignment_id = assignment.get("id")
+                if assignment_id is None:
+                    continue
+
+                assignment_columns.append(
+                    {
+                        "assignment_id": assignment_id,
+                        "name": str(assignment.get("name") or ""),
+                        "group_name": group_name,
+                    }
+                )
+
+        return assignment_columns, assignment_group_columns
+
+    def _build_grouped_submission_lookup(
+        self,
+        grouped_submissions: list[dict[str, Any]],
+        assignment_columns: list[dict[str, Any]],
+    ) -> dict[int, dict[str, Any]]:
+
+        lookup: dict[int, dict[str, Any]] = {}
+
+        assignment_to_group = {
+            col["assignment_id"]: col["group_name"] for col in assignment_columns
+        }
+
+        for student_bundle in grouped_submissions:
+            user_id = student_bundle.get("user_id")
+            if user_id is None:
+                continue
+
+            submissions = student_bundle.get("submissions", []) or []
+
+            assignment_scores: dict[int, Any] = {}
+            group_totals: dict[str, float] = {}
+
+            for submission in submissions:
+                assignment_id = submission.get("assignment_id")
+                if assignment_id is None:
+                    continue
+
+                score = submission.get("score")
+                assignment_scores[assignment_id] = score if score is not None else ""
+                group_name = assignment_to_group.get(assignment_id)
+                if group_name and score is not None:
+                    group_totals[group_name] = group_totals.get(group_name, 0.0) + float(score)
+
+            lookup[user_id] = {
+                "assignment_scores": assignment_scores,
+                "group_totals": group_totals,
+                "computed_final_score": student_bundle.get("computed_final_score", ""),
+            }
+
+        return lookup
+
+    def _get_all_pages(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        next_url: str | None = self._build_url(path)
+        query_params = params or {}
+
+        while next_url:
+            resp = self._session.request(
+                method="GET",
+                url=next_url,
+                headers={
+                    "Authorization": f"Bearer {self._config.token}",
+                    "Accept": "application/json",
+                },
+                params=query_params if next_url == self._build_url(path) else None,
+            )
+
+            if resp.status_code == 429:
+                retry_after = resp.headers.get("Retry-After")
+                sleep_seconds = (
+                    float(retry_after) if retry_after else self._config.poll_interval_seconds
+                )
+                time.sleep(sleep_seconds)
+                continue
+
+            resp.raise_for_status()
+
+            page_json = resp.json()
+            if isinstance(page_json, list):
+                results.extend(page_json)
+            else:
+                results.append(page_json)
+
+            next_url = self._extract_next_link(resp.headers.get("Link"))
+            query_params = {}
+
+        return results
+
+    def _extract_next_link(self, link_header: str | None) -> str | None:
+        if not link_header:
+            return None
+
+        parts = [part.strip() for part in link_header.split(",")]
+        for part in parts:
+            if 'rel="next"' not in part:
+                continue
+            start = part.find("<")
+            end = part.find(">")
+            if start != -1 and end != -1 and end > start:
+                return part[start + 1 : end]
+
+        return None
 
     def _start_gradebook_export(self, course_id: int) -> dict[str, Any]:
         data = {
