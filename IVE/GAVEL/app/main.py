@@ -9,7 +9,7 @@ from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_canvas_client, build_roster_client
 from GAVEL.core.main_window import MainWindow
 from GAVEL.core.page_registry import PageRegistry
-from GAVEL.pages.canvas_course.page import CanvasCoursePage  # noqa: F401
+from GAVEL.pages.download.page import DownloadPage  # noqa: F401
 from GAVEL.pages.home.page import HomePage  # noqa: F401
 from GAVEL.pages.settings.page import SettingsPage  # noqa: F401
 from GAVEL.services.config_service import ConfigService
