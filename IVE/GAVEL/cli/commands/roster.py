@@ -63,7 +63,8 @@ def handle_roster_download(ctx: AppContext, args: Namespace) -> int:
         client.close()
 
     if args.output:
-        Path(args.output).write_text(csv_text, encoding="utf-8")
+        normalized = csv_text.replace("\r\n", "\n").replace("\r", "\n")
+        Path(args.output).write_text(normalized, encoding="utf-8")
         print(f"[ROSTER] Saved to {args.output}")
     else:
         print("\n--- ROSTER CSV ---")
