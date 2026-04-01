@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass
 
@@ -338,7 +339,11 @@ def gs_downloader(course_id: int):
 
 def main():
 
-    gs_downloader(253450)
+    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
+        log.error("ERROR: Must enter courseID as integer for argument!")
+    else:
+        course_id = int(sys.argv[1])
+        gs_downloader(course_id)
 
 
 if __name__ == "__main__":
