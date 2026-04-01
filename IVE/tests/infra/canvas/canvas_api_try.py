@@ -3,11 +3,7 @@ from GAVEL.infra.canvas.http_canvas_client import (
     HttpCanvasClient,
 )
 
-config = CanvasApiConfig(
-    base_url="https://canvas.asu.edu",
-    token="TOKEN_GOES_HERE",
-    account_id=319
-)
+config = CanvasApiConfig(base_url="https://canvas.asu.edu", token="TOKEN_GOES_HERE", account_id=319)
 
 client = HttpCanvasClient(config)
 
