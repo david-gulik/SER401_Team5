@@ -73,6 +73,11 @@ def test_fetch_gradebook_csv_builds_csv_from_grouped_submissions():
             ),
             FakeResponse(
                 json_data=[
+                    {"id": 100, "name": "Section 1"}
+                ]
+            ),
+            FakeResponse(
+                json_data=[
                     {
                         "name": "Activities",
                         "position": 1,
@@ -115,11 +120,12 @@ def test_fetch_gradebook_csv_builds_csv_from_grouped_submissions():
     assert expected_header in result
     assert "Jane Doe,1,40.0,55.0,95.0,95.0" in result
 
-    assert len(session.calls) == 3
+    assert len(session.calls) == 4
     assert "/enrollments" in session.calls[0]["url"]
-    assert "/assignment_groups" in session.calls[1]["url"]
-    assert "/students/submissions" in session.calls[2]["url"]
-    assert session.calls[2]["params"]["grouped"] == "true"
+    assert "/sections" in session.calls[1]["url"]
+    assert "/assignment_groups" in session.calls[2]["url"]
+    assert "/students/submissions" in session.calls[3]["url"]
+    assert session.calls[3]["params"]["grouped"] == "true"
 
 
 def test_get_all_pages_follows_next_link():
