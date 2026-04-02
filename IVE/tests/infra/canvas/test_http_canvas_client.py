@@ -71,11 +71,7 @@ def test_fetch_gradebook_csv_builds_csv_from_grouped_submissions():
                     }
                 ]
             ),
-            FakeResponse(
-                json_data=[
-                    {"id": 100, "name": "Section 1"}
-                ]
-            ),
+            FakeResponse(json_data=[{"id": 100, "name": "Section 1"}]),
             FakeResponse(
                 json_data=[
                     {

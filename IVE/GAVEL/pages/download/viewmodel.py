@@ -178,9 +178,7 @@ class DownloadViewModel(QObject):
             class_number = self._state.sections[self._state.selected_section_idx].class_number
 
         if not class_number:
-            self._emit_error(
-                "Provide a class number directly, or search for sections first."
-            )
+            self._emit_error("Provide a class number directly, or search for sections first.")
             return
         if not self._state.selected_term:
             self._emit_error("Select a term first.")

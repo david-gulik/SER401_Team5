@@ -59,14 +59,9 @@ class HttpCanvasClient(CanvasClient):
             },
         )
 
-        sections = self._get_all_pages(
-            f"/api/v1/courses/{course_id}/sections"
-        )
+        sections = self._get_all_pages(f"/api/v1/courses/{course_id}/sections")
 
-        section_lookup = {
-            section["id"]: section.get("name", "")
-            for section in sections
-        }
+        section_lookup = {section["id"]: section.get("name", "") for section in sections}
 
         assignment_groups = self._get_all_pages(
             f"/api/v1/courses/{course_id}/assignment_groups",
