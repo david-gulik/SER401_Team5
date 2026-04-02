@@ -9,10 +9,10 @@ __pycache__/
 venv/
 env/
 ENV/
-.env/
+IVE/.env/
 
 # Environment / secrets — NEVER commit Canvas tokens
-.env
+IVE/.env
 .env.*
 !.env.example
 
