@@ -1,7 +1,8 @@
 # Gradescope_Client Guide
 
 This guide walks through the use of gradescope_client.py to download the bulk submission export for a Canvas course. 
-This bulk submission .zip file contains the latest submission from each student in the class along with the submission info YML file containing rubric-level autograder results.
+This bulk submission .zip file contains the latest submission from each student in the class along with the submission 
+info YML file containing rubric-level autograder results.
 
 ## Prerequisites Checklist
 
@@ -16,8 +17,9 @@ From your GAVEL folder, run
 
 `python3 app/ports/gradescope_client.py [courseID]`
 
-from the Terminal. You will be prompted via Chrome to log in to Canvas, and authenticate via Duo. (#TODO: Implement Duo persistence to avoid repeated downloads.)
-The gradescope_client will download the bulk submission export to the given folder.
+from the Terminal. The [courseID] variable is the six-digit number assigned to the course on Canvas. 
+You will be prompted via Chrome to log in to Canvas, and authenticate via Duo. (#TODO: Implement Duo persistence to 
+avoid repeated downloads.) The gradescope_client will download the bulk submission export to the given folder.
 
 ## Example
 
@@ -25,7 +27,8 @@ The gradescope_client will download the bulk submission export to the given fold
 
 ## Download Nomenclature
 
-Download zips are named after their assignment name. Future updates will provide more granular naming, including year/semester data.
+Download zips are named after their assignment name. 
+Future updates will provide more granular naming, including year/semester data.
 
 ## Environmental Variable References
 
