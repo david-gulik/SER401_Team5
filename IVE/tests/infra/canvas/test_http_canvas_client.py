@@ -111,10 +111,11 @@ def test_fetch_gradebook_csv_builds_csv_from_grouped_submissions():
     result = client.fetch_gradebook_csv(course_id=456).decode("utf-8")
 
     expected_header = (
-        "Student Name,Student ID,Assignment A,Assignment B,Activities Total,Final Grade"
+        "Student Name,Student ID,SIS User ID,SIS Login ID,Section,"
+        "Assignment A (10),Assignment B (11),Activities Total,Final Grade"
     )
     assert expected_header in result
-    assert "Jane Doe,1,40.0,55.0,95.0,95.0" in result
+    assert "Jane Doe,1,,,,40.0,55.0,95.0,95.0" in result
 
     assert len(session.calls) == 4
     assert "/enrollments" in session.calls[0]["url"]
