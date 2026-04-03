@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 class CanvasConfig:
     base_url: str | None = None
     token: str | None = None
+    account_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class ConfigService:
         canvas_cfg = CanvasConfig(
             base_url=source.get("CANVAS_BASE_URL"),
             token=source.get("CANVAS_TOKEN"),
+            account_id=int(source.get("CANVAS_ACCOUNT_ID")) if source.get("CANVAS_ACCOUNT_ID") else None,
         )
         roster_cfg = RosterConfig(
             auth_method=source.get("ROSTER_AUTH_METHOD"),
