@@ -59,6 +59,15 @@ class HttpCanvasClient(CanvasClient):
             },
         )
 
+        sections = self._get_all_pages(
+            f"/api/v1/courses/{course_id}/sections"
+        )
+
+        section_lookup = {
+            section["id"]: section.get("name", "")
+            for section in sections
+        }
+
         assignment_groups = self._get_all_pages(
             f"/api/v1/courses/{course_id}/assignment_groups",
             params={
@@ -88,28 +97,56 @@ class HttpCanvasClient(CanvasClient):
         output = StringIO()
         writer = csv.writer(output)
 
-        header = ["Student Name", "Student ID"]
+        header = [
+            "Student Name",
+            "Student ID",
+            "SIS User ID",
+            "SIS Login ID",
+            "Section",
+        ]
+
         header.extend([col["name"] for col in assignment_columns])
         header.extend([col["name"] for col in assignment_group_columns])
         header.append("Final Grade")
+
         writer.writerow(header)
 
+        blank_row = [""] * len(header)
+        writer.writerow(blank_row)
+
+        weights_row = [""] * len(header[:5])
+        weights_row.extend(["" for _ in assignment_columns])
+        weights_row.extend([col.get("weight", "") for col in assignment_group_columns])
+        weights_row.append("")
+        writer.writerow(weights_row)
+
+        def _round_score(value):
+            if isinstance(value, float):
+                return round(value, 2)
+            return value
+
         for enrollment in enrollments:
-            user = enrollment.get("user", {}) or {}
+            user = enrollment.get("user", {})
             student_id = user.get("id") or enrollment.get("user_id") or ""
-            student_name = user.get("name") or user.get("sortable_name") or ""
+            student_name = user.get("sortable_name") or user.get("name") or ""
 
             student_submission_bundle = grouped_lookup.get(student_id, {})
             assignment_scores = student_submission_bundle.get("assignment_scores", {})
             group_totals = student_submission_bundle.get("group_totals", {})
 
-            row = [student_name, student_id]
+            row = [
+                student_name,
+                student_id,
+                user.get("sis_user_id", ""),
+                user.get("login_id", ""),
+                section_lookup.get(enrollment.get("course_section_id"), ""),
+            ]
 
             for col in assignment_columns:
-                row.append(assignment_scores.get(col["assignment_id"], ""))
+                row.append(_round_score(assignment_scores.get(col["assignment_id"], "")))
 
             for col in assignment_group_columns:
-                row.append(group_totals.get(col["group_name"], ""))
+                row.append(_round_score(group_totals.get(col["group_name"], "")))
 
             final_score = student_submission_bundle.get("computed_final_score", "")
             row.append(round(final_score, 2) if isinstance(final_score, float) else final_score)
@@ -141,6 +178,7 @@ class HttpCanvasClient(CanvasClient):
                 {
                     "name": f"{group_name} Total",
                     "group_name": group_name,
+                    "weight": group.get("group_weight", ""),
                 }
             )
 
@@ -164,7 +202,7 @@ class HttpCanvasClient(CanvasClient):
                 assignment_columns.append(
                     {
                         "assignment_id": assignment_id,
-                        "name": str(assignment.get("name") or ""),
+                        "name": f"{assignment.get('name') or ''} ({assignment_id})",
                         "group_name": group_name,
                     }
                 )
