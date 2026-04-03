@@ -15,7 +15,7 @@ def require_env(name: str) -> str:
 
 def main() -> None:
     course_id = int(os.getenv("CANVAS_COURSE_ID", "253450"))
-    token = require_env("CANVAS_API_TOKEN")
+    token = require_env("CANVAS_TOKEN")
     base_url = os.getenv("CANVAS_BASE_URL", "https://canvas.asu.edu")
     account_id = 1
 
