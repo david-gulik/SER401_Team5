@@ -9,6 +9,7 @@ from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_canvas_client, build_roster_client
 from GAVEL.cli.commands.canvas_course import handle_canvas_course_download
+from GAVEL.cli.commands.quiz_analysis import handle_quiz_analysis_download
 from GAVEL.cli.commands.roster import handle_roster_download, handle_roster_list_terms
 from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
 from GAVEL.services.config_service import ConfigService
@@ -84,6 +85,17 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     roster_dl.add_argument("--output", "-o", help="Save CSV to this file (default: stdout)")
     roster_dl.set_defaults(handler=handle_roster_download)
+
+    #quiz commands
+    quiz_parser = subparsers.add_parser("quiz", help="Canvas quiz operations")
+    quiz_subparsers = quiz_parser.add_subparsers(dest="quiz_command", required=True)
+
+    #quiz download
+    quiz_dl = quiz_subparsers.add_parser("download", help="Download a quiz student analysis CSV")
+    quiz_dl.add_argument("--course-id", required=True, help="Canvas course numeric identifier")
+    quiz_dl.add_argument("--quiz-id", required=True, help="Canvas quiz numeric identifier")
+    quiz_dl.add_argument("--output", "-o", help="Save CSV to this file (default: stdout)")
+    quiz_dl.set_defaults(handler=handle_quiz_analysis_download)
 
     return parser
 
