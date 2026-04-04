@@ -48,16 +48,25 @@ class GradescopeClient:
     TOKEN_COOKIE_NAME = "token"
 
     def __init__(self, course_url: str, headless: bool = True):
+
+        load_dotenv()
+
         self.course_url = course_url
         self.headless = headless
         self._driver: webdriver.Chrome | None = None  # noqa:
+
+        self.base_url = os.getenv("GRADESCOPE_BASE_URL")
+        self.courses_suffix = os.getenv("GRADESCOPE_COURSES_SUFFIX")
+        self.assignments_suffix = os.getenv("GRADESCOPE_ASSIGNMENTS_SUFFIX")
+        self.review_grades_suffix = os.getenv("GRADESCOPE_REVIEW_GRADES_SUFFIX")
+        self.generated_files_suffix = os.getenv("GRADESCOPE_GENERATED_FILES_SUFFIX")
 
     # -------------------------
     # Driver
     # -------------------------
 
     def _build_driver(self) -> webdriver.Chrome:
-        log.info("Building Chrome driver (headless=%s)", self.headless)
+        log.info("Building Chrome driver... (headless=%s)", self.headless)
 
         options = webdriver.ChromeOptions()
         if self.headless:
@@ -96,14 +105,14 @@ class GradescopeClient:
 
         log.info("Performing CAS login...")
 
-        # user_field = wait.until(ec.presence_of_element_located((By.ID, "username")))
-        # pass_field = self._driver.find_element(By.ID, "password")
+        user_field = wait.until(ec.presence_of_element_located((By.ID, "username")))
+        pass_field = self._driver.find_element(By.ID, "password")
 
-        # user_field.send_keys(username)
-        # pass_field.send_keys(password)
+        user_field.send_keys(username)
+        pass_field.send_keys(password)
 
         log.info("Submitting CAS login form...")
-        # self._driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
+        self._driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
         self._handle_duo(wait)
         log.info("CAS login + Duo complete.")
 
@@ -213,137 +222,134 @@ class GradescopeClient:
         course_id = parts[parts.index("courses") + 1]
         return course_id
 
+    def _build_requests_session(
+        self, gs_session: GradescopeSession, course_id: int | str
+    ) -> requests.Session:
+        session = requests.Session()
 
-def build_requests_session(gs_session: GradescopeSession, course_id: int | str) -> requests.Session:
-    session = requests.Session()
+        # Copy all cookies from Selenium
+        for name, value in gs_session.all_cookies.items():
+            session.cookies.set(name, value, domain=self.GRADESCOPE_DOMAIN)
 
-    # Find all pesky little hidden cookies
-    for name, value in gs_session.all_cookies.items():
-        session.cookies.set(name, value, domain="www.gradescope.com")
+        # Browser-like headers
+        session.headers.update(
+            {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/122.0.0.0 Safari/537.36"
+                ),
+                "Referer": f"{self.base_url}{self.courses_suffix}/{course_id}",
+            }
+        )
 
-    # Headers that make the request look like the browser
-    session.headers.update(
-        {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/122.0.0.0 Safari/537.36"
-            ),
-            "Referer": f"https://www.gradescope.com/courses/{course_id}",
-        }
-    )
+        # CSRF token if present
+        if gs_session.token:
+            session.headers["X-CSRF-Token"] = gs_session.token
 
-    # extract the CSRF token
-    if gs_session.token:
-        session.headers["X-CSRF-Token"] = gs_session.token
+        return session
 
-    return session
+    # ---------------------------------------------------------
+    # NEW: Downloader (moved from global function)
+    # ---------------------------------------------------------
+    def download_all_assignments(self, username: str, password: str):
+        """
+        Logs in, captures session, and downloads all assignment bulk exports.
+        """
 
+        gs_session, gs_course_id = self.capture_session(username, password)
+        session = self._build_requests_session(gs_session, course_id=gs_course_id)
 
-# -------------------------
-# Downloader Function: takes in a course_id as an argument and downloads all assignment bulk submission zips to [TBD]
-# -------------------------
-
-
-def gs_downloader(course_id: int):
-    load_dotenv()
-
-    bridge = GradescopeClient(
-        course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
-    )
-
-    # TODO: Clean this up, decide on login process
-
-    gs_session, gs_course_id = bridge.capture_session(
-        username="ENTERYOURUSERNAME",  # noqa:
-        password="ENTERYOURPASSWORD",  # noqa:
-    )
-
-    session = build_requests_session(gs_session, course_id=gs_course_id)
-
-    # Fetch assignments
-
-    resp = session.get(f"https://www.gradescope.com/courses/{gs_course_id}/assignments")
-    soup = BeautifulSoup(resp.text, "html.parser")
-    elements = soup.find_all(attrs={"data-assignment-id": True})
-    assignments = {}
-    for e in elements:
-        assignments[e.get_text(strip=True)] = e["data-assignment-id"]
-
-    sub_folder = os.getenv("SUBMISSIONS_FOLDER")
-
-    for q in assignments:
-        a = assignments.get(q)
+        # Fetch assignments list
         resp = session.get(
-            f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
+            f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}"
         )
         soup = BeautifulSoup(resp.text, "html.parser")
-        link = soup.find("a", class_="js-bulkExportModalDownload")
-        if ".zip" in link["href"]:
-            log.info("Downloading assignment: %s", q)
-            resp = session.get("https://www.gradescope.com" + link["href"])
-            q_no_colon = re.sub(r'[\\/:*?"<>|]', "", q)
-            output_str = q_no_colon + ".zip"
-            output_full = os.path.join(sub_folder, output_str)
-            with open(output_full, "wb") as f:
-                f.write(resp.content)
-            log.info("Assignment %s downloaded!", q)
-        else:
-            log.info("Export not created yet; exporting assignment: %s", a)
-            review_url = (
-                f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
-            )
+        elements = soup.find_all(attrs={"data-assignment-id": True})
+
+        assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
+
+        sub_folder = os.getenv("SUBMISSIONS_FOLDER")
+
+        for name, assignment_id in assignments.items():
+            review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
             resp = session.get(review_url)
-
             soup = BeautifulSoup(resp.text, "html.parser")
-            csrf = soup.find("meta", attrs={"name": "csrf-token"})["content"]
 
+            link = soup.find("a", class_="js-bulkExportModalDownload")
+
+            # Case 1: Export already exists
+            if link and ".zip" in link["href"]:
+                log.info("Downloading assignment: %s", name)
+                zip_resp = session.get(f"{self.base_url}" + link["href"])
+
+                safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+                output_path = os.path.join(sub_folder, safe_name + ".zip")
+
+                with open(output_path, "wb") as f:
+                    f.write(zip_resp.content)
+
+                log.info("Assignment %s downloaded!", name)
+                continue
+
+            # Case 2: Need to trigger export
+            log.info("Export not created yet; exporting assignment: %s", assignment_id)
+
+            csrf = soup.find("meta", attrs={"name": "csrf-token"})["content"]
             session.headers["X-CSRF-Token"] = csrf
 
-            resp = session.post(
-                f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/export",
-                headers={
-                    "Referer": f"https://www.gradescope.com/courses/{gs_course_id}/assignments/{a}/review_grades"
-                },
+            export_resp = session.post(
+                f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/export",
+                headers={"Referer": review_url},
             )
-            data = resp.json()
+            data = export_resp.json()
             file_id = data["generated_file_id"]
 
-            url = (
-                f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.json"
-            )
-
-            # polling
+            # Polling
+            poll_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.json"
 
             while True:
-                resp = session.get(url)
-                data = resp.json()
-                progress = data["progress"]
+                poll_resp = session.get(poll_url)
+                poll_data = poll_resp.json()
+                progress = poll_data["progress"]
+
                 if progress == 1.0:
                     log.info("Export completed!")
                     break
-                log.info("Waiting for export...(%s%% complete)", str(int(progress * 100)))
+
+                log.info("Waiting for export... (%s%%)", int(progress * 100))
                 time.sleep(1)
 
-            url = f"https://www.gradescope.com/courses/{gs_course_id}/generated_files/{file_id}.zip"
-            resp = session.get(url)
-            q_no_colon = re.sub(r'[\\/:*?"<>|]', "", q)
-            output_str = q_no_colon + ".zip"
-            output_full = os.path.join(sub_folder, output_str)
-            with open(output_full, "wb") as f:
-                f.write(resp.content)
-            log.info(f"Assignment {a} downloaded!")
+            # Download final ZIP
+            zip_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.zip"
+            zip_resp = session.get(zip_url)
 
-    log.info("Download of class %s complete!", course_id)
+            safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+            output_path = os.path.join(sub_folder, safe_name + ".zip")
+
+            with open(output_path, "wb") as f:
+                f.write(zip_resp.content)
+
+            log.info("Assignment %s downloaded!", assignment_id)
+
+        log.info("Download of class %s complete!", gs_course_id)
 
 
 def main():
 
     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
         log.error("ERROR: Must enter courseID as integer for argument!")
-    else:
-        course_id = int(sys.argv[1])
-        gs_downloader(course_id)
+        return
+
+    course_id = int(sys.argv[1])
+    client = GradescopeClient(
+        course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
+    )
+
+    client.download_all_assignments(
+        username=os.getenv("CANVAS_USERNAME"),
+        password=os.getenv("CANVAS_PASSWORD"),
+    )
 
 
 if __name__ == "__main__":
