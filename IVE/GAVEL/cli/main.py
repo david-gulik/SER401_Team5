@@ -9,9 +9,9 @@ from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_canvas_client, build_roster_client
 from GAVEL.cli.commands.canvas_course import handle_canvas_course_download
+from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
 from GAVEL.cli.commands.quiz_analysis import handle_quiz_analysis_download
 from GAVEL.cli.commands.roster import handle_roster_download, handle_roster_list_terms
-from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger
 from GAVEL.theme.context import ThemeContext
@@ -46,12 +46,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     download_parser.set_defaults(handler=handle_canvas_course_download)
 
-    gradebook_parser = subparsers.add_parser(
-        "canvas-gradebook", help="Canvas gradebook operations"
-    )
-    gradebook_subparsers = gradebook_parser.add_subparsers(
-        dest="gradebook_command", required=True
-    )
+    gradebook_parser = subparsers.add_parser("canvas-gradebook", help="Canvas gradebook operations")
+    gradebook_subparsers = gradebook_parser.add_subparsers(dest="gradebook_command", required=True)
 
     gradebook_download_parser = gradebook_subparsers.add_parser(
         "download", help="Download Canvas gradebook CSV"
@@ -62,9 +58,7 @@ def _build_parser() -> argparse.ArgumentParser:
     gradebook_download_parser.add_argument(
         "--output", required=True, help="Path where the CSV file will be written"
     )
-    gradebook_download_parser.set_defaults(
-        handler=handle_canvas_gradebook_download
-    )
+    gradebook_download_parser.set_defaults(handler=handle_canvas_gradebook_download)
 
     # -- roster commands ----------------------------------------------------
     roster_parser = subparsers.add_parser("roster", help="ASU roster operations")
@@ -86,11 +80,11 @@ def _build_parser() -> argparse.ArgumentParser:
     roster_dl.add_argument("--output", "-o", help="Save CSV to this file (default: stdout)")
     roster_dl.set_defaults(handler=handle_roster_download)
 
-    #quiz commands
+    # quiz commands
     quiz_parser = subparsers.add_parser("quiz", help="Canvas quiz operations")
     quiz_subparsers = quiz_parser.add_subparsers(dest="quiz_command", required=True)
 
-    #quiz download
+    # quiz download
     quiz_dl = quiz_subparsers.add_parser("download", help="Download a quiz student analysis CSV")
     quiz_dl.add_argument("--course-id", required=True, help="Canvas course numeric identifier")
     quiz_dl.add_argument("--quiz-id", required=True, help="Canvas quiz numeric identifier")
