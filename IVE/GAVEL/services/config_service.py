@@ -49,7 +49,7 @@ class ConfigService:
             else None,
         )
         roster_cfg = RosterConfig(
-            auth_method=source.get("ROSTER_AUTH_METHOD"),
+            auth_method=source.get("ROSTER_AUTH_METHOD", "selenium"),
             cookie_file=source.get("ROSTER_COOKIE_FILE"),
             token=source.get("ROSTER_TOKEN"),
             mfa_timeout=int(source.get("ROSTER_MFA_TIMEOUT", "120")),

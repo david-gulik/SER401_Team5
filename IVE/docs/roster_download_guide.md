@@ -1,23 +1,27 @@
 # Roster Download Guide
 
-This guide walks through pulling a class roster CSV from ASU's MyASU system using the GAVEL CLI.
+This guide walks through pulling a class roster CSV from ASU's MyASU system using the GAVEL tool.
+
+The roster can be downloaded through one of two ways: The Command Line Interface (CLI) or the Graphical User Interface (GUI). This guide covers the use of the CLI tool.
 
 ---
 
 ## Prerequisites checklist
 
+Before you can download the roster using any method, the following must be true:
+
 - [ ] Python environment is set up and `GAVEL` is installed/runnable
-- [ ] `IVE/.env` contains `ROSTER_AUTH_METHOD=selenium` (see [Configuration](#configuration))
 - [ ] Google Chrome is installed
 - [ ] ChromeDriver matching your Chrome version is on your `PATH`
 - [ ] You have faculty-level access to the roster on MyASU
-- [ ] You know your ASU term code (e.g., `2261`) — if you don't, `list-terms` will show you the name alongside the code (see Step 1)
 
 ---
 
 ## Configuration
 
-Add one line to `IVE/.env`:
+The `IVE/.env` file is used to control many shared configuration variables across the GAVEL applicaiton. To download the roster in all cases, the tool needs a way to authenticate. By default, it uses selenium. If you are in an environment without browser access and would like, you can change the `.env` file to use a cookie file instead. See [cookie-file auth](#addendum-cookie-file-auth-headless-no-browser)
+
+Confirm that the `IVE/.env` has the following line configured, or it is not set at all to allow the default. 
 
 ```env
 ROSTER_AUTH_METHOD=selenium
@@ -29,9 +33,119 @@ That's all that is required. A Chrome browser will open and prompt you to log in
 
 ## Step-by-step checklist
 
-### 1. Confirm your term code (optional)
+### 1. Navigate to the IVE path
 
-If you don't know the term code, list available terms first:
+For example
+`cd /git/SER401_Team5/IVE`
+
+**Note**: All commands in this guide use python -m to run GAVEL as a module. This is required because GAVEL uses relative imports. Always run commands from the IVE/ directory in the form:
+
+
+`python -m GAVEL.cli.main <command> [options]`
+
+
+### 2. Confirm your term code (optional)
+
+myASU requires a `term code` to be provided when downloading a roster. The term codes are static and follow a 4-digit format: 
+
+#### Term Format
+`2[YY][T]`
+
+| Segment | Description |
+|---------|-------------|
+| `2` | Fixed prefix |
+| `YY` | Two-digit calendar year |
+| `T` | Term identifier digit |
+
+#### Term Identifier Digits
+
+| Digit | Term |
+|-------|------|
+| `1` | Spring |
+| `4` | Summer |
+| `7` | Fall |
+| `9` | Winter |
+
+#### Examples
+ 
+| Code | Breakdown | Term |
+|------|-----------|------|
+| 2267 | 2 + 26 + 7 | Fall 2026 |
+| 2264 | 2 + 26 + 4 | Summer 2026 |
+| 2261 | 2 + 26 + 1 | Spring 2026 |
+| 2109 | 2 + 10 + 9 | Winter 2010 |
+
+#### Reference
+For reference you can use this table of terms as of Spring 2026
+
+| Code | Term |
+|------|------|
+| 2267 | Fall 2026 (default) |
+| 2264 | Summer 2026 |
+| 2261 | Spring 2026 |
+| 2257 | Fall 2025 |
+| 2254 | Summer 2025 |
+| 2251 | Spring 2025 |
+| 2247 | Fall 2024 |
+| 2244 | Summer 2024 |
+| 2241 | Spring 2024 |
+| 2237 | Fall 2023 |
+| 2234 | Summer 2023 |
+| 2231 | Spring 2023 |
+| 2227 | Fall 2022 |
+| 2224 | Summer 2022 |
+| 2221 | Spring 2022 |
+| 2217 | Fall 2021 |
+| 2214 | Summer 2021 |
+| 2211 | Spring 2021 |
+| 2207 | Fall 2020 |
+| 2204 | Summer 2020 |
+| 2201 | Spring 2020 |
+| 2197 | Fall 2019 |
+| 2194 | Summer 2019 |
+| 2191 | Spring 2019 |
+| 2187 | Fall 2018 |
+| 2184 | Summer 2018 |
+| 2181 | Spring 2018 |
+| 2177 | Fall 2017 |
+| 2174 | Summer 2017 |
+| 2171 | Spring 2017 |
+| 2167 | Fall 2016 |
+| 2164 | Summer 2016 |
+| 2161 | Spring 2016 |
+| 2157 | Fall 2015 |
+| 2154 | Summer 2015 |
+| 2151 | Spring 2015 |
+| 2147 | Fall 2014 |
+| 2144 | Summer 2014 |
+| 2141 | Spring 2014 |
+| 2137 | Fall 2013 |
+| 2134 | Summer 2013 |
+| 2131 | Spring 2013 |
+| 2127 | Fall 2012 |
+| 2124 | Summer 2012 |
+| 2121 | Spring 2012 |
+| 2117 | Fall 2011 |
+| 2114 | Summer 2011 |
+| 2111 | Spring 2011 |
+| 2109 | Winter 2010 |
+| 2107 | Fall 2010 |
+| 2104 | Summer 2010 |
+| 2101 | Spring 2010 |
+| 2099 | Winter 2009 |
+| 2097 | Fall 2009 |
+| 2094 | Summer 2009 |
+| 2091 | Spring 2009 |
+| 2089 | Winter 2008 |
+| 2087 | Fall 2008 |
+| 2084 | Summer 2008 |
+| 2081 | Spring 2008 |
+| 2079 | Winter 2007 |
+| 2077 | Fall 2007 |
+
+
+#### Lookup
+If you don't know the term code and want to verify what you derived from above, you can quickly list available terms first:
 
 ```bash
 python -m GAVEL.cli.main roster list-terms
@@ -41,7 +155,9 @@ Note the code in the left column (e.g., `2261`).
 
 ---
 
-### 2. Choose a download mode
+### (CLI) 3. Choose a download mode
+
+The roster can be downloaded through the CLI using one of two methods:
 
 **Option A — Direct (you already know the class number):**
 
@@ -85,7 +201,7 @@ If more than one section is found, the CLI will prompt you to select one.
 
 ---
 
-### 3. Selenium auth — complete the browser login
+### 4. Selenium auth — complete the browser login
 
 > Skip this section if using `ROSTER_AUTH_METHOD=cookies`.
 
@@ -101,10 +217,10 @@ The tool performs **one** browser login and reuses the session for both the cata
 
 ---
 
-### 4. Verify the output
+### 5. Verify the output
 
 - [ ] `roster.csv` was created at the path you specified
-- [ ] Open in Excel — rows should appear without extra blank lines
+- [ ] Open in Excel. The rows should appear without extra blank lines
 - [ ] Confirm the expected students are present
 
 ---
@@ -135,7 +251,7 @@ The tool performs **one** browser login and reuses the session for both the cata
 
 ## Environment variable reference
 
-All variables go in `IVE/.env`. Only `ROSTER_AUTH_METHOD` is required for Selenium.
+All variables go in `IVE/.env`.
 
 | Variable | Default | Description |
 | --- | --- | --- |
