@@ -56,3 +56,6 @@ Desktop.ini
 # Type checking
 .mypy_cache/
 .pyright/
+
+# Download storage
+/data_original/submissions/
