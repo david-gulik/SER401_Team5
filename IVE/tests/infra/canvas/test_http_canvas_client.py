@@ -4,10 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from GAVEL.infra.canvas.http_canvas_client import (
-    CanvasApiConfig,
-    HttpCanvasClient,
-)
+from GAVEL.infra.canvas.http_canvas_client import CanvasApiConfig, HttpCanvasClient
 
 
 class FakeResponse:
@@ -30,24 +27,26 @@ class FakeSession:
         self._responses = responses
         self.calls = []
 
-    def request(self, method, url, headers=None, data=None):
+    def request(self, method, url, headers=None, data=None, params=None, json=None):
         self.calls.append(
             {
                 "method": method,
                 "url": url,
                 "headers": headers,
                 "data": data,
+                "params": params,
+                "json": json,
             }
         )
         if not self._responses:
             raise AssertionError("No more fake responses available")
         return self._responses.pop(0)
 
-    def get(self, url, headers=None):
-        return self.request("GET", url, headers=headers)
+    def get(self, url, headers=None, params=None):
+        return self.request("GET", url, headers=headers, params=params)
 
-    def post(self, url, headers=None, data=None):
-        return self.request("POST", url, headers=headers, data=data)
+    def post(self, url, headers=None, data=None, json=None):
+        return self.request("POST", url, headers=headers, data=data, json=json)
 
 
 def make_client(session: FakeSession) -> HttpCanvasClient:
@@ -61,65 +60,116 @@ def make_client(session: FakeSession) -> HttpCanvasClient:
     return HttpCanvasClient(config=config, session=session)
 
 
-def test_fetch_gradebook_csv_success():
+def test_fetch_gradebook_csv_builds_csv_from_grouped_submissions():
     session = FakeSession(
         [
-            FakeResponse(json_data={"id": 99}),  # POST start export
-            FakeResponse(json_data={"workflow_state": "running"}),  # poll 1
             FakeResponse(
-                json_data={  # poll 2 complete
-                    "workflow_state": "complete",
-                    "file_url": "https://canvas.example.com/file.csv",
-                }
+                json_data=[
+                    {
+                        "user": {"name": "Jane Doe", "id": 1},
+                        "user_id": 1,
+                    }
+                ]
             ),
-            FakeResponse(content=b"Student,ID\nJane,1\n"),  # download CSV
+            FakeResponse(
+                json_data=[
+                    {
+                        "name": "Activities",
+                        "position": 1,
+                        "assignments": [
+                            {
+                                "id": 10,
+                                "name": "Assignment A",
+                                "position": 1,
+                            },
+                            {
+                                "id": 11,
+                                "name": "Assignment B",
+                                "position": 2,
+                            },
+                        ],
+                    }
+                ]
+            ),
+            FakeResponse(
+                json_data=[
+                    {
+                        "user_id": 1,
+                        "computed_final_score": 95.0,
+                        "submissions": [
+                            {"assignment_id": 10, "score": 40.0},
+                            {"assignment_id": 11, "score": 55.0},
+                        ],
+                    }
+                ]
+            ),
         ]
     )
 
     client = make_client(session)
+    result = client.fetch_gradebook_csv(course_id=456).decode("utf-8")
 
-    result = client.fetch_gradebook_csv(course_id=456)
+    expected_header = (
+        "Student Name,Student ID,Assignment A,Assignment B,Activities Total,Final Grade"
+    )
+    assert expected_header in result
+    assert "Jane Doe,1,40.0,55.0,95.0,95.0" in result
 
-    assert result == b"Student,ID\nJane,1\n"
-    assert len(session.calls) == 4
-    assert session.calls[0]["method"] == "POST"
+    assert len(session.calls) == 3
+    assert "/enrollments" in session.calls[0]["url"]
+    assert "/assignment_groups" in session.calls[1]["url"]
+    assert "/students/submissions" in session.calls[2]["url"]
+    assert session.calls[2]["params"]["grouped"] == "true"
 
 
-def test_fetch_gradebook_csv_failed():
+def test_get_all_pages_follows_next_link():
     session = FakeSession(
         [
-            FakeResponse(json_data={"id": 99}),
-            FakeResponse(json_data={"workflow_state": "failed"}),
+            FakeResponse(
+                json_data=[{"id": 1}],
+                headers={
+                    "Link": '<https://canvas.example.com/api/v1/courses/1/enrollments?page=2>; rel="next"'
+                },
+            ),
+            FakeResponse(json_data=[{"id": 2}], headers={}),
         ]
     )
 
     client = make_client(session)
+    result = client._get_all_pages("/api/v1/courses/1/enrollments", params={"per_page": 100})
 
-    with pytest.raises(RuntimeError, match="failed"):
-        client.fetch_gradebook_csv(course_id=456)
+    assert result == [{"id": 1}, {"id": 2}]
+    assert len(session.calls) == 2
 
 
-def test_fetch_gradebook_csv_timeout():
-    session = FakeSession(
-        [
-            FakeResponse(json_data={"id": 99}),
-            FakeResponse(json_data={"workflow_state": "running"}),
-            FakeResponse(json_data={"workflow_state": "running"}),
-        ]
-    )
+def test_build_grouped_submission_lookup_computes_group_totals():
+    client = make_client(FakeSession([]))
 
-    config = CanvasApiConfig(
-        base_url="https://canvas.example.com",
-        token="fake-token",
-        account_id=123,
-        poll_interval_seconds=0.0,
-        export_timeout_seconds=0.0,
-    )
+    assignment_columns = [
+        {"assignment_id": 10, "name": "A", "group_name": "Activities"},
+        {"assignment_id": 11, "name": "B", "group_name": "Activities"},
+        {"assignment_id": 12, "name": "C", "group_name": "Homework"},
+    ]
 
-    client = HttpCanvasClient(config=config, session=session)
+    grouped_submissions = [
+        {
+            "user_id": 1,
+            "computed_final_score": 88.5,
+            "submissions": [
+                {"assignment_id": 10, "score": 10.0},
+                {"assignment_id": 11, "score": 15.5},
+                {"assignment_id": 12, "score": 63.0},
+            ],
+        }
+    ]
 
-    with pytest.raises(TimeoutError):
-        client.fetch_gradebook_csv(course_id=456)
+    result = client._build_grouped_submission_lookup(grouped_submissions, assignment_columns)
+
+    assert result[1]["assignment_scores"][10] == 10.0
+    assert result[1]["assignment_scores"][11] == 15.5
+    assert result[1]["group_totals"]["Activities"] == 25.5
+    assert result[1]["group_totals"]["Homework"] == 63.0
+    assert result[1]["computed_final_score"] == 88.5
 
 
 TEST_COURSE_ID = 101

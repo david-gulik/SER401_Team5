@@ -10,6 +10,7 @@ from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_canvas_client, build_roster_client
 from GAVEL.cli.commands.canvas_course import handle_canvas_course_download
 from GAVEL.cli.commands.roster import handle_roster_download, handle_roster_list_terms
+from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger
 from GAVEL.theme.context import ThemeContext
@@ -43,6 +44,26 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory where the JSON course data will be written",
     )
     download_parser.set_defaults(handler=handle_canvas_course_download)
+
+    gradebook_parser = subparsers.add_parser(
+        "canvas-gradebook", help="Canvas gradebook operations"
+    )
+    gradebook_subparsers = gradebook_parser.add_subparsers(
+        dest="gradebook_command", required=True
+    )
+
+    gradebook_download_parser = gradebook_subparsers.add_parser(
+        "download", help="Download Canvas gradebook CSV"
+    )
+    gradebook_download_parser.add_argument(
+        "--course-id", required=True, help="Canvas course numeric identifier"
+    )
+    gradebook_download_parser.add_argument(
+        "--output", required=True, help="Path where the CSV file will be written"
+    )
+    gradebook_download_parser.set_defaults(
+        handler=handle_canvas_gradebook_download
+    )
 
     # -- roster commands ----------------------------------------------------
     roster_parser = subparsers.add_parser("roster", help="ASU roster operations")

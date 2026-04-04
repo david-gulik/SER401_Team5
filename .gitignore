@@ -33,6 +33,11 @@ MANIFEST
 htmlcov/
 *.xml
 
+# Scripts / temp Files
+scripts/
+gradebook.csv
+test_gradebook.csv
+
 # Logs
 *.log
 logs/
