@@ -126,7 +126,7 @@ class GradescopeClient:
 
         log.info("Clicking Gradescope nav link...")
         nav_link = wait.until(
-            ec.element_to_be_clickable((By.ID, "context_external_tool_171355-link"))
+            ec.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Gradescope')]"))
         )
         nav_link.click()
 
