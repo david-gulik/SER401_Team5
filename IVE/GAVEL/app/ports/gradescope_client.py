@@ -249,9 +249,6 @@ class GradescopeClient:
 
         return session
 
-    # ---------------------------------------------------------
-    # NEW: Downloader (moved from global function)
-    # ---------------------------------------------------------
     def download_all_assignments(self, username: str, password: str):
         """
         Logs in, captures session, and downloads all assignment bulk exports.
