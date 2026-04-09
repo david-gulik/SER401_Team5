@@ -1,26 +1,53 @@
 {
   "color": {
-    "bg": "#0B0F14",
-    "surface": "#101826",
-    "surface_alt": "#0E1622",
-    "border": "#253244",
-    "text": "#E6EDF6",
-    "text_muted": "#A8B3C2",
-    "focus": "#4DA3FF",
-    "selection": "#1B2A41",
+    "app_bg": "#1b2d3e",
+    "panel_bg": "#1c3f5e",
+    "surface": "#172635",
+    "global_status_bar": "#080c11",
 
-    "status_nominal": "#3DDC97",
-    "status_caution": "#F3C969",
-    "status_warning": "#FF9F43",
-    "status_critical": "#FF5C5C",
-    "status_unknown": "#8AA0B6"
+    "border": "#3c3e42",
+    "border_focus": "#4dacff",
+
+    "text": "#daeeff",
+    "text_secondary": "#a4abb6",
+    "text_disabled": "#51555b",
+    "text_link": "#4dacff",
+
+    "interactive": "#4dacff",
+    "interactive_hover": "#92cbff",
+    "interactive_active": "#b7dcff",
+    "interactive_ghost": "#1c3f5e",
+    "interactive_text": "#000000",
+
+    "input_bg": "#080c11",
+    "input_border": "#3c3e42",
+    "input_placeholder": "#7b8089",
+
+    "selection_bg": "#2b659b",
+    "selection_text": "#ffffff",
+
+    "scrollbar_track": "#1b2d3e",
+    "scrollbar_handle": "#3c3e42",
+    "scrollbar_handle_hover": "#51555b",
+
+    "tooltip_bg": "#1c3f5e",
+    "tooltip_border": "#4dacff",
+    "tooltip_text": "#daeeff",
+
+    "status_nominal": "#56f000",
+    "status_caution": "#fce83a",
+    "status_warning": "#ff8c00",
+    "status_critical": "#ff3838",
+    "status_unknown": "#a4abb6"
   },
   "spacing": { "0": 0, "4": 4, "8": 8, "12": 12, "16": 16, "24": 24, "32": 32 },
-  "shape": { "radius_sm": 6, "radius_md": 10, "radius_lg": 14, "border_width": 1 },
+  "shape": { "radius_sm": 2, "radius_md": 4, "radius_lg": 8, "border_width": 1 },
   "typography": {
-    "font_family": "Segoe UI",
-    "font_size_base": 13,
-    "font_size_h1": 18,
+    "font_family": "Roboto, 'Segoe UI', 'Open Sans', Arial, sans-serif",
+    "font_size_base": 14,
+    "font_size_small": 12,
+    "font_size_large": 16,
+    "font_size_h1": 20,
     "font_size_h2": 16,
     "font_size_h3": 14,
     "weight_regular": 400,
