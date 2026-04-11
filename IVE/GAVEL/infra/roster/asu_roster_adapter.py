@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.roster_client import RosterClient
@@ -25,7 +25,7 @@ class ASURosterClient(RosterClient):
         shared_auth: SharedAuthProvider,
         class_resolver: CatalogApiClassResolver,
         roster_cfg: RosterConfig,
-        endpoints: Optional[MyASUEndpoints] = None,
+        endpoints: MyASUEndpoints | None = None,
     ) -> None:
         self._auth = shared_auth
         self._resolver = class_resolver
@@ -36,7 +36,10 @@ class ASURosterClient(RosterClient):
         return self._resolver.list_terms()
 
     def find_sections(
-        self, term: str, subject: str, catalog_number: str,
+        self,
+        term: str,
+        subject: str,
+        catalog_number: str,
     ) -> Sequence[ClassSection]:
         return self._resolver.find_sections(term, subject, catalog_number)
 
@@ -121,7 +124,10 @@ class CookieASURosterClient(RosterClient):
         return self._resolver.list_terms()
 
     def find_sections(
-        self, term: str, subject: str, catalog_number: str,
+        self,
+        term: str,
+        subject: str,
+        catalog_number: str,
     ) -> Sequence[ClassSection]:
         return self._resolver.find_sections(term, subject, catalog_number)
 

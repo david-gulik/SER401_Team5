@@ -9,10 +9,10 @@ __pycache__/
 venv/
 env/
 ENV/
-.env/
+IVE/.env/
 
 # Environment / secrets — NEVER commit Canvas tokens
-.env
+IVE/.env
 .env.*
 !.env.example
 
@@ -33,6 +33,11 @@ MANIFEST
 htmlcov/
 *.xml
 
+# Scripts / temp Files
+scripts/
+gradebook.csv
+test_gradebook.csv
+
 # Logs
 *.log
 logs/
@@ -51,3 +56,6 @@ Desktop.ini
 # Type checking
 .mypy_cache/
 .pyright/
+
+# Download storage
+/data_original/submissions/

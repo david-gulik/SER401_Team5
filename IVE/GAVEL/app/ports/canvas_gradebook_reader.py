@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from IVE.GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
+from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 
 
 class GradebookReader(ABC):

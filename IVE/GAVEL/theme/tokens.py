@@ -3,15 +3,15 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 
 @dataclass(frozen=True)
 class ThemeTokens:
-    color: Dict[str, str]
-    spacing: Dict[str, int]
-    shape: Dict[str, int]
-    typography: Dict[str, Any]
+    color: dict[str, str]
+    spacing: dict[str, int]
+    shape: dict[str, int]
+    typography: dict[str, Any]
 
     def sp(self, n: int) -> int:
         key = str(n)
@@ -38,7 +38,13 @@ _REQUIRED_COLOR_KEYS = [
 
 _REQUIRED_SPACING_KEYS = ["0", "4", "8", "12", "16", "24", "32"]
 _REQUIRED_SHAPE_KEYS = ["radius_sm", "radius_md", "radius_lg", "border_width"]
-_REQUIRED_TYPE_KEYS = ["font_family", "font_size_base", "font_size_h1", "font_size_h2", "font_size_h3"]
+_REQUIRED_TYPE_KEYS = [
+    "font_family",
+    "font_size_base",
+    "font_size_h1",
+    "font_size_h2",
+    "font_size_h3",
+]
 
 
 def load_tokens(path: Path) -> ThemeTokens:

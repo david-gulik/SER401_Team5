@@ -157,4 +157,3 @@ def build_app_qss(t: ThemeTokens) -> str:
     }}
 
     """
-

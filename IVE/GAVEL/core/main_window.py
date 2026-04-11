@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict
-
 from PyQt6.QtWidgets import QHBoxLayout, QMainWindow, QStackedWidget, QWidget
 
 from GAVEL.app_context import AppContext
@@ -18,8 +16,8 @@ class MainWindow(QMainWindow):
         self._ctx = ctx
 
         self._stack = QStackedWidget()
-        self._page_widgets: Dict[str, QWidget] = {}
-        self._page_specs: Dict[str, PageSpec] = {}
+        self._page_widgets: dict[str, QWidget] = {}
+        self._page_specs: dict[str, PageSpec] = {}
 
         pages = self._registry.list_pages()
         self._page_specs = {p.page_id: p for p in pages}

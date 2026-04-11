@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
 
 from PyQt6.QtWidgets import QWidget
 
@@ -19,13 +19,13 @@ class PageSpec:
 
 
 class PageRegistry:
-    _instance: Optional["PageRegistry"] = None
+    _instance: PageRegistry | None = None
 
     def __init__(self) -> None:
-        self._pages: Dict[str, PageSpec] = {}
+        self._pages: dict[str, PageSpec] = {}
 
     @classmethod
-    def get(cls) -> "PageRegistry":
+    def get(cls) -> PageRegistry:
         if cls._instance is None:
             cls._instance = PageRegistry()
         return cls._instance
@@ -35,7 +35,7 @@ class PageRegistry:
             raise ValueError(f"Duplicate page_id registered: {spec.page_id}")
         self._pages[spec.page_id] = spec
 
-    def list_pages(self) -> List[PageSpec]:
+    def list_pages(self) -> list[PageSpec]:
         return sorted(self._pages.values(), key=lambda p: (p.group, p.order))
 
     def get_page(self, page_id: str) -> PageSpec:

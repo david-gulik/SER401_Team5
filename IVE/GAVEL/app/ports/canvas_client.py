@@ -7,7 +7,6 @@ from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 
 
 class CanvasClient(ABC):
-
     @abstractmethod
     def fetch_course_data(self, course_id: int) -> CanvasCourseData:
         """Retrieve metadata and modules for a Canvas course."""
@@ -22,10 +21,9 @@ class CanvasClient(ABC):
     def fetch_gradebook_csv(self, course_id: int) -> bytes:
         """Retrieve the gradebook CSV for a Canvas course."""
         raise NotImplementedError
-    
+
     @abstractmethod
-    def fetch_quiz_student_analysis(
-            self, course_id: int, quiz_id: int) -> bytes:
-        """Retrieve the student analysis report 
+    def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
+        """Retrieve the student analysis report
         for a Canvas quiz consent form."""
         raise NotImplementedError

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Tuple
-
 from PyQt6.QtWidgets import QWidget
 
 
@@ -17,5 +15,5 @@ class BasePage(QWidget):
     page_id: str = "base"
     title: str = "Base"
 
-    def build_tabs(self) -> List[Tuple[str, QWidget]]:
+    def build_tabs(self) -> list[tuple[str, QWidget]]:
         raise NotImplementedError

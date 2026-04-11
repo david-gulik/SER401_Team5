@@ -17,6 +17,7 @@ def build_canvas_client(cfg: AppConfig, logger: AppLogger) -> CanvasClient:
             CanvasApiConfig(
                 base_url=canvas_cfg.base_url,
                 token=canvas_cfg.token,
+                account_id=canvas_cfg.account_id,
             )
         )
     logger.warning("Canvas configuration missing; Canvas features disabled")

@@ -16,7 +16,9 @@ class StatusPill(QWidget):
     - dot uses role="status_dot" with an inline color property
     """
 
-    def __init__(self, theme: ThemeContext, status: Status = Status.UNKNOWN, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, theme: ThemeContext, status: Status = Status.UNKNOWN, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self._theme = theme
 

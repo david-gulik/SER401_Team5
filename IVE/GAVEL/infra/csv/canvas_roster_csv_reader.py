@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List
 
 import pandas as pd
 
-from IVE.GAVEL.app.dtos.asu_roster import RosterStudent
-from IVE.GAVEL.app.ports.asu_roster_reader import RosterReader
+from GAVEL.app.dtos.asu_roster import RosterStudent
+from GAVEL.app.ports.asu_roster_reader import RosterReader
 
 # Maps CSV header names to RosterStudent field names.
 _COLUMN_MAP: dict[str, str] = {
@@ -28,7 +27,7 @@ _COLUMN_MAP: dict[str, str] = {
 class CanvasRosterCSVReader(RosterReader):
     """Reads the MyASU/PeopleSoft ground-truth roster CSV format."""
 
-    def read(self, path: Path) -> List[RosterStudent]:
+    def read(self, path: Path) -> list[RosterStudent]:
         df = pd.read_csv(path, dtype=str)
         df = df.rename(columns=_COLUMN_MAP)
         df["units"] = df["units"].astype(int)

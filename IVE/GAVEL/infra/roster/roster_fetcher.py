@@ -13,7 +13,6 @@ from __future__ import annotations
 import http.cookiejar
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import requests
 
@@ -25,6 +24,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class MyASUEndpoints:
@@ -43,6 +43,7 @@ class MyASUEndpoints:
 # Selenium-based roster fetcher
 # ---------------------------------------------------------------------------
 
+
 class SeleniumRosterFetcher:
     """
     Authenticates via Selenium (CAS + Duo MFA), then downloads
@@ -51,14 +52,14 @@ class SeleniumRosterFetcher:
 
     def __init__(
         self,
-        endpoints: Optional[MyASUEndpoints] = None,
+        endpoints: MyASUEndpoints | None = None,
         mfa_timeout_seconds: int = 120,
         http_timeout: int = 30,
     ):
         self._endpoints = endpoints or MyASUEndpoints()
         self._mfa_timeout = mfa_timeout_seconds
         self._http_timeout = http_timeout
-        self._session: Optional[requests.Session] = None
+        self._session: requests.Session | None = None
         self._driver = None
 
     def authenticate(self) -> None:
@@ -110,10 +111,7 @@ class SeleniumRosterFetcher:
             if self._driver:
                 self._driver.quit()
                 self._driver = None
-            raise RuntimeError(
-                f"Authentication timed out or browser closed.\n"
-                f"Last URL: {last_url}"
-            )
+            raise RuntimeError(f"Authentication timed out or browser closed.\nLast URL: {last_url}")
 
         logger.info("Authentication successful. Transferring session.")
         print("[AUTH] Authentication successful. Transferring cookies.")
@@ -130,7 +128,9 @@ class SeleniumRosterFetcher:
             "format": "csv",
         }
         response = self._session.get(
-            self._endpoints.roster_url, params=params, timeout=self._http_timeout,
+            self._endpoints.roster_url,
+            params=params,
+            timeout=self._http_timeout,
         )
         self._check_response(response)
         return response.text
@@ -147,18 +147,15 @@ class SeleniumRosterFetcher:
 
     def _require_authenticated(self) -> None:
         if self._session is None:
-            raise RuntimeError(
-                "Not authenticated. Call authenticate() first."
-            )
+            raise RuntimeError("Not authenticated. Call authenticate() first.")
 
     @staticmethod
     def _create_driver():
         from selenium import webdriver
+
         options = webdriver.ChromeOptions()
         options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option(
-            "excludeSwitches", ["enable-automation"]
-        )
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
         return webdriver.Chrome(options=options)
 
     @staticmethod
@@ -171,19 +168,14 @@ class SeleniumRosterFetcher:
                 domain=cookie.get("domain", ""),
                 path=cookie.get("path", "/"),
             )
-        session.headers.update({
-            "User-Agent": driver.execute_script(
-                "return navigator.userAgent"
-            )
-        })
+        session.headers.update({"User-Agent": driver.execute_script("return navigator.userAgent")})
         return session
 
     @staticmethod
     def _check_response(response: requests.Response) -> None:
         if response.status_code != 200:
             raise RuntimeError(
-                f"Roster fetch failed: HTTP {response.status_code}\n"
-                f"URL: {response.url}"
+                f"Roster fetch failed: HTTP {response.status_code}\nURL: {response.url}"
             )
         if "weblogin.asu.edu" in response.url:
             raise RuntimeError(
@@ -196,7 +188,11 @@ class SeleniumRosterFetcher:
             title = ""
             if "<title>" in snippet.lower():
                 start = snippet.lower().index("<title>") + 7
-                end = snippet.lower().index("</title>", start) if "</title>" in snippet.lower() else start + 100
+                end = (
+                    snippet.lower().index("</title>", start)
+                    if "</title>" in snippet.lower()
+                    else start + 100
+                )
                 title = snippet[start:end].strip()
 
             logger.debug("HTML response body (first 1000 chars): %s", snippet)
@@ -213,6 +209,7 @@ class SeleniumRosterFetcher:
 # Cookie-file-based roster fetcher
 # ---------------------------------------------------------------------------
 
+
 class CookieFileRosterFetcher:
     """
     Loads cookies from a Netscape-format cookie file and uses them
@@ -222,13 +219,13 @@ class CookieFileRosterFetcher:
     def __init__(
         self,
         cookie_file_path: str,
-        endpoints: Optional[MyASUEndpoints] = None,
+        endpoints: MyASUEndpoints | None = None,
         http_timeout: int = 30,
     ):
         self._cookie_path = cookie_file_path
         self._endpoints = endpoints or MyASUEndpoints()
         self._http_timeout = http_timeout
-        self._session: Optional[requests.Session] = None
+        self._session: requests.Session | None = None
 
     def authenticate(self) -> None:
         jar = http.cookiejar.MozillaCookieJar(self._cookie_path)
@@ -236,26 +233,23 @@ class CookieFileRosterFetcher:
 
         self._session = requests.Session()
         self._session.cookies = jar
-        self._session.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36"
-            )
-        })
+        self._session.headers.update(
+            {"User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")}
+        )
         logger.info("Loaded %d cookies from %s", len(jar), self._cookie_path)
 
     def fetch_roster(self, request: RosterRequest) -> str:
         if self._session is None:
-            raise RuntimeError(
-                "Not authenticated. Call authenticate() first."
-            )
+            raise RuntimeError("Not authenticated. Call authenticate() first.")
         params = {
             "term": request.term,
             "class": request.class_number,
             "format": "csv",
         }
         response = self._session.get(
-            self._endpoints.roster_url, params=params, timeout=self._http_timeout,
+            self._endpoints.roster_url,
+            params=params,
+            timeout=self._http_timeout,
         )
         SeleniumRosterFetcher._check_response(response)
         return response.text

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
-from typing import Callable, Dict, List
 
 from PyQt6.QtCore import QEasingCurve, QParallelAnimationGroup, QPropertyAnimation
 from PyQt6.QtWidgets import (
@@ -30,7 +30,7 @@ class NavigationDrawer(QFrame):
     def __init__(
         self,
         theme: ThemeContext,
-        pages: List[PageSpec],
+        pages: list[PageSpec],
         on_navigate: Callable[[str], None],
         parent: QWidget | None = None,
     ) -> None:
@@ -38,7 +38,7 @@ class NavigationDrawer(QFrame):
 
         self._theme = theme
         self._on_navigate = on_navigate
-        self._specs_by_id: Dict[str, PageSpec] = {p.page_id: p for p in pages}
+        self._specs_by_id: dict[str, PageSpec] = {p.page_id: p for p in pages}
 
         self._expanded_width = 260
         self._collapsed_width = 64
@@ -82,7 +82,7 @@ class NavigationDrawer(QFrame):
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
 
-        self._buttons_by_id: Dict[str, QToolButton] = {}
+        self._buttons_by_id: dict[str, QToolButton] = {}
         for spec in pages:
             btn = QToolButton(self)
             btn.setCheckable(True)
@@ -119,7 +119,10 @@ class NavigationDrawer(QFrame):
         self._is_collapsed = not self._is_collapsed
         target = self._collapsed_width if self._is_collapsed else self._expanded_width
 
-        if self._anim_group is not None and self._anim_group.state() == self._anim_group.State.Running:
+        if (
+            self._anim_group is not None
+            and self._anim_group.state() == self._anim_group.State.Running
+        ):
             self._anim_group.stop()
 
         self._anim_group = QParallelAnimationGroup(self)

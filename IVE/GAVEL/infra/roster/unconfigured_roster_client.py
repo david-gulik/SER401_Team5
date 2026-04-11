@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.roster_client import RosterClient
@@ -22,7 +22,10 @@ class UnconfiguredRosterClient(RosterClient):
         raise RuntimeError(self._message)
 
     def find_sections(
-        self, term: str, subject: str, catalog_number: str,
+        self,
+        term: str,
+        subject: str,
+        catalog_number: str,
     ) -> Sequence[ClassSection]:
         raise RuntimeError(self._message)
 

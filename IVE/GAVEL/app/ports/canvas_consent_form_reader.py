@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Sequence
+from collections.abc import Sequence
 
-from IVE.GAVEL.app.dtos.canvas_consent_form_entry import ConsentFormEntry
+from GAVEL.app.dtos.canvas_consent_form_entry import ConsentFormEntry
 
 
 class ConsentFormReader(ABC):

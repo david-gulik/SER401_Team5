@@ -1,8 +1,8 @@
 import csv
-from typing import Sequence
+from collections.abc import Sequence
 
-from IVE.GAVEL.app.dtos.canvas_consent_form_entry import ConsentFormEntry
-from IVE.GAVEL.app.ports.canvas_consent_form_reader import ConsentFormReader
+from GAVEL.app.dtos.canvas_consent_form_entry import ConsentFormEntry
+from GAVEL.app.ports.canvas_consent_form_reader import ConsentFormReader
 
 
 def _find_column(substring: str, fieldnames: Sequence[str]) -> str:
@@ -13,8 +13,7 @@ def _find_column(substring: str, fieldnames: Sequence[str]) -> str:
     matches = [f for f in fieldnames if substring in f]
     if len(matches) != 1:
         raise ValueError(
-            f"Expected 1 column matching '{substring}', "
-            f"found {len(matches)}: {matches}"
+            f"Expected 1 column matching '{substring}', found {len(matches)}: {matches}"
         )
     return matches[0]
 
@@ -36,12 +35,14 @@ class CanvasConsentFormCSVReader(ConsentFormReader):
             col_bool = _find_column(self._COL_BOOL_SUBSTR, reader.fieldnames)
 
             for row in reader:
-                entries.append(ConsentFormEntry(
-                    sis_id=int(row["sis_id"]),
-                    lms_name=row["name"].strip(),
-                    attempt=int(row["attempt"]),
-                    name_response=row[col_name].strip(),
-                    consented=row[col_bool] == "True",
-                ))
+                entries.append(
+                    ConsentFormEntry(
+                        sis_id=int(row["sis_id"]),
+                        lms_name=row["name"].strip(),
+                        attempt=int(row["attempt"]),
+                        name_response=row[col_name].strip(),
+                        consented=row[col_bool] == "True",
+                    )
+                )
 
         return entries
