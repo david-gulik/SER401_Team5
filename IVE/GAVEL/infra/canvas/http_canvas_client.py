@@ -9,6 +9,7 @@ import requests
 from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
 
 
 @dataclass(frozen=True)
@@ -465,3 +466,37 @@ class HttpCanvasClient(CanvasClient):
 
     def fetch_gradebook(self, course_id: int) -> CanvasGradebook:
         raise NotImplementedError
+    
+    def fetch_rubric_assessments(self, course_id: int, assignment_id: int) -> list[RubricAssessment]:
+        """Retrieve rubric assessments for a Canvas assignment."""
+
+        submissions = self._get_all_pages(
+            f"/api/v1/courses/{course_id}/assignments/{assignment_id}/submissions",
+            params={
+                "include[]": "rubric_assessment",
+                "per_page": 100,
+            },
+        )
+
+        results = []
+        for submission in submissions:
+            user_id = submission.get("user_id")
+            submission_id = submission.get("id")
+            rubric_assessment = submission.get("rubric_assessment")
+            if not rubric_assessment:
+                continue
+            criteria = tuple(
+                RubricCriterionScore(
+                    criterion_id=criterion_id,
+                    points=criterion_data.get("points"),
+                    comments=criterion_data.get("comments") or "",
+                )
+                for criterion_id, criterion_data in rubric_assessment.items()
+            )
+            results.append(RubricAssessment(
+                student_id=int(user_id),
+                submission_id=int(submission_id),
+                criteria=criteria,
+            ))
+
+        return results
