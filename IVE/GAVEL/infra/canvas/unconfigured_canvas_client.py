@@ -22,5 +22,7 @@ class UnconfiguredCanvasClient(CanvasClient):
     def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
         raise RuntimeError(self._message)
 
-    def fetch_rubric_assessments(self, course_id: int, assignment_id: int) -> list[RubricAssessment]:
+    def fetch_rubric_assessments(
+        self, course_id: int, assignment_id: int
+    ) -> list[RubricAssessment]:
         raise RuntimeError(self._message)

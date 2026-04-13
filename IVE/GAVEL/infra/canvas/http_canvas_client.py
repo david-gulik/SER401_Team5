@@ -467,7 +467,9 @@ class HttpCanvasClient(CanvasClient):
     def fetch_gradebook(self, course_id: int) -> CanvasGradebook:
         raise NotImplementedError
 
-    def fetch_rubric_assessments(self, course_id: int, assignment_id: int) -> list[RubricAssessment]:
+    def fetch_rubric_assessments(
+        self, course_id: int, assignment_id: int
+    ) -> list[RubricAssessment]:
         """Retrieve rubric assessments for a Canvas assignment."""
 
         submissions = self._get_all_pages(
@@ -493,10 +495,12 @@ class HttpCanvasClient(CanvasClient):
                 )
                 for criterion_id, criterion_data in rubric_assessment.items()
             )
-            results.append(RubricAssessment(
-                student_id=int(user_id),
-                submission_id=int(submission_id),
-                criteria=criteria,
-            ))
+            results.append(
+                RubricAssessment(
+                    student_id=int(user_id),
+                    submission_id=int(submission_id),
+                    criteria=criteria,
+                )
+            )
 
         return results
