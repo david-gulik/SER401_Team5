@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from GAVEL.app.dtos.canvas_course import CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
-from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
+from GAVEL.app.ports.canvas_client import CanvasClient
 
 
 class UnconfiguredCanvasClient(CanvasClient):
