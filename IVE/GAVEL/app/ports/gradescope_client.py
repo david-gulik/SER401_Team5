@@ -266,10 +266,14 @@ class GradescopeClient:
 
         assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
 
+        for a in assignments:
+            print(a, assignments[a])
+
         sub_folder = os.getenv("SUBMISSIONS_FOLDER")
 
         for name, assignment_id in assignments.items():
             review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
+            print("Review_grades URL: ", review_url)
             resp = session.get(review_url)
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -299,6 +303,7 @@ class GradescopeClient:
                 f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/export",
                 headers={"Referer": review_url},
             )
+            print("POST response code: ", export_resp.status_code)
             data = export_resp.json()
             file_id = data["generated_file_id"]
 
@@ -315,7 +320,7 @@ class GradescopeClient:
                     break
 
                 log.info("Waiting for export... (%s%%)", int(progress * 100))
-                time.sleep(1)
+                time.sleep(.5)
 
             # Download final ZIP
             zip_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.zip"
@@ -327,7 +332,7 @@ class GradescopeClient:
             with open(output_path, "wb") as f:
                 f.write(zip_resp.content)
 
-            log.info("Assignment %s downloaded!", assignment_id)
+            log.info("Assignment %s downloaded!", name)
 
         log.info("Download of class %s complete!", gs_course_id)
 
