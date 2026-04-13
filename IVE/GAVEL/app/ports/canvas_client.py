@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from GAVEL.app.dtos.canvas_course import CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
+from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 
 
 class CanvasClient(ABC):
@@ -26,4 +27,11 @@ class CanvasClient(ABC):
     def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
         """Retrieve the student analysis report
         for a Canvas quiz consent form."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def fetch_rubric_assessments(
+        self, course_id: int, assignment_id: int
+    ) -> list[RubricAssessment]:
+        """Retrieve rubric assessments for a Canvas assignment."""
         raise NotImplementedError

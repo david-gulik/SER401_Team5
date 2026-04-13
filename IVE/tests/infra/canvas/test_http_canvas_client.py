@@ -6,6 +6,13 @@ import pytest
 
 from GAVEL.infra.canvas.http_canvas_client import CanvasApiConfig, HttpCanvasClient
 
+TEST_COURSE_ID = 101
+TEST_QUIZ_ID = 5
+TEST_REPORT_ID = 98765
+TEST_CSV_BYTES = b"name,sis_id,attempt\nDalinar Kholin,309780,1"
+TEST_ASSIGNMENT_ID = 42
+TEST_RUBRIC_CSV = b"user_id,criterion_id,points,comments\n1,crit_1,10,Great\n"
+
 
 class FakeResponse:
     def __init__(self, json_data=None, content=b"", status_code=200, headers=None):
@@ -417,3 +424,47 @@ class TestPollProgress:
                     "https://canvas.asu.edu/api/v1/progress/1",
                     max_attempts=3,
                 )
+
+
+class TestFetchRubricAssessments:
+    def test_returns_list_of_rubric_assessments(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [
+                {
+                    "user_id": 1,
+                    "id": 99,
+                    "rubric_assessment": {
+                        "crit_1": {"points": 10, "comments": "Great"},
+                    },
+                }
+            ]
+            result = client.fetch_rubric_assessments(TEST_COURSE_ID, TEST_ASSIGNMENT_ID)
+            assert isinstance(result, list)
+            assert len(result) == 1
+            assert result[0].student_id == 1
+            assert result[0].submission_id == 99
+            assert result[0].criteria[0].criterion_id == "crit_1"
+            assert result[0].criteria[0].points == 10
+            assert result[0].criteria[0].comments == "Great"
+
+    def test_returns_empty_list_when_no_rubric(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [
+                {
+                    "user_id": 1,
+                    "id": 99,
+                    "rubric_assessment": None,
+                }
+            ]
+            result = client.fetch_rubric_assessments(TEST_COURSE_ID, TEST_ASSIGNMENT_ID)
+            assert isinstance(result, list)
+            assert result == []
+
+    def test_paginates_through_all_submissions(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = []
+            client.fetch_rubric_assessments(TEST_COURSE_ID, TEST_ASSIGNMENT_ID)
+            mock_pages.assert_called_once_with(
+                f"/api/v1/courses/{TEST_COURSE_ID}/assignments/{TEST_ASSIGNMENT_ID}/submissions",
+                params={"include[]": "rubric_assessment", "per_page": 100},
+            )
