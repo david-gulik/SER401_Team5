@@ -30,6 +30,8 @@ class CanvasClient(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def fetch_rubric_assessments(self, course_id: int, assignment_id: int) -> list[RubricAssessment]:
+    def fetch_rubric_assessments(
+        self, course_id: int, assignment_id: int
+    ) -> list[RubricAssessment]:
         """Retrieve rubric assessments for a Canvas assignment."""
         raise NotImplementedError
