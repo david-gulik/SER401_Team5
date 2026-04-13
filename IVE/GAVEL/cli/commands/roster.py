@@ -5,6 +5,7 @@ from argparse import Namespace
 from pathlib import Path
 
 from GAVEL.app.dtos.roster import RosterRequest
+from IVE.GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.app_context import AppContext
 
 
@@ -55,21 +56,19 @@ def handle_roster_download(ctx: AppContext, args: Namespace) -> int:
         print(
             f"[ROSTER] Downloading roster for term={request.term}, class={request.class_number}..."
         )
-        csv_text = client.fetch_roster(request)
+        if args.output:
+            saved = download_roster_to_file(client, request, Path(args.output))
+            print(f"[ROSTER] Saved to {saved}")
+        else:
+            csv_text = client.fetch_roster(request)
+            print("\n--- ROSTER CSV ---")
+            print(csv_text)
+            print("--- END ---")
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
     finally:
         client.close()
-
-    if args.output:
-        normalized = csv_text.replace("\r\n", "\n").replace("\r", "\n")
-        Path(args.output).write_text(normalized, encoding="utf-8")
-        print(f"[ROSTER] Saved to {args.output}")
-    else:
-        print("\n--- ROSTER CSV ---")
-        print(csv_text)
-        print("--- END ---")
 
     return 0
 
