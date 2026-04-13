@@ -4,11 +4,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from IVE.GAVEL.app.usecases.roster import download_roster_to_file
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.roster_client import RosterClient
-from IVE.GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
 from GAVEL.services.logger import AppLogger
 
