@@ -32,6 +32,7 @@ MANIFEST
 .coverage
 htmlcov/
 *.xml
+tests/infra/canvas/canvas_rubric_try.py
 
 # Scripts / temp Files
 scripts/
