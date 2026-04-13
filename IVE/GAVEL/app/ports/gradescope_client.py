@@ -261,8 +261,9 @@ class GradescopeClient:
         resp = session.get(
             f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}"
         )
+        print(f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}")
         soup = BeautifulSoup(resp.text, "html.parser")
-        elements = soup.find_all(attrs={"data-assignment-id": True})
+        elements = soup.find_all(attrs={"data-assignment-id": True, "aria-describedby": f"course-{gs_course_id}"})
 
         assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
 
