@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from GAVEL.app.dtos.canvas_course import CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
+from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 from GAVEL.app.ports.canvas_client import CanvasClient
 
 
@@ -19,4 +20,9 @@ class UnconfiguredCanvasClient(CanvasClient):
         raise RuntimeError(self._message)
 
     def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
+        raise RuntimeError(self._message)
+
+    def fetch_rubric_assessments(
+        self, course_id: int, assignment_id: int
+    ) -> list[RubricAssessment]:
         raise RuntimeError(self._message)
