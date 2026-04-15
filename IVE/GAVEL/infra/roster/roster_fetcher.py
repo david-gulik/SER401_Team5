@@ -67,9 +67,7 @@ def fetch_roster_csv(
 def check_roster_response(response: requests.Response) -> None:
     """Raise RuntimeError if the response is not a valid roster CSV."""
     if response.status_code != 200:
-        raise RuntimeError(
-            f"Roster fetch failed: HTTP {response.status_code}\nURL: {response.url}"
-        )
+        raise RuntimeError(f"Roster fetch failed: HTTP {response.status_code}\nURL: {response.url}")
     if "weblogin.asu.edu" in response.url:
         raise RuntimeError(
             "Session expired or invalid. Re-authentication required.\n"
