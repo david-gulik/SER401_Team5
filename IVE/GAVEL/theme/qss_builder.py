@@ -17,6 +17,10 @@ def _px(n: int) -> str:
     return f"{n}px"
 
 
+def _pt(n: int) -> str:
+    return f"{n}pt"
+
+
 def build_app_qss(t: ThemeTokens) -> str:
     sections = [
         _qss_global(t),
@@ -53,7 +57,7 @@ def _qss_global(t: ThemeTokens) -> str:
     * {{
         color: {c["text"]};
         font-family: "{ty["font_family"]}";
-        font-size: {_px(int(ty["font_size_base"]))};
+        font-size: {_pt(int(ty["font_size_base"]))};
         selection-background-color: {c["selection_bg"]};
         selection-color: {c["selection_text"]};
     }}
@@ -81,7 +85,7 @@ def _qss_main(t: ThemeTokens) -> str:
         background-color: {c["global_status_bar"]};
         border-top: 1px solid {c["border"]};
         color: {c["text_secondary"]};
-        font-size: {_px(int(t.typography["font_size_small"]))};
+        font-size: {_pt(int(t.typography["font_size_small"]))};
     }}
     QStatusBar::item {{
         border: none;
@@ -102,20 +106,20 @@ def _qss_labels(t: ThemeTokens) -> str:
         background-color: transparent;
     }}
     QLabel[role="h1"] {{
-        font-size: {_px(int(ty["font_size_h1"]))};
+        font-size: {_pt(int(ty["font_size_h1"]))};
         color: {c["text"]};
     }}
     QLabel[role="h2"] {{
-        font-size: {_px(int(ty["font_size_h2"]))};
+        font-size: {_pt(int(ty["font_size_h2"]))};
         color: {c["text"]};
     }}
     QLabel[role="h3"] {{
-        font-size: {_px(int(ty["font_size_h3"]))};
+        font-size: {_pt(int(ty["font_size_h3"]))};
         color: {c["text"]};
     }}
     QLabel[role="text_muted"] {{
         color: {c["text_secondary"]};
-        font-size: {_px(int(ty["font_size_small"]))};
+        font-size: {_pt(int(ty["font_size_small"]))};
     }}
     """
 
@@ -387,7 +391,7 @@ def _qss_group_box(t: ThemeTokens) -> str:
         subcontrol-origin: margin;
         left: {_px(sp_sm)};
         padding: 0 {_px(sp_xs)};
-        font-size: {_px(int(t.typography["font_size_small"]))};
+        font-size: {_pt(int(t.typography["font_size_small"]))};
     }}
     """
 
@@ -454,7 +458,7 @@ def _qss_tooltip(t: ThemeTokens) -> str:
         border: 1px solid {c["tooltip_border"]};
         border-radius: {_px(r_sm)};
         padding: {_px(sp_xs)} {_px(sp_sm)};
-        font-size: {_px(int(t.typography["font_size_small"]))};
+        font-size: {_pt(int(t.typography["font_size_small"]))};
     }}
     """
 
@@ -543,7 +547,7 @@ def _qss_status_pill(t: ThemeTokens) -> str:
         background: transparent;
     }}
     QLabel[role="status_dot"] {{
-        font-size: {_px(int(ty["font_size_base"]))};
+        font-size: {_pt(int(ty["font_size_base"]))};
         background: transparent;
     }}
     QLabel[role="status_text"] {{

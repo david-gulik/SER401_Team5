@@ -8,9 +8,9 @@ from GAVEL.ui_components.layout import set_spacing
 
 
 class SectionCard(QFrame):
-    def __init__(self, theme: ThemeContext, title: str, parent: QWidget | None = None) -> None:
+    def __init__(self, theme: ThemeContext, title: str, parent: QWidget | None = None, role: str = "surface") -> None:
         super().__init__(parent)
-        self.setProperty("role", "surface")
+        self.setProperty("role", role)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(

@@ -169,7 +169,7 @@ class DownloadTab(ScrollableTab):
         card = SectionCard(self._theme, "myASU Class Roster")
 
         # Step 1: Select Term
-        step1 = SubPanel(self._theme, "Step 1: Select Term")
+        step1 = SubPanel(self._theme, "Step 1: Select Term", role="panel_bg")
         step1.add_widget(self._option_label("Option A: Select from Term List"))
 
         host_a = QWidget()

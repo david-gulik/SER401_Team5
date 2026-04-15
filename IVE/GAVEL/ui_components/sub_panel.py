@@ -10,10 +10,10 @@ class SubPanel(QFrame):
     """Inner bordered panel with a title, used inside a SectionCard body."""
 
     def __init__(
-        self, theme: ThemeContext, title: str, parent: QWidget | None = None
+        self, theme: ThemeContext, title: str, parent: QWidget | None = None, role: str = "surface"
     ) -> None:
         super().__init__(parent)
-        self.setProperty("role", "surface")
+        self.setProperty("role", role)
 
         root = QVBoxLayout(self)
         set_margins(root, theme, 12)

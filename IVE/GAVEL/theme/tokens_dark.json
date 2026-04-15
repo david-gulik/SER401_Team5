@@ -44,12 +44,12 @@
   "shape": { "radius_sm": 2, "radius_md": 4, "radius_lg": 8, "border_width": 1 },
   "typography": {
     "font_family": "Roboto, 'Segoe UI', 'Open Sans', Arial, sans-serif",
-    "font_size_base": 14,
-    "font_size_small": 12,
-    "font_size_large": 16,
-    "font_size_h1": 20,
-    "font_size_h2": 16,
-    "font_size_h3": 14,
+    "font_size_base": 10,
+    "font_size_small": 9,
+    "font_size_large": 12,
+    "font_size_h1": 14,
+    "font_size_h2": 12,
+    "font_size_h3": 11,
     "weight_regular": 400,
     "weight_medium": 500,
     "weight_bold": 600
