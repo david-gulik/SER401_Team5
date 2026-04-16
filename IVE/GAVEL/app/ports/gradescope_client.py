@@ -286,6 +286,7 @@ class GradescopeClient:
                 zip_resp = session.get(f"{self.base_url}" + link["href"])
 
                 safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+                print(sub_folder, safe_name)
                 output_path = os.path.join(sub_folder, safe_name + ".zip")
 
                 with open(output_path, "wb") as f:
