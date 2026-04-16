@@ -132,12 +132,17 @@ class DownloadTab(ScrollableTab):
         # Wired to existing view model behavior
         self._load_terms_btn.clicked.connect(self._vm.load_terms)
         self._term_combo.currentTextChanged.connect(self._on_term_changed)
+        self._term_code_override.textChanged.connect(self._vm.set_term)
         self._subject.textChanged.connect(self._vm.set_subject)
         self._catalog_number.textChanged.connect(self._vm.set_catalog_number)
         self._find_sections_btn.clicked.connect(self._vm.find_sections)
         self._section_combo.currentIndexChanged.connect(self._vm.set_selected_section)
         self._class_number.textChanged.connect(self._vm.set_class_number)
         self._download_roster_btn.clicked.connect(self._vm.download_roster)
+
+        self._course_combo.currentIndexChanged.connect(self._on_course_changed)
+        self._course_id_override.textChanged.connect(self._vm.set_course_id)
+        self._consent_quiz_combo.currentIndexChanged.connect(self._vm.set_selected_consent_quiz)
 
         # Stubs: controls added for the new scaffold. Functionality lands later.
         self._reset_path_btn.clicked.connect(self._on_reset_path)
@@ -152,7 +157,9 @@ class DownloadTab(ScrollableTab):
     # ---------- Card builders ----------
 
     def _build_output_path_card(self) -> QWidget:
-        card = SectionCard(self._theme, "Output Path")
+        card = SectionCard(self._theme, "Global Settings")
+
+        output_controls = SubPanel(self._theme, "Output Controls")
 
         row = QWidget()
         row_layout = QHBoxLayout(row)
@@ -161,15 +168,17 @@ class DownloadTab(ScrollableTab):
         row_layout.addWidget(self._output_path, 1)
         row_layout.addWidget(self._reset_path_btn)
 
-        card.add_row(row)
-        card.add_row(self._output_path_hint)
+        output_controls.add_widget(row)
+        output_controls.add_widget(self._output_path_hint)
+
+        card.add_row(output_controls)
         return card
 
     def _build_myasu_card(self) -> QWidget:
         card = SectionCard(self._theme, "myASU Class Roster")
 
         # Step 1: Select Term
-        step1 = SubPanel(self._theme, "Step 1: Select Term", role="panel_bg")
+        step1 = SubPanel(self._theme, "Step 1: Select Term")
         step1.add_widget(self._option_label("Option A: Select from Term List"))
 
         host_a = QWidget()
@@ -362,6 +371,10 @@ class DownloadTab(ScrollableTab):
         code = text.split("  ")[0].strip() if text else ""
         self._vm.set_term(code)
 
+    def _on_course_changed(self, index: int) -> None:
+        course_id = self._course_combo.itemData(index) or ""
+        self._vm.set_course_id(course_id)
+
     # ---------- View model rendering ----------
 
     def render(self, state: DownloadUiState) -> None:
@@ -371,7 +384,11 @@ class DownloadTab(ScrollableTab):
         busy = state.is_busy
         self._load_terms_btn.setEnabled(not busy)
         self._find_sections_btn.setEnabled(not busy)
-        self._download_roster_btn.setEnabled(not busy)
+        self._download_roster_btn.setEnabled(not busy and state.can_download_roster)
+        self._download_gradebook_btn.setEnabled(not busy and state.can_download_gradebook)
+        self._download_gradescope_btn.setEnabled(not busy and state.can_download_submissions)
+        self._download_consent_btn.setEnabled(not busy and state.can_download_consent)
+        self._download_all_btn.setEnabled(not busy and state.can_download_all)
 
         if state.terms and self._term_combo.count() != len(state.terms):
             self._term_combo.blockSignals(True)

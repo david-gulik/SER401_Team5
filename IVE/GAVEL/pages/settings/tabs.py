@@ -71,7 +71,7 @@ class AboutTab(ScrollableTab):
 
     def _build_about_card(self) -> QWidget:
         card = SectionCard(self._theme, "About")
-        card.add_row(QLabel("Application: Modular PyQt Shell"))
+        card.add_row(QLabel("Application: GAVEL"))
         card.add_row(self._wrap_row("Environment:", self._env_label))
         card.add_row(self._wrap_row("Version:", self._version_label))
         return card

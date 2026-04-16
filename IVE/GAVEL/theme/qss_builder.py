@@ -21,6 +21,14 @@ def _pt(n: int) -> str:
     return f"{n}pt"
 
 
+def _rgba(hex_color: str, alpha: float) -> str:
+    """Convert a #rrggbb hex token and a 0.0–1.0 alpha to a Qt rgba() string."""
+    h = hex_color.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    a = round(alpha * 255)
+    return f"rgba({r}, {g}, {b}, {a})"
+
+
 def build_app_qss(t: ThemeTokens) -> str:
     sections = [
         _qss_global(t),
@@ -155,12 +163,12 @@ def _qss_push_button(t: ThemeTokens) -> str:
         outline: none;
     }}
     QPushButton:disabled {{
-        background-color: {c["app_bg"]};
-        color: {c["text_disabled"]};
-        border-color: {c["border"]};
+        background-color: {_rgba(c["app_bg"], 0.4)};
+        color: {_rgba(c["text"], 0.4)};
+        border-color: {_rgba(c["border"], 0.4)};
     }}
 
-    /* Primary accent variant */
+    /* Primary — filled accent background */
     QPushButton[role="primary"] {{
         background-color: {c["interactive"]};
         color: {c["interactive_text"]};
@@ -175,9 +183,53 @@ def _qss_push_button(t: ThemeTokens) -> str:
         border-color: {c["interactive_active"]};
     }}
     QPushButton[role="primary"]:disabled {{
-        background-color: {c["border"]};
-        color: {c["text_disabled"]};
-        border-color: {c["border"]};
+        background-color: {_rgba(c["interactive"], 0.4)};
+        color: {_rgba(c["interactive_text"], 0.4)};
+        border-color: {_rgba(c["interactive"], 0.4)};
+    }}
+
+    /* Secondary — transparent background, accent border and text */
+    QPushButton[role="secondary"] {{
+        background-color: transparent;
+        color: {c["interactive"]};
+        border: 1px solid {c["interactive"]};
+    }}
+    QPushButton[role="secondary"]:hover {{
+        background-color: transparent;
+        color: {c["interactive_hover"]};
+        border-color: {c["interactive_hover"]};
+    }}
+    QPushButton[role="secondary"]:pressed {{
+        background-color: {c["interactive_ghost"]};
+        color: {c["interactive_active"]};
+        border-color: {c["interactive_active"]};
+    }}
+    QPushButton[role="secondary"]:disabled {{
+        background-color: transparent;
+        color: {_rgba(c["interactive"], 0.4)};
+        border-color: {_rgba(c["interactive"], 0.4)};
+    }}
+
+    /* Borderless — no background or border, accent text only */
+    QPushButton[role="borderless"] {{
+        background-color: transparent;
+        color: {c["interactive"]};
+        border: 1px solid transparent;
+        min-width: 0;
+    }}
+    QPushButton[role="borderless"]:hover {{
+        background-color: transparent;
+        color: {c["interactive_hover"]};
+        border-color: transparent;
+    }}
+    QPushButton[role="borderless"]:pressed {{
+        background-color: {c["interactive_ghost"]};
+        color: {c["interactive_active"]};
+    }}
+    QPushButton[role="borderless"]:disabled {{
+        background-color: transparent;
+        color: {_rgba(c["interactive"], 0.4)};
+        border-color: transparent;
     }}
     """
 
@@ -528,12 +580,113 @@ def _qss_surface_card(t: ThemeTokens) -> str:
     c = t.color
     r_md = int(t.shape["radius_md"])
     return f"""
-    QFrame[role="surface"] {{
+    QFrame[role="card_header"] {{
+        background-color: {c["surface"]};
+        border: none;
+        border-bottom: 1px solid {c["border"]};
+        border-top-left-radius: {_px(r_md)};
+        border-top-right-radius: {_px(r_md)};
+    }}
+    QFrame[role="card_header"] QWidget,
+    QFrame[role="card_header"] QLabel {{
+        background-color: transparent;
+    }}
+    QFrame[role="app_bg"] {{
+        background-color: {c["app_bg"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_md)};
+    }}
+    QFrame[role="app_bg"] QWidget,
+    QFrame[role="app_bg"] QLabel {{
+        background-color: transparent;
+    }}
+    QFrame[role="panel_bg"] {{
         background-color: {c["panel_bg"]};
         border: 1px solid {c["border"]};
         border-radius: {_px(r_md)};
     }}
+    QFrame[role="panel_bg"] QWidget,
+    QFrame[role="panel_bg"] QLabel {{
+        background-color: transparent;
+    }}
+    QFrame[role="surface"] {{
+        background-color: {c["surface"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_md)};
+    }}
+    QFrame[role="surface"] QWidget,
     QFrame[role="surface"] QLabel {{
+        background-color: transparent;
+    }}
+
+    /* Re-assert card_header and input widget backgrounds after the broad
+       QWidget transparency overrides above. These selectors have specificity
+       (0,1,2), matching the transparency rules, but appear later so they win. */
+    QFrame[role="app_bg"] QFrame[role="card_header"],
+    QFrame[role="panel_bg"] QFrame[role="card_header"],
+    QFrame[role="surface"] QFrame[role="card_header"] {{
+        background-color: {c["surface"]};
+        border-bottom: 1px solid {c["border"]};
+    }}
+    QFrame[role="app_bg"] QFrame[role="surface"],
+    QFrame[role="panel_bg"] QFrame[role="surface"] {{
+        background-color: {c["surface"]};
+        border: 1px solid {c["border"]};
+    }}
+    QFrame[role="app_bg"] QLineEdit,
+    QFrame[role="panel_bg"] QLineEdit,
+    QFrame[role="surface"] QLineEdit,
+    QFrame[role="card_header"] QLineEdit {{
+        background-color: {c["input_bg"]};
+    }}
+    QFrame[role="app_bg"] QComboBox,
+    QFrame[role="panel_bg"] QComboBox,
+    QFrame[role="surface"] QComboBox,
+    QFrame[role="card_header"] QComboBox {{
+        background-color: {c["input_bg"]};
+    }}
+    QFrame[role="app_bg"] QComboBox QAbstractItemView,
+    QFrame[role="panel_bg"] QComboBox QAbstractItemView,
+    QFrame[role="surface"] QComboBox QAbstractItemView,
+    QFrame[role="card_header"] QComboBox QAbstractItemView {{
+        background-color: {c["panel_bg"]};
+        color: {c["text"]};
+        border: 1px solid {c["border"]};
+        selection-background-color: {c["selection_bg"]};
+        selection-color: {c["selection_text"]};
+    }}
+    QFrame[role="app_bg"] QTextEdit,
+    QFrame[role="panel_bg"] QTextEdit,
+    QFrame[role="surface"] QTextEdit,
+    QFrame[role="card_header"] QTextEdit {{
+        background-color: {c["input_bg"]};
+    }}
+    QFrame[role="app_bg"] QSpinBox,
+    QFrame[role="panel_bg"] QSpinBox,
+    QFrame[role="surface"] QSpinBox,
+    QFrame[role="card_header"] QSpinBox {{
+        background-color: {c["input_bg"]};
+    }}
+    QFrame[role="app_bg"] QPushButton,
+    QFrame[role="panel_bg"] QPushButton,
+    QFrame[role="surface"] QPushButton,
+    QFrame[role="card_header"] QPushButton {{
+        background-color: {c["app_bg"]};
+    }}
+    QFrame[role="app_bg"] QPushButton[role="primary"],
+    QFrame[role="panel_bg"] QPushButton[role="primary"],
+    QFrame[role="surface"] QPushButton[role="primary"],
+    QFrame[role="card_header"] QPushButton[role="primary"] {{
+        background-color: {c["interactive"]};
+    }}
+    QFrame[role="app_bg"] QPushButton[role="secondary"],
+    QFrame[role="panel_bg"] QPushButton[role="secondary"],
+    QFrame[role="surface"] QPushButton[role="secondary"],
+    QFrame[role="card_header"] QPushButton[role="secondary"],
+    QFrame[role="app_bg"] QPushButton[role="borderless"],
+    QFrame[role="panel_bg"] QPushButton[role="borderless"],
+    QFrame[role="surface"] QPushButton[role="borderless"],
+    QFrame[role="card_header"] QPushButton[role="borderless"] {{
         background-color: transparent;
     }}
     """
