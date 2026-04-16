@@ -8,7 +8,9 @@ from GAVEL.ui_components.layout import set_spacing
 
 
 class SectionCard(QFrame):
-    def __init__(self, theme: ThemeContext, title: str, parent: QWidget | None = None, role: str = "panel_bg") -> None:
+    def __init__(
+        self, theme: ThemeContext, title: str, parent: QWidget | None = None, role: str = "panel_bg"
+    ) -> None:
         super().__init__(parent)
         self.setProperty("role", role)
 

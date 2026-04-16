@@ -54,9 +54,7 @@ class DownloadTab(ScrollableTab):
         self._output_path = QLineEdit()
         self._output_path.setPlaceholderText("Enter custom output path")
         self._reset_path_btn = QPushButton("Reset to Default")
-        self._output_path_hint = QLabel(
-            "All downloads will be saved to this location."
-        )
+        self._output_path_hint = QLabel("All downloads will be saved to this location.")
         self._output_path_hint.setProperty("role", "text_muted")
         self._output_path_hint.setWordWrap(True)
 
@@ -88,8 +86,7 @@ class DownloadTab(ScrollableTab):
 
         # Canvas - warning banner
         self._canvas_warning = QLabel(
-            "Warning: CANVAS_TOKEN not found in .env file. "
-            "Please set it to use Canvas features."
+            "Warning: CANVAS_TOKEN not found in .env file. Please set it to use Canvas features."
         )
         self._canvas_warning.setProperty("role", "warning")
         self._canvas_warning.setWordWrap(True)
@@ -204,9 +201,7 @@ class DownloadTab(ScrollableTab):
 
         # Step 2: Identify Class
         step2 = SubPanel(self._theme, "Step 2: Identify Class")
-        step2.add_widget(
-            self._option_label("Option A: Search by Subject and Catalog Number")
-        )
+        step2.add_widget(self._option_label("Option A: Search by Subject and Catalog Number"))
 
         grid_host = QWidget()
         grid = QGridLayout(grid_host)
@@ -229,9 +224,7 @@ class DownloadTab(ScrollableTab):
 
         step2.add_widget(self._or_divider())
 
-        step2.add_widget(
-            self._option_label("Option B: Enter Section Number Directly")
-        )
+        step2.add_widget(self._option_label("Option B: Enter Section Number Directly"))
         direct_host = QWidget()
         direct_form = QFormLayout(direct_host)
         direct_form.setContentsMargins(0, 0, 0, 0)
@@ -250,9 +243,7 @@ class DownloadTab(ScrollableTab):
 
         # Course Selection
         course_panel = SubPanel(self._theme, "Course Selection")
-        course_panel.add_widget(
-            self._option_label("Option 1: Select from Course List")
-        )
+        course_panel.add_widget(self._option_label("Option 1: Select from Course List"))
 
         course_host = QWidget()
         course_form = QFormLayout(course_host)
@@ -263,9 +254,7 @@ class DownloadTab(ScrollableTab):
 
         course_panel.add_widget(self._or_divider())
 
-        course_panel.add_widget(
-            self._option_label("Option 2: Enter Course ID Directly")
-        )
+        course_panel.add_widget(self._option_label("Option 2: Enter Course ID Directly"))
         course_id_host = QWidget()
         course_id_form = QFormLayout(course_id_host)
         course_id_form.setContentsMargins(0, 0, 0, 0)

@@ -58,6 +58,7 @@ def build_app_qss(t: ThemeTokens) -> str:
 # Globals
 # ---------------------------------------------------------------------------
 
+
 def _qss_global(t: ThemeTokens) -> str:
     c = t.color
     ty = t.typography
@@ -105,6 +106,7 @@ def _qss_main(t: ThemeTokens) -> str:
 # Text / labels
 # ---------------------------------------------------------------------------
 
+
 def _qss_labels(t: ThemeTokens) -> str:
     c = t.color
     ty = t.typography
@@ -135,6 +137,7 @@ def _qss_labels(t: ThemeTokens) -> str:
 # ---------------------------------------------------------------------------
 # Buttons
 # ---------------------------------------------------------------------------
+
 
 def _qss_push_button(t: ThemeTokens) -> str:
     c = t.color
@@ -237,6 +240,7 @@ def _qss_push_button(t: ThemeTokens) -> str:
 # ---------------------------------------------------------------------------
 # Inputs
 # ---------------------------------------------------------------------------
+
 
 def _qss_line_edit(t: ThemeTokens) -> str:
     c = t.color
@@ -390,6 +394,7 @@ def _qss_check_radio(t: ThemeTokens) -> str:
 # Tabs / groups / scroll
 # ---------------------------------------------------------------------------
 
+
 def _qss_tabs(t: ThemeTokens) -> str:
     c = t.color
     r_sm = int(t.shape["radius_sm"])
@@ -536,6 +541,7 @@ def _qss_splitter(t: ThemeTokens) -> str:
 # ---------------------------------------------------------------------------
 # GAVEL role-based components
 # ---------------------------------------------------------------------------
+
 
 def _qss_nav_drawer(t: ThemeTokens) -> str:
     c = t.color
