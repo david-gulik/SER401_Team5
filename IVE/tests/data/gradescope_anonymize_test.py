@@ -1,4 +1,5 @@
 import preparation
+import zipfile
 
 
 def test_simple_line_comment():
@@ -51,4 +52,6 @@ def test_sloppy_comment_markers():
 # def test_bulk_comment_strip():
 #     with zipfile.ZipFile('data_original/submissions/Module 2 Programming.zip', 'r') as gradescope_zip:
 #         gradescope_zip.extractall('data_original/submissions/')
-#     preparation.anonymize_gradescope_submissions('data_original/submissions/assignment_7859332_export', 'data_original/submissions/assignment_7859332_export_processed')
+#     with zipfile.Zipfile('data_original/submissions/Module 3 Programming.zip', 'r') as gradescope_zip:
+#         gradescope_zip.extractall('data_original/submissions/')
+#     preparation.anonymize_gradescope_submissions('data_original/submissions/', 'data_processed_submissions/')
