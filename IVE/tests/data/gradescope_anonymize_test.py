@@ -24,7 +24,7 @@ def test_single_line_block_comment():
 
 def test_multi_line_block_comment():
     src = "int x = 1; /* block comment \n \n with several lines */ int y = 2;\n"
-    expected = "int x = 1;  int y = 2;\n"
+    expected = "int x = 1; \n\n int y = 2;\n"
     result = preparation.strip_gradescope_comments(src)
     assert result == expected
 
@@ -48,10 +48,16 @@ def test_sloppy_comment_markers():
     result = preparation.strip_gradescope_comments(src)
     assert result == expected
 
+def test_acuna_exception():
+    src = "/* blah blah */int x = 1;"
+    expected = "int x = 1;"
+    result = preparation.strip_gradescope_comments(src)
+    print(result)
+    assert result == expected
 
 # def test_bulk_comment_strip():
 #     with zipfile.ZipFile('data_original/submissions/Module 2 Programming.zip', 'r') as gradescope_zip:
 #         gradescope_zip.extractall('data_original/submissions/')
-#     with zipfile.Zipfile('data_original/submissions/Module 3 Programming.zip', 'r') as gradescope_zip:
+#     with zipfile.ZipFile('data_original/submissions/Module 3 Programming.zip', 'r') as gradescope_zip:
 #         gradescope_zip.extractall('data_original/submissions/')
-#     preparation.anonymize_gradescope_submissions('data_original/submissions/', 'data_processed_submissions/')
+#     preparation.anonymize_gradescope_submissions('data_original/submissions/', 'data_processed/submissions/')

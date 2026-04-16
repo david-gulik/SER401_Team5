@@ -93,41 +93,58 @@ def strip_gradescope_comments(assignment_in: str) -> str:
     state = "normal"
     quote_char = None
 
+    # go through string and set state based on a combination of present state and incoming characters
+
     while i < n:
+
+        # set pointers
         c = assignment_in[i]
         nxt = assignment_in[i+1] if i+1 < n else ''
 
+        # if "normal" state (that is, in a state of parsing code)
         if state == "normal":
+            # if "//" detected, change state to line_comment and bypass the "//"
             if c == '/' and nxt == '/':
                 state = "line_comment"
                 i += 2
                 continue
+            # if "/*" detected, change state to block_comment and bypass the "/*"
             if c == '/' and nxt == '*':
                 state = "block_comment"
                 i += 2
                 continue
+            # if apostrophes detected, change state to "string" and add to output
             if c in ('"', "'"):
                 state = "string"
                 quote_char = c
                 out.append(c)
                 i += 1
                 continue
+            # finally, append output with current character and move on
             out.append(c)
             i += 1
 
+        # escape condition for line_comment
         elif state == "line_comment":
             if c == '\n':
                 state = "normal"
                 out.append(c)
             i += 1
 
+        # escape condition for block_comment
         elif state == "block_comment":
+            # add line spaces if newlines appear in block comment
+            if c == '\n':
+                out.append('\n')
+                i += 1
+                continue
             if c == '*' and nxt == '/':
                 state = "normal"
                 i += 2
             else:
                 i += 1
 
+        # escape condition for string
         elif state == "string":
             out.append(c)
             if c == '\\':                # escape next char
@@ -142,6 +159,7 @@ def strip_gradescope_comments(assignment_in: str) -> str:
             else:
                 i += 1
 
+    # return output without comments!
     return ''.join(out)
 
 def anonymize_gradescope_submissions(input_folder: str, output_folder: str):
