@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
 
 from GAVEL.app.ports.canvas_client import CanvasClient
 
@@ -64,7 +64,7 @@ class DownloadCourseDatasetUseCase:
 
         manifest = {
             "course_id": request.course_id,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "gradebook_csv": gradebook_path.name,
             "consent_form_csv": consent_path.name,
             "rubric_assessments": [f"rubric_assessments/{p.name}" for p in rubric_files],
