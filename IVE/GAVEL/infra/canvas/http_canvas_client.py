@@ -8,8 +8,8 @@ import requests
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
-from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
+from GAVEL.app.ports.canvas_client import CanvasClient
 
 
 @dataclass(frozen=True)
@@ -466,7 +466,7 @@ class HttpCanvasClient(CanvasClient):
 
     def fetch_gradebook(self, course_id: int) -> CanvasGradebook:
         raise NotImplementedError
-    
+
     def fetch_rubric_assessments(self, course_id: int, assignment_id: int) -> list[RubricAssessment]:
         """Retrieve rubric assessments for a Canvas assignment."""
 
