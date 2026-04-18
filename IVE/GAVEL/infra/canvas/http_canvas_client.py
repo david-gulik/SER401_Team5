@@ -27,6 +27,21 @@ class HttpCanvasClient(CanvasClient):
         self._config = config
         self._session = session or requests.Session()
 
+    def list_courses(self) -> list[CanvasCourse]:
+        pages = self._get_all_pages(
+            "/api/v1/courses",
+            params={"enrollment_type": "teacher", "per_page": 100},
+        )
+        return [
+            CanvasCourse(
+                id=int(c["id"]),
+                name=str(c.get("name") or c.get("course_code") or ""),
+                course_code=c.get("course_code"),
+            )
+            for c in pages
+            if c.get("id")
+        ]
+
     def fetch_course_data(self, course_id: int) -> CanvasCourseData:
         course_json = self._get_json(f"/api/v1/courses/{course_id}")
         modules_json = self._get_json(f"/api/v1/courses/{course_id}/modules")

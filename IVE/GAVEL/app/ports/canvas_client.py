@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from GAVEL.app.dtos.canvas_course import CanvasCourseData
+from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 
 
 class CanvasClient(ABC):
+    @abstractmethod
+    def list_courses(self) -> list[CanvasCourse]:
+        """List courses the authenticated user is enrolled in as a teacher."""
+        raise NotImplementedError
+
     @abstractmethod
     def fetch_course_data(self, course_id: int) -> CanvasCourseData:
         """Retrieve metadata and modules for a Canvas course."""

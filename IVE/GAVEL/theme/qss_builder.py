@@ -166,9 +166,9 @@ def _qss_push_button(t: ThemeTokens) -> str:
         outline: none;
     }}
     QPushButton:disabled {{
-        background-color: {_rgba(c["app_bg"], 0.4)};
-        color: {_rgba(c["text"], 0.4)};
-        border-color: {_rgba(c["border"], 0.4)};
+        background-color: {c["interactive_disabled"]};
+        color: {c["text_disabled"]};
+        border-color: {c["border"]};
     }}
 
     /* Primary — filled accent background */
@@ -186,9 +186,9 @@ def _qss_push_button(t: ThemeTokens) -> str:
         border-color: {c["interactive_active"]};
     }}
     QPushButton[role="primary"]:disabled {{
-        background-color: {_rgba(c["interactive"], 0.4)};
-        color: {_rgba(c["interactive_text"], 0.4)};
-        border-color: {_rgba(c["interactive"], 0.4)};
+        background-color: {c["interactive_disabled"]};
+        color: {c["text_disabled"]};
+        border-color: {c["border"]};
     }}
 
     /* Secondary — transparent background, accent border and text */
@@ -209,8 +209,8 @@ def _qss_push_button(t: ThemeTokens) -> str:
     }}
     QPushButton[role="secondary"]:disabled {{
         background-color: transparent;
-        color: {_rgba(c["interactive"], 0.4)};
-        border-color: {_rgba(c["interactive"], 0.4)};
+        color: {c["text_disabled"]};
+        border-color: {c["border"]};
     }}
 
     /* Borderless — no background or border, accent text only */
@@ -231,7 +231,7 @@ def _qss_push_button(t: ThemeTokens) -> str:
     }}
     QPushButton[role="borderless"]:disabled {{
         background-color: transparent;
-        color: {_rgba(c["interactive"], 0.4)};
+        color: {c["text_disabled"]};
         border-color: transparent;
     }}
     """
@@ -693,6 +693,24 @@ def _qss_surface_card(t: ThemeTokens) -> str:
     QFrame[role="panel_bg"] QPushButton[role="borderless"],
     QFrame[role="surface"] QPushButton[role="borderless"],
     QFrame[role="card_header"] QPushButton[role="borderless"] {{
+        background-color: transparent;
+    }}
+    QFrame[role="app_bg"] QPushButton:disabled,
+    QFrame[role="panel_bg"] QPushButton:disabled,
+    QFrame[role="surface"] QPushButton:disabled,
+    QFrame[role="card_header"] QPushButton:disabled {{
+        background-color: {c["interactive_disabled"]};
+        color: {c["text_disabled"]};
+        border-color: {c["border"]};
+    }}
+    QFrame[role="app_bg"] QPushButton[role="secondary"]:disabled,
+    QFrame[role="panel_bg"] QPushButton[role="secondary"]:disabled,
+    QFrame[role="surface"] QPushButton[role="secondary"]:disabled,
+    QFrame[role="card_header"] QPushButton[role="secondary"]:disabled,
+    QFrame[role="app_bg"] QPushButton[role="borderless"]:disabled,
+    QFrame[role="panel_bg"] QPushButton[role="borderless"]:disabled,
+    QFrame[role="surface"] QPushButton[role="borderless"]:disabled,
+    QFrame[role="card_header"] QPushButton[role="borderless"]:disabled {{
         background-color: transparent;
     }}
     """

@@ -40,6 +40,7 @@ _REQUIRED_COLOR_KEYS = [
     "interactive_active",
     "interactive_ghost",
     "interactive_text",
+    "interactive_disabled",
     # Inputs
     "input_bg",
     "input_border",
