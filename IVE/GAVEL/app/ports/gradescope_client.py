@@ -275,6 +275,21 @@ class GradescopeClient:
         sub_folder = os.getenv("SUBMISSIONS_FOLDER")
 
         for name, assignment_id in assignments.items():
+
+            # download autograder also!
+            autograder_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/configure_autograder"
+            resp = session.get(autograder_url)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            link = soup.find("a", string=lambda t: t and "Download Autograder" in t)
+            if link and ".zip" in link["href"]:
+                href = link["href"]
+                log.info("Downloading Autograder for assignment: %s", name)
+                autograder_download = session.get(href)
+                safe_name = self.remove_illegal_download_characters(name)
+                output_path = os.path.join(sub_folder, safe_name + "_autograder.zip")
+                with open(output_path, "wb") as f:
+                    f.write(autograder_download.content)
+
             review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
             print("Review_grades URL: ", review_url)
             resp = session.get(review_url)
@@ -287,7 +302,7 @@ class GradescopeClient:
                 log.info("Downloading assignment: %s", name)
                 zip_resp = session.get(f"{self.base_url}" + link["href"])
 
-                safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+                safe_name = self.remove_illegal_download_characters(name)
                 print(sub_folder, safe_name)
                 output_path = os.path.join(sub_folder, safe_name + ".zip")
 
@@ -324,13 +339,13 @@ class GradescopeClient:
                     break
 
                 log.info("Waiting for export... (%s%%)", int(progress * 100))
-                time.sleep(0.5)
+                time.sleep(1.5)
 
             # Download final ZIP
             zip_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.zip"
             zip_resp = session.get(zip_url)
 
-            safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+            safe_name = self.remove_illegal_download_characters(name)
             print(sub_folder, safe_name)
             output_path = os.path.join(sub_folder, safe_name + ".zip")
 
@@ -341,23 +356,27 @@ class GradescopeClient:
 
         log.info("Download of class %s complete!", gs_course_id)
 
+    def remove_illegal_download_characters(self, name: str) -> str:
+        safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+        return safe_name
+
 
 def main():
-
-    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
-        log.error("ERROR: Must enter courseID as integer for argument!")
-        return
-
-    course_id = int(sys.argv[1])
-    client = GradescopeClient(
-        course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
-    )
-
-    client.download_all_assignments(
-        username=os.getenv("CANVAS_USERNAME"),
-        password=os.getenv("CANVAS_PASSWORD"),
-    )
-
-
-if __name__ == "__main__":
-    main()
+    return
+#     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
+#         log.error("ERROR: Must enter courseID as integer for argument!")
+#         return
+#
+#     course_id = int(sys.argv[1])
+#     client = GradescopeClient(
+#         course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
+#     )
+#
+#     client.download_all_assignments(
+#         username=os.getenv("CANVAS_USERNAME"),
+#         password=os.getenv("CANVAS_PASSWORD"),
+#     )
+#
+#
+# if __name__ == "__main__":
+#     main()

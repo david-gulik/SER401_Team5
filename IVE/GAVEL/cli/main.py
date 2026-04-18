@@ -10,12 +10,14 @@ from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_canvas_client, build_roster_client
 from GAVEL.cli.commands.canvas_course import handle_canvas_course_download
 from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
+from GAVEL.cli.commands.gradescope_download import handle_gradescope_download
 from GAVEL.cli.commands.quiz_analysis import handle_quiz_analysis_download
 from GAVEL.cli.commands.roster import handle_roster_download, handle_roster_list_terms
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger
 from GAVEL.theme.context import ThemeContext
 from GAVEL.theme.tokens import load_tokens
+
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -90,6 +92,22 @@ def _build_parser() -> argparse.ArgumentParser:
     quiz_dl.add_argument("--quiz-id", required=True, help="Canvas quiz numeric identifier")
     quiz_dl.add_argument("--output", "-o", help="Save CSV to this file (default: stdout)")
     quiz_dl.set_defaults(handler=handle_quiz_analysis_download)
+
+    # Gradescope downloader parser
+    gradescope_parser = subparsers.add_parser("gradescope", help="Gradescope Submission Downloader")
+    gradescope_subparsers = gradescope_parser.add_subparsers(dest="gradescope_command", required=True)
+
+    gradescope_dl = gradescope_subparsers.add_parser(
+        "download", help="Download all Gradescope assignment submissions for a given Canvas course"
+    )
+    gradescope_dl.add_argument("--course-id", required=True)
+    gradescope_dl.add_argument(
+        "--show-browser",
+        action="store_true",
+        help="Show Chrome instead of running headless",
+    )
+    gradescope_dl.set_defaults(handler=handle_gradescope_download)
+
 
     return parser
 
