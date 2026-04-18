@@ -126,7 +126,7 @@ class GradescopeClient:
 
         log.info("Clicking Gradescope nav link...")
         nav_link = wait.until(
-            ec.element_to_be_clickable((By.ID, "context_external_tool_171355-link"))
+            ec.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Gradescope')]"))
         )
         nav_link.click()
 
@@ -249,9 +249,6 @@ class GradescopeClient:
 
         return session
 
-    # ---------------------------------------------------------
-    # NEW: Downloader (moved from global function)
-    # ---------------------------------------------------------
     def download_all_assignments(self, username: str, password: str):
         """
         Logs in, captures session, and downloads all assignment bulk exports.
@@ -264,15 +261,22 @@ class GradescopeClient:
         resp = session.get(
             f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}"
         )
+        print(f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}")
         soup = BeautifulSoup(resp.text, "html.parser")
-        elements = soup.find_all(attrs={"data-assignment-id": True})
+        elements = soup.find_all(
+            attrs={"data-assignment-id": True, "aria-describedby": f"course-{gs_course_id}"}
+        )
 
         assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
+
+        for a in assignments:
+            print(a, assignments[a])
 
         sub_folder = os.getenv("SUBMISSIONS_FOLDER")
 
         for name, assignment_id in assignments.items():
             review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
+            print("Review_grades URL: ", review_url)
             resp = session.get(review_url)
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -284,6 +288,7 @@ class GradescopeClient:
                 zip_resp = session.get(f"{self.base_url}" + link["href"])
 
                 safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+                print(sub_folder, safe_name)
                 output_path = os.path.join(sub_folder, safe_name + ".zip")
 
                 with open(output_path, "wb") as f:
@@ -302,6 +307,7 @@ class GradescopeClient:
                 f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/export",
                 headers={"Referer": review_url},
             )
+            print("POST response code: ", export_resp.status_code)
             data = export_resp.json()
             file_id = data["generated_file_id"]
 
@@ -318,19 +324,20 @@ class GradescopeClient:
                     break
 
                 log.info("Waiting for export... (%s%%)", int(progress * 100))
-                time.sleep(1)
+                time.sleep(0.5)
 
             # Download final ZIP
             zip_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.zip"
             zip_resp = session.get(zip_url)
 
             safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+            print(sub_folder, safe_name)
             output_path = os.path.join(sub_folder, safe_name + ".zip")
 
             with open(output_path, "wb") as f:
                 f.write(zip_resp.content)
 
-            log.info("Assignment %s downloaded!", assignment_id)
+            log.info("Assignment %s downloaded!", name)
 
         log.info("Download of class %s complete!", gs_course_id)
 
