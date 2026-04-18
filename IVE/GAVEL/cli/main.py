@@ -19,7 +19,6 @@ from GAVEL.theme.context import ThemeContext
 from GAVEL.theme.tokens import load_tokens
 
 
-
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)

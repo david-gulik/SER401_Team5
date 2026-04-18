@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import os
 import sys
 from argparse import Namespace
-import os
-from pathlib import Path
 
-from GAVEL.app_context import AppContext
 from GAVEL.app.ports.gradescope_client import GradescopeClient
+from GAVEL.app_context import AppContext
+
 
 def handle_gradescope_download(ctx: AppContext, args: Namespace) -> int:
     try:
