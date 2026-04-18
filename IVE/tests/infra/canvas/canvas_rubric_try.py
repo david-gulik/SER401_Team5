@@ -30,4 +30,6 @@ for sub in submissions:
         for crit_id, entry in list(ra.items())[:2]:  # inspect first 2
             print(f"  [{crit_id}] keys={list(entry.keys())}")
             print(f"    rating_id present: {'rating_id' in entry}")
-            print(f"    comments type={type(entry.get('comments')).__name__}  value={repr(entry.get('comments'))}")
+            print(
+                f"    comments type={type(entry.get('comments')).__name__}  value={repr(entry.get('comments'))}"
+            )
