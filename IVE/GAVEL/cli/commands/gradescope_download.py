@@ -23,19 +23,18 @@ def handle_gradescope_download(ctx: AppContext, args: Namespace) -> int:
     password = os.getenv("CANVAS_PASSWORD")
 
     if not username or not password:
-        print("Environment variables CANVAS_USERNAME and CANVAS_PASSWORD are required.", file=sys.stderr)
+        print(
+            "Environment variables CANVAS_USERNAME and CANVAS_PASSWORD are required.",
+            file=sys.stderr,
+        )
         return 2
 
     try:
         client = GradescopeClient(
-            course_url=f"https://canvas.asu.edu/courses/{course_id}",
-            headless=False
+            course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
         )
 
-        client.download_all_assignments(
-            username=username,
-            password=password
-        )
+        client.download_all_assignments(username=username, password=password)
 
     except Exception as exc:
         ctx.logger.error(f"Gradescope download failed: {exc}")

@@ -274,7 +274,6 @@ class GradescopeClient:
         sub_folder = os.getenv("SUBMISSIONS_FOLDER")
 
         for name, assignment_id in assignments.items():
-
             # download autograder also!
             autograder_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/configure_autograder"
             resp = session.get(autograder_url)
@@ -362,6 +361,8 @@ class GradescopeClient:
 
 def main():
     return
+
+
 #     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
 #         log.error("ERROR: Must enter courseID as integer for argument!")
 #         return
