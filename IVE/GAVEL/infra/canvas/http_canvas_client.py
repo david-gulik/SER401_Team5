@@ -313,7 +313,7 @@ class HttpCanvasClient(CanvasClient):
             start = part.find("<")
             end = part.find(">")
             if start != -1 and end != -1 and end > start:
-                return part[start + 1: end]
+                return part[start + 1 : end]
 
         return None
 
