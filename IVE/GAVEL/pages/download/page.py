@@ -24,6 +24,7 @@ class DownloadPage(BasePage):
 
         vm = DownloadViewModel(
             roster_client=ctx.services.roster_client,
+            canvas_client=ctx.services.canvas_client,
             default_output_dir=output_dir,
             logger=ctx.logger,
             roster_configured=roster_configured,

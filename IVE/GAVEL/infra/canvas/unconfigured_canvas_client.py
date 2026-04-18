@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from GAVEL.app.dtos.canvas_course import CanvasCourseData
+from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 from GAVEL.app.ports.canvas_client import CanvasClient
@@ -9,6 +9,9 @@ from GAVEL.app.ports.canvas_client import CanvasClient
 class UnconfiguredCanvasClient(CanvasClient):
     def __init__(self, message: str = "Canvas not configured") -> None:
         self._message = message
+
+    def list_courses(self) -> list[CanvasCourse]:
+        raise RuntimeError(self._message)
 
     def fetch_course_data(self, course_id: int) -> CanvasCourseData:
         raise RuntimeError(self._message)

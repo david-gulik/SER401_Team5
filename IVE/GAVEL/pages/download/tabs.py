@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -47,6 +47,9 @@ class DownloadTab(ScrollableTab):
 
         self.render(self._vm.get_state())
 
+        if self._vm.get_state().canvas_token_available:
+            QTimer.singleShot(0, self._vm.load_courses)
+
     # ---------- Widget construction ----------
 
     def _build_widgets(self) -> None:
@@ -82,6 +85,9 @@ class DownloadTab(ScrollableTab):
 
         # myASU - Download
         self._download_roster_btn = QPushButton("Download Roster")
+        self._download_roster_btn.setToolTip(
+            "Requires a valid term and section to be selected above."
+        )
         self._download_roster_btn.setProperty("role", "primary")
 
         # Canvas - warning banner
@@ -91,8 +97,11 @@ class DownloadTab(ScrollableTab):
         self._canvas_warning.setProperty("role", "warning")
         self._canvas_warning.setWordWrap(True)
         self._canvas_warning.hide()
+        self._canvas_recheck_btn = QPushButton("Recheck")
+        self._canvas_recheck_btn.hide()
 
         # Canvas - course selection
+        self._load_courses_btn = QPushButton("Reload Courses")
         self._course_combo = QComboBox()
         self._course_combo.setEnabled(False)
         self._course_id_override = QLineEdit()
@@ -100,16 +109,21 @@ class DownloadTab(ScrollableTab):
 
         # Canvas - gradebook
         self._download_gradebook_btn = QPushButton("Download Gradebook")
+        self._download_gradebook_btn.setToolTip("Requires a valid course to be selected above.")
         self._download_gradebook_btn.setProperty("role", "primary")
 
         # Canvas - consent form
         self._consent_quiz_combo = QComboBox()
         self._consent_quiz_combo.setEnabled(False)
         self._download_consent_btn = QPushButton("Download Consent Form")
+        self._download_consent_btn.setToolTip(
+            "Requires a valid course and consent quiz to be selected above."
+        )
         self._download_consent_btn.setProperty("role", "primary")
 
         # Gradescope submissions
         self._download_gradescope_btn = QPushButton("Download Submissions")
+        self._download_gradescope_btn.setToolTip("Requires a valid course to be selected above.")
         self._download_gradescope_btn.setProperty("role", "primary")
 
         # Download all
@@ -148,6 +162,8 @@ class DownloadTab(ScrollableTab):
         self._download_gradescope_btn.clicked.connect(self._on_download_gradescope)
         self._download_all_btn.clicked.connect(self._on_download_all)
 
+        self._canvas_recheck_btn.clicked.connect(self._vm.recheck)
+        self._load_courses_btn.clicked.connect(self._vm.load_courses)
         self._vm.state_changed.connect(self.render)
         self._vm.event_raised.connect(self._handle_event)
 
@@ -239,7 +255,14 @@ class DownloadTab(ScrollableTab):
 
     def _build_canvas_card(self) -> QWidget:
         card = SectionCard(self._theme, "Canvas")
-        card.add_row(self._canvas_warning)
+
+        warning_row = QWidget()
+        warning_layout = QHBoxLayout(warning_row)
+        warning_layout.setContentsMargins(0, 0, 0, 0)
+        set_spacing(warning_layout, self._theme, 8)
+        warning_layout.addWidget(self._canvas_warning, 1)
+        warning_layout.addWidget(self._canvas_recheck_btn)
+        card.add_row(warning_row)
 
         # Course Selection
         course_panel = SubPanel(self._theme, "Course Selection")
@@ -251,6 +274,7 @@ class DownloadTab(ScrollableTab):
         set_spacing(course_form, self._theme, 8)
         course_form.addRow("Course", self._course_combo)
         course_panel.add_widget(course_host)
+        course_panel.add_widget(self._load_courses_btn)
 
         course_panel.add_widget(self._or_divider())
 
@@ -367,11 +391,15 @@ class DownloadTab(ScrollableTab):
     # ---------- View model rendering ----------
 
     def render(self, state: DownloadUiState) -> None:
+        token_missing = not state.canvas_token_available
+        self._canvas_warning.setVisible(token_missing)
+        self._canvas_recheck_btn.setVisible(token_missing)
         self._status_pill.set_status(state.status)
         self._message_label.setText(state.message)
 
         busy = state.is_busy
         self._load_terms_btn.setEnabled(not busy)
+        self._load_courses_btn.setEnabled(not busy)
         self._find_sections_btn.setEnabled(not busy)
         self._download_roster_btn.setEnabled(not busy and state.can_download_roster)
         self._download_gradebook_btn.setEnabled(not busy and state.can_download_gradebook)
@@ -407,6 +435,23 @@ class DownloadTab(ScrollableTab):
             self._section_combo.setEnabled(False)
             if self._section_combo.count():
                 self._section_combo.clear()
+
+        if state.courses:
+            self._course_combo.setEnabled(True)
+            if self._course_combo.count() != len(state.courses):
+                self._course_combo.blockSignals(True)
+                try:
+                    self._course_combo.clear()
+                    for c in state.courses:
+                        label = f"{c.course_code}  {c.name}" if c.course_code else c.name
+                        self._course_combo.addItem(label, str(c.id))
+                finally:
+                    self._course_combo.blockSignals(False)
+                self._on_course_changed(0)
+        else:
+            self._course_combo.setEnabled(False)
+            if self._course_combo.count():
+                self._course_combo.clear()
 
         if state.last_saved_path:
             self._last_saved_label.setText(state.last_saved_path)

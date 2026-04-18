@@ -105,6 +105,9 @@ class MockCanvasClient(CanvasClient):
         self.fetch_quiz_calls: list[tuple[int, int]] = []
         self.fetch_rubric_calls: list[tuple[int, int]] = []
 
+    def list_courses(self) -> list:
+        return []
+
     def fetch_course_data(self, course_id: int) -> CanvasCourseData:
         self.fetch_course_data_calls.append(course_id)
         if self.fetch_course_data_error:

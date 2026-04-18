@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from IVE.GAVEL.app.usecases.roster import download_roster_to_file
+from dotenv import find_dotenv, load_dotenv
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from GAVEL.app.dtos.canvas_course import CanvasCourse
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
+from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
+from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
 from GAVEL.services.logger import AppLogger
 
@@ -20,6 +24,7 @@ class DownloadUiState:
     subject: str = ""
     catalog_number: str = ""
     class_number: str = ""
+    courses: Sequence[CanvasCourse] = ()
     sections: Sequence[ClassSection] = ()
     selected_section_idx: int = -1
     selected_course_id: str = ""
@@ -56,6 +61,10 @@ class DownloadUiState:
             and self.can_download_submissions
         )
 
+    @property
+    def canvas_token_available(self) -> bool:
+        return os.getenv("CANVAS_TOKEN") is not None
+
 
 @dataclass(frozen=True)
 class ShowError:
@@ -74,12 +83,14 @@ class DownloadViewModel(QObject):
     def __init__(
         self,
         roster_client: RosterClient,
+        canvas_client: CanvasClient,
         default_output_dir: Path,
         logger: AppLogger,
         roster_configured: bool,
     ) -> None:
         super().__init__()
         self._client = roster_client
+        self._canvas_client = canvas_client
         self._output_dir = default_output_dir
         self._logger = logger
         self._roster_configured = roster_configured
@@ -139,12 +150,14 @@ class DownloadViewModel(QObject):
             return
         self._state = replace(self._state, selected_course_id=text)
         self.state_changed.emit(self._state)
+        self._logger.info(f"Selected course ID set to {text}")
 
     def set_selected_consent_quiz(self, index: int) -> None:
         if index == self._state.selected_consent_quiz_idx:
             return
         self._state = replace(self._state, selected_consent_quiz_idx=index)
         self.state_changed.emit(self._state)
+        self._logger.info(f"Selected consent quiz index set to {index}")
 
     # Actions
 
@@ -257,6 +270,29 @@ class DownloadViewModel(QObject):
         )
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(msg))
+
+    def load_courses(self) -> None:
+        if self._state.is_busy:
+            return
+        self._set_busy("Loading courses...")
+        try:
+            courses = self._canvas_client.list_courses()
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Failed to load courses: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            return
+        self._state = replace(
+            self._state,
+            courses=courses,
+            is_busy=False,
+            status=Status.NOMINAL,
+            message=f"Loaded {len(courses)} course(s).",
+        )
+        self.state_changed.emit(self._state)
+
+    def recheck(self) -> None:
+        load_dotenv(find_dotenv(usecwd=True), override=True)
+        self.state_changed.emit(self._state)
 
     # Helpers
 
