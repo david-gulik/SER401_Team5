@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -47,6 +47,9 @@ class DownloadTab(ScrollableTab):
 
         self.render(self._vm.get_state())
 
+        if self._vm.get_state().canvas_token_available:
+            QTimer.singleShot(0, self._vm.load_courses)
+
     # ---------- Widget construction ----------
 
     def _build_widgets(self) -> None:
@@ -82,7 +85,9 @@ class DownloadTab(ScrollableTab):
 
         # myASU - Download
         self._download_roster_btn = QPushButton("Download Roster")
-        self._download_roster_btn.setToolTip("Requires a valid term and section to be selected above.")
+        self._download_roster_btn.setToolTip(
+            "Requires a valid term and section to be selected above."
+        )
         self._download_roster_btn.setProperty("role", "primary")
 
         # Canvas - warning banner
@@ -96,7 +101,7 @@ class DownloadTab(ScrollableTab):
         self._canvas_recheck_btn.hide()
 
         # Canvas - course selection
-        self._load_courses_btn = QPushButton("Load Courses")
+        self._load_courses_btn = QPushButton("Reload Courses")
         self._course_combo = QComboBox()
         self._course_combo.setEnabled(False)
         self._course_id_override = QLineEdit()
@@ -111,7 +116,9 @@ class DownloadTab(ScrollableTab):
         self._consent_quiz_combo = QComboBox()
         self._consent_quiz_combo.setEnabled(False)
         self._download_consent_btn = QPushButton("Download Consent Form")
-        self._download_consent_btn.setToolTip("Requires a valid course and consent quiz to be selected above.")
+        self._download_consent_btn.setToolTip(
+            "Requires a valid course and consent quiz to be selected above."
+        )
         self._download_consent_btn.setProperty("role", "primary")
 
         # Gradescope submissions

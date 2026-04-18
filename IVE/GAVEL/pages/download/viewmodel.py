@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-import os
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
-
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse

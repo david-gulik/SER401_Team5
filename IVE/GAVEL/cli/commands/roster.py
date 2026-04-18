@@ -4,9 +4,8 @@ import sys
 from argparse import Namespace
 from pathlib import Path
 
-from IVE.GAVEL.app.usecases.roster import download_roster_to_file
-
 from GAVEL.app.dtos.roster import RosterRequest
+from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.app_context import AppContext
 
 
