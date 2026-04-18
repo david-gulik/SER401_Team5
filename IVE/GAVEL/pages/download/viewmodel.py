@@ -22,10 +22,39 @@ class DownloadUiState:
     class_number: str = ""
     sections: Sequence[ClassSection] = ()
     selected_section_idx: int = -1
+    selected_course_id: str = ""
+    selected_consent_quiz_idx: int = -1
     is_busy: bool = False
     status: Status = Status.UNKNOWN
     message: str = "Enter search criteria or a class number."
     last_saved_path: str | None = None
+
+    @property
+    def can_download_roster(self) -> bool:
+        has_term = bool(self.selected_term)
+        has_section = self.selected_section_idx >= 0 or bool(self.class_number)
+        return has_term and has_section
+
+    @property
+    def can_download_gradebook(self) -> bool:
+        return bool(self.selected_course_id)
+
+    @property
+    def can_download_submissions(self) -> bool:
+        return bool(self.selected_course_id)
+
+    @property
+    def can_download_consent(self) -> bool:
+        return bool(self.selected_course_id) and self.selected_consent_quiz_idx >= 0
+
+    @property
+    def can_download_all(self) -> bool:
+        return (
+            self.can_download_roster
+            and self.can_download_gradebook
+            and self.can_download_consent
+            and self.can_download_submissions
+        )
 
 
 @dataclass(frozen=True)
@@ -102,6 +131,19 @@ class DownloadViewModel(QObject):
         if index == self._state.selected_section_idx:
             return
         self._state = replace(self._state, selected_section_idx=index)
+        self.state_changed.emit(self._state)
+
+    def set_course_id(self, value: str) -> None:
+        text = value.strip()
+        if text == self._state.selected_course_id:
+            return
+        self._state = replace(self._state, selected_course_id=text)
+        self.state_changed.emit(self._state)
+
+    def set_selected_consent_quiz(self, index: int) -> None:
+        if index == self._state.selected_consent_quiz_idx:
+            return
+        self._state = replace(self._state, selected_consent_quiz_idx=index)
         self.state_changed.emit(self._state)
 
     # Actions

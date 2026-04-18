@@ -21,14 +21,41 @@ class ThemeTokens:
 
 
 _REQUIRED_COLOR_KEYS = [
-    "bg",
+    # Surfaces
+    "app_bg",
+    "panel_bg",
     "surface",
-    "surface_alt",
+    "global_status_bar",
+    # Borders
     "border",
+    "border_focus",
+    # Text
     "text",
-    "text_muted",
-    "focus",
-    "selection",
+    "text_secondary",
+    "text_disabled",
+    "text_link",
+    # Interactive
+    "interactive",
+    "interactive_hover",
+    "interactive_active",
+    "interactive_ghost",
+    "interactive_text",
+    # Inputs
+    "input_bg",
+    "input_border",
+    "input_placeholder",
+    # Selection
+    "selection_bg",
+    "selection_text",
+    # Scrollbars
+    "scrollbar_track",
+    "scrollbar_handle",
+    "scrollbar_handle_hover",
+    # Tooltip
+    "tooltip_bg",
+    "tooltip_border",
+    "tooltip_text",
+    # Status
     "status_nominal",
     "status_caution",
     "status_warning",
@@ -41,6 +68,8 @@ _REQUIRED_SHAPE_KEYS = ["radius_sm", "radius_md", "radius_lg", "border_width"]
 _REQUIRED_TYPE_KEYS = [
     "font_family",
     "font_size_base",
+    "font_size_small",
+    "font_size_large",
     "font_size_h1",
     "font_size_h2",
     "font_size_h3",
