@@ -181,6 +181,7 @@ def test_build_grouped_submission_lookup_computes_group_totals():
     assert result[1]["group_totals"]["Homework"] == 63.0
     assert result[1]["computed_final_score"] == 88.5
 
+
 @pytest.fixture
 def config() -> CanvasApiConfig:
     return CanvasApiConfig(
