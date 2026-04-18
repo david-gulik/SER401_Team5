@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "rubric_assessment",
+  "title": "RubricAssessment",
+  "description": "Per-student rubric assessment returned by the Canvas Submissions API with include[]=rubric_assessment&include[]=user.",
+  "type": "object",
+  "required": ["submission_id", "user_id", "sis_user_id", "score", "assessment_type", "rubric_assessment"],
+  "properties": {
+
+    "submission_id": {
+      "type": "integer",
+      "description": "Canvas submission artifact ID."
+    },
+
+    "user_id": {
+      "type": "integer",
+      "description": "Canvas internal user ID."
+    },
+
+    "sis_user_id": {
+      "type": ["integer", "null"],
+      "description": "Institution SIS ID. Always present on the user object but may be null if not provisioned."
+    },
+
+    "score": {
+      "type": ["number", "null"],
+      "description": "Top-level total rubric score for the submission. Null if not yet graded."
+    },
+
+    "assessment_type": {
+      "type": "string",
+      "enum": ["grading", "peer_review", "provisional_grade"],
+      "description": "Source of the assessment. All three values are accepted."
+    },
+
+    "rubric_assessment": {
+      "type": "object",
+      "description": "Dictionary keyed by criterion ID. This key is absent entirely (not null) when the submission is ungraded — consumers must use .get('rubric_assessment') rather than direct access.",
+      "additionalProperties": {
+        "$ref": "#/definitions/CriterionAssessment"
+      }
+    }
+  },
+
+  "definitions": {
+    "CriterionAssessment": {
+      "type": "object",
+      "required": ["rating_id", "points", "comments"],
+      "properties": {
+
+        "rating_id": {
+          "type": ["string", "null"],
+          "description": "ID of the selected rating on the rubric scale. Confirmed present in the submissions endpoint inline hash."
+        },
+
+        "points": {
+          "type": ["number", "null"],
+          "description": "Points awarded for this criterion. Null if criterion not yet graded."
+        },
+
+        "comments": {
+          "type": "string",
+          "description": "Grader free-text comment. Always a string — empty string '' when no comment entered, never null."
+        }
+      }
+    }
+  }
+}
