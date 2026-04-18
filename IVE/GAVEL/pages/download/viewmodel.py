@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from IVE.GAVEL.app.usecases.roster import download_roster_to_file
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
@@ -190,9 +191,12 @@ class DownloadViewModel(QObject):
             class_number=class_number,
         )
 
+        filename = f"roster_{request.term}_{class_number}.csv"
+        out_path = self._output_dir / filename
+
         try:
             self._client.authenticate()
-            csv_text = self._client.fetch_roster(request)
+            download_roster_to_file(self._client, request, out_path)
         except Exception as exc:  # noqa: BLE001
             self._logger.error(f"Roster download failed: {exc}")
             self._set_idle(Status.CRITICAL, str(exc))
@@ -200,12 +204,6 @@ class DownloadViewModel(QObject):
             return
         finally:
             self._client.close()
-
-        self._output_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"roster_{request.term}_{class_number}.csv"
-        out_path = self._output_dir / filename
-        normalized = csv_text.replace("\r\n", "\n").replace("\r", "\n")
-        out_path.write_text(normalized, encoding="utf-8")
 
         msg = f"Roster saved to {out_path}"
         self._state = replace(
