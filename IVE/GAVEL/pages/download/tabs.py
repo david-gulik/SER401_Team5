@@ -153,7 +153,7 @@ class DownloadTab(ScrollableTab):
 
         self._course_combo.currentIndexChanged.connect(self._on_course_changed)
         self._course_id_override.textChanged.connect(self._vm.set_course_id)
-        self._consent_quiz_combo.currentIndexChanged.connect(self._vm.set_selected_consent_quiz)
+        self._consent_quiz_combo.currentIndexChanged.connect(self._on_consent_quiz_changed)
 
         # Stubs: controls added for the new scaffold. Functionality lands later.
         self._reset_path_btn.clicked.connect(self._on_reset_path)
@@ -369,10 +369,10 @@ class DownloadTab(ScrollableTab):
         pass
 
     def _on_download_gradebook(self) -> None:
-        pass
+        self._vm.download_gradebook()
 
     def _on_download_consent(self) -> None:
-        pass
+        self._vm.download_consent()
 
     def _on_download_gradescope(self) -> None:
         pass
@@ -387,6 +387,10 @@ class DownloadTab(ScrollableTab):
     def _on_course_changed(self, index: int) -> None:
         course_id = self._course_combo.itemData(index) or ""
         self._vm.set_course_id(course_id)
+
+    def _on_consent_quiz_changed(self, index: int) -> None:
+        quiz_id = self._consent_quiz_combo.itemData(index) or ""
+        self._vm.set_consent_quiz_id(str(quiz_id))
 
     # ---------- View model rendering ----------
 
