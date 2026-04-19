@@ -12,6 +12,11 @@ from GAVEL.app.dtos.canvas_course import CanvasCourse
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
+from GAVEL.app.usecases.download_consent_form import (
+    DownloadConsentFormRequest,
+    DownloadConsentFormUseCase,
+)
+from GAVEL.app.usecases.download_gradebook import DownloadGradebookRequest, DownloadGradebookUseCase
 from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
 from GAVEL.services.logger import AppLogger
@@ -28,7 +33,7 @@ class DownloadUiState:
     sections: Sequence[ClassSection] = ()
     selected_section_idx: int = -1
     selected_course_id: str = ""
-    selected_consent_quiz_idx: int = -1
+    selected_consent_quiz_id: str = ""
     is_busy: bool = False
     status: Status = Status.UNKNOWN
     message: str = "Enter search criteria or a class number."
@@ -50,7 +55,7 @@ class DownloadUiState:
 
     @property
     def can_download_consent(self) -> bool:
-        return bool(self.selected_course_id) and self.selected_consent_quiz_idx >= 0
+        return bool(self.selected_course_id) and bool(self.selected_consent_quiz_id)
 
     @property
     def can_download_all(self) -> bool:
@@ -152,12 +157,13 @@ class DownloadViewModel(QObject):
         self.state_changed.emit(self._state)
         self._logger.info(f"Selected course ID set to {text}")
 
-    def set_selected_consent_quiz(self, index: int) -> None:
-        if index == self._state.selected_consent_quiz_idx:
+    def set_consent_quiz_id(self, value: str) -> None:
+        text = value.strip()
+        if text == self._state.selected_consent_quiz_id:
             return
-        self._state = replace(self._state, selected_consent_quiz_idx=index)
+        self._state = replace(self._state, selected_consent_quiz_id=text)
         self.state_changed.emit(self._state)
-        self._logger.info(f"Selected consent quiz index set to {index}")
+        self._logger.info(f"Selected consent quiz ID set to {text}")
 
     # Actions
 
@@ -289,6 +295,81 @@ class DownloadViewModel(QObject):
             message=f"Loaded {len(courses)} course(s).",
         )
         self.state_changed.emit(self._state)
+
+    def download_gradebook(self) -> None:
+        if self._state.is_busy:
+            return
+        course_id_str = self._state.selected_course_id.strip()
+        if not course_id_str:
+            self._emit_error("Select a course first.")
+            return
+        try:
+            course_id = int(course_id_str)
+        except ValueError:
+            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+            return
+
+        self._set_busy(f"Downloading gradebook for course {course_id}...")
+        try:
+            result = DownloadGradebookUseCase(self._canvas_client).execute(
+                DownloadGradebookRequest(course_id=course_id, output_dir=self._output_dir)
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Gradebook download failed: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            self.event_raised.emit(ShowError(str(exc)))
+            return
+
+        self._state = replace(
+            self._state,
+            is_busy=False,
+            status=Status.NOMINAL,
+            message=result.message,
+            last_saved_path=str(result.saved_path),
+        )
+        self.state_changed.emit(self._state)
+        self.event_raised.emit(ShowInfo(result.message))
+
+    def download_consent(self) -> None:
+        if self._state.is_busy:
+            return
+        course_id_str = self._state.selected_course_id.strip()
+        quiz_id_str = self._state.selected_consent_quiz_id.strip()
+        if not course_id_str:
+            self._emit_error("Select a course first.")
+            return
+        if not quiz_id_str:
+            self._emit_error("Select a consent quiz first.")
+            return
+        try:
+            course_id = int(course_id_str)
+            quiz_id = int(quiz_id_str)
+        except ValueError:
+            self._emit_error("Invalid course or quiz ID.")
+            return
+
+        self._set_busy(f"Downloading consent form for course {course_id}...")
+        try:
+            result = DownloadConsentFormUseCase(self._canvas_client).execute(
+                DownloadConsentFormRequest(
+                    course_id=course_id, quiz_id=quiz_id, output_dir=self._output_dir
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Consent form download failed: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            self.event_raised.emit(ShowError(str(exc)))
+            return
+
+        self._state = replace(
+            self._state,
+            is_busy=False,
+            status=Status.NOMINAL,
+            message=result.message,
+            last_saved_path=str(result.saved_path),
+        )
+        self.state_changed.emit(self._state)
+        self.event_raised.emit(ShowInfo(result.message))
 
     def recheck(self) -> None:
         load_dotenv(find_dotenv(usecwd=True), override=True)
