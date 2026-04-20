@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse
+from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasQuiz
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
@@ -30,6 +30,7 @@ class DownloadUiState:
     catalog_number: str = ""
     class_number: str = ""
     courses: Sequence[CanvasCourse] = ()
+    quizzes: Sequence[CanvasQuiz] = ()
     sections: Sequence[ClassSection] = ()
     selected_section_idx: int = -1
     selected_course_id: str = ""
@@ -153,7 +154,9 @@ class DownloadViewModel(QObject):
         text = value.strip()
         if text == self._state.selected_course_id:
             return
-        self._state = replace(self._state, selected_course_id=text)
+        self._state = replace(
+            self._state, selected_course_id=text, quizzes=(), selected_consent_quiz_id=""
+        )
         self.state_changed.emit(self._state)
         self._logger.info(f"Selected course ID set to {text}")
 
@@ -276,6 +279,29 @@ class DownloadViewModel(QObject):
         )
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(msg))
+
+    def load_quizzes(self, course_id: str) -> None:
+        if self._state.is_busy or not course_id:
+            return
+        try:
+            cid = int(course_id)
+        except ValueError:
+            return
+        self._set_busy("Loading quizzes...")
+        try:
+            quizzes = self._canvas_client.list_quizzes(cid)
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Failed to load quizzes: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            return
+        self._state = replace(
+            self._state,
+            quizzes=quizzes,
+            is_busy=False,
+            status=Status.NOMINAL,
+            message=f"Loaded {len(quizzes)} quiz(zes).",
+        )
+        self.state_changed.emit(self._state)
 
     def load_courses(self) -> None:
         if self._state.is_busy:
