@@ -294,8 +294,7 @@ def test_fetch_gradebook_csv_writes_blank_and_weights_rows():
     rows = client.fetch_gradebook_csv(course_id=456).decode("utf-8").splitlines()
 
     assert rows[0] == (
-        "Student,ID,SIS User ID,SIS Login ID,Section,"
-        "Assignment A (10),Activities Total,Final Grade"
+        "Student,ID,SIS User ID,SIS Login ID,Section,Assignment A (10),Activities Total,Final Grade"
     )
     assert rows[1] == ",,,,,,,"
     assert rows[2] == ",,,,,,25,"
