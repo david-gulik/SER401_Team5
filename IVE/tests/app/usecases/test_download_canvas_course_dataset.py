@@ -132,6 +132,9 @@ class MockCanvasClient(CanvasClient):
             raise FileNotFoundError(f"Quiz {quiz_id} not found in course {course_id}")
         return self.consent_csv
 
+    def list_quizzes(self, course_id: int) -> list:
+        return []
+
     def fetch_rubric_assessments(
         self, course_id: int, assignment_id: int
     ) -> list[RubricAssessment]:

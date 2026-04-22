@@ -6,7 +6,7 @@ from typing import Any
 
 import requests
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule
+from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule, CanvasQuiz
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
 from GAVEL.app.ports.canvas_client import CanvasClient
@@ -478,6 +478,17 @@ class HttpCanvasClient(CanvasClient):
             return resp
 
         raise RuntimeError(f"Request failed after retries: {method} {url}")
+
+    def list_quizzes(self, course_id: int) -> list[CanvasQuiz]:
+        pages = self._get_all_pages(
+            f"/api/v1/courses/{course_id}/quizzes",
+            params={"per_page": 100},
+        )
+        return [
+            CanvasQuiz(id=int(q["id"]), name=str(q.get("title") or ""))
+            for q in pages
+            if q.get("id")
+        ]
 
     def fetch_gradebook(self, course_id: int) -> CanvasGradebook:
         raise NotImplementedError

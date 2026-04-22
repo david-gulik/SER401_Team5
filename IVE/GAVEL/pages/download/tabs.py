@@ -387,6 +387,8 @@ class DownloadTab(ScrollableTab):
     def _on_course_changed(self, index: int) -> None:
         course_id = self._course_combo.itemData(index) or ""
         self._vm.set_course_id(course_id)
+        if course_id:
+            self._vm.load_quizzes(course_id)
 
     def _on_consent_quiz_changed(self, index: int) -> None:
         quiz_id = self._consent_quiz_combo.itemData(index) or ""
@@ -456,6 +458,27 @@ class DownloadTab(ScrollableTab):
             self._course_combo.setEnabled(False)
             if self._course_combo.count():
                 self._course_combo.clear()
+
+        if state.quizzes:
+            self._consent_quiz_combo.setEnabled(True)
+            if self._consent_quiz_combo.count() != len(state.quizzes):
+                self._consent_quiz_combo.blockSignals(True)
+                try:
+                    self._consent_quiz_combo.clear()
+                    for q in state.quizzes:
+                        self._consent_quiz_combo.addItem(q.name, q.id)
+                    consent_idx = next(
+                        (i for i, q in enumerate(state.quizzes) if "consent" in q.name.lower()),
+                        0,
+                    )
+                    self._consent_quiz_combo.setCurrentIndex(consent_idx)
+                finally:
+                    self._consent_quiz_combo.blockSignals(False)
+                self._on_consent_quiz_changed(self._consent_quiz_combo.currentIndex())
+        else:
+            self._consent_quiz_combo.setEnabled(False)
+            if self._consent_quiz_combo.count():
+                self._consent_quiz_combo.clear()
 
         if state.last_saved_path:
             self._last_saved_label.setText(state.last_saved_path)

@@ -20,3 +20,9 @@ class CanvasModule:
 class CanvasCourseData:
     course: CanvasCourse
     modules: list[CanvasModule]
+
+
+@dataclass(frozen=True)
+class CanvasQuiz:
+    id: int
+    name: str
