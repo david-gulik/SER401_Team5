@@ -28,6 +28,7 @@ import subprocess
 import json
 import zipfile
 from enum import Enum
+from pathlib import Path
 
 import constants
 
@@ -75,6 +76,137 @@ def rename_canvas_submission_files(input_folder, output_folder):
 
         shutil.copy(input_folder + os.sep + filename, output_folder + os.sep + new_name)
 
+def strip_gradescope_comments(assignment_in: str) -> str:
+    """
+    Method for taking in a C or Java file and stripping it of comments for privacy purposes
+
+    :param assignment_in: string representation of assignment, to be stripped of comments
+    :return: that same assignment but without comments
+    """
+
+    # instantiate some stuff; an output string, a counter, the length of the original string, a "normal" state,
+    # and a blocker for following quotes
+
+    out = []
+    i = 0
+    n = len(assignment_in)
+    state = "normal"
+    quote_char = None
+
+    # go through string and set state based on a combination of present state and incoming characters
+
+    while i < n:
+
+        # set pointers
+        c = assignment_in[i]
+        nxt = assignment_in[i+1] if i+1 < n else ''
+
+        # if "normal" state (that is, in a state of parsing code)
+        if state == "normal":
+            # if "//" detected, change state to line_comment and bypass the "//"
+            if c == '/' and nxt == '/':
+                state = "line_comment"
+                i += 2
+                continue
+            # if "/*" detected, change state to block_comment and bypass the "/*"
+            if c == '/' and nxt == '*':
+                state = "block_comment"
+                i += 2
+                continue
+            # if apostrophes detected, change state to "string" and add to output
+            if c in ('"', "'"):
+                state = "string"
+                quote_char = c
+                out.append(c)
+                i += 1
+                continue
+            # finally, append output with current character and move on
+            out.append(c)
+            i += 1
+
+        # escape condition for line_comment
+        elif state == "line_comment":
+            if c == '\n':
+                state = "normal"
+                out.append(c)
+            i += 1
+
+        # escape condition for block_comment
+        elif state == "block_comment":
+            # add line spaces if newlines appear in block comment
+            if c == '\n':
+                out.append('\n')
+                i += 1
+                continue
+            if c == '*' and nxt == '/':
+                state = "normal"
+                i += 2
+            else:
+                i += 1
+
+        # escape condition for string
+        elif state == "string":
+            out.append(c)
+            if c == '\\':                # escape next char
+                if i+1 < n:
+                    out.append(assignment_in[i+1])
+                    i += 2
+                else:
+                    i += 1
+            elif c == quote_char:
+                state = "normal"
+                i += 1
+            else:
+                i += 1
+
+    # return output without comments!
+    return ''.join(out)
+
+def anonymize_gradescope_submissions(input_folder: str, output_folder: str):
+    """
+    Method for scanning input_folder for Java/C files, stripping out comments, and writing anonymized
+    versions to output_folder with '_anon' suffixes.
+    """
+    input_folder = Path(input_folder)
+    output_folder = Path(output_folder)
+
+    # Create output folder if it doesn't exist
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    file_extensions = {".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp"}
+
+    if not input_folder.exists():
+        raise FileNotFoundError(f"Input folder does not exist: {input_folder}")
+
+    # for each file, if either the file is NOT a file (that is, a folder, shortcut, etc.), OR if the file is
+    # not a Java or C/C++ file, skip it
+    for path in input_folder.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in file_extensions:
+            continue
+
+        # Read text from file
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            text = path.read_text(encoding="latin-1")
+
+        # Strip comments
+        cleaned = strip_gradescope_comments(text)
+
+        # Add _anon suffix to filename, create output path using provided folder
+        rel = path.relative_to(input_folder)
+        anon_name = rel.with_name(rel.stem + "_anon" + rel.suffix)
+        out_path = output_folder / anon_name
+
+        # Ensure directory exists
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write anonymized file
+        out_path.write_text(cleaned, encoding="utf-8")
+
+        print(f"Gradescope Submissions Processed: {path} -> {out_path}")
 
 def run_shoggoth_bulk(course, lang, config_file, semester):
     r"""
