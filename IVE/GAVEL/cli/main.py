@@ -9,6 +9,9 @@ from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_canvas_client, build_roster_client
 from GAVEL.cli.commands.canvas_course import handle_canvas_course_download
+from GAVEL.cli.commands.canvas_course_dataset import (
+    handle_canvas_course_dataset_download,
+)
 from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
 from GAVEL.cli.commands.gradescope_download import handle_gradescope_download
 from GAVEL.cli.commands.quiz_analysis import handle_quiz_analysis_download
@@ -46,6 +49,30 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory where the JSON course data will be written",
     )
     download_parser.set_defaults(handler=handle_canvas_course_download)
+
+    dataset_parser = canvas_subparsers.add_parser(
+        "download-dataset",
+        help="Download full Canvas dataset (gradebook, consent form, rubric assessments)",
+    )
+
+    dataset_parser.add_argument(
+        "--course-id", type=int, required=True, help="Canvas course numeric identifier"
+    )
+    dataset_parser.add_argument(
+        "--quiz-id", type=int, required=True, help="Canvas quiz numeric identifier"
+    )
+    dataset_parser.add_argument(
+        "--assignment-ids",
+        default="",
+        help="Comma-separated assignment IDs (e.g. 1,2,3)",
+    )
+    dataset_parser.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory where dataset will be written",
+    )
+
+    dataset_parser.set_defaults(handler=handle_canvas_course_dataset_download)
 
     gradebook_parser = subparsers.add_parser("canvas-gradebook", help="Canvas gradebook operations")
     gradebook_subparsers = gradebook_parser.add_subparsers(dest="gradebook_command", required=True)
