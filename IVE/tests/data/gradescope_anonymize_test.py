@@ -1,5 +1,4 @@
 import preparation
-import zipfile
 
 
 def test_simple_line_comment():
@@ -48,12 +47,14 @@ def test_sloppy_comment_markers():
     result = preparation.strip_gradescope_comments(src)
     assert result == expected
 
+
 def test_acuna_exception():
     src = "/* blah blah */int x = 1;"
     expected = "int x = 1;"
     result = preparation.strip_gradescope_comments(src)
     print(result)
     assert result == expected
+
 
 # def test_bulk_comment_strip():
 #     with zipfile.ZipFile('data_original/submissions/Module 2 Programming.zip', 'r') as gradescope_zip:
