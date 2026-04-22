@@ -118,7 +118,7 @@ def test_fetch_gradebook_csv_builds_csv_from_grouped_submissions():
     result = client.fetch_gradebook_csv(course_id=456).decode("utf-8")
 
     expected_header = (
-        "Student Name,Student ID,SIS User ID,SIS Login ID,Section,"
+        "Student,ID,SIS User ID,SIS Login ID,Section,"
         "Assignment A (10),Assignment B (11),Activities Total,Final Grade"
     )
     assert expected_header in result
@@ -294,7 +294,7 @@ def test_fetch_gradebook_csv_writes_blank_and_weights_rows():
     rows = client.fetch_gradebook_csv(course_id=456).decode("utf-8").splitlines()
 
     assert rows[0] == (
-        "Student Name,Student ID,SIS User ID,SIS Login ID,Section,"
+        "Student,ID,SIS User ID,SIS Login ID,Section,"
         "Assignment A (10),Activities Total,Final Grade"
     )
     assert rows[1] == ",,,,,,,"

@@ -109,8 +109,8 @@ class HttpCanvasClient(CanvasClient):
         writer = csv.writer(output)
 
         header = [
-            "Student Name",
-            "Student ID",
+            "Student",
+            "ID",
             "SIS User ID",
             "SIS Login ID",
             "Section",
