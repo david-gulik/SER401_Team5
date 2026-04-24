@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule
+from GAVEL.app.dtos.canvas_course import CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
 from GAVEL.app.ports.canvas_client import CanvasClient
@@ -177,7 +177,9 @@ class TestEmptyAssessments:
         path = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
         assert json.loads(path.read_text()) == []
 
-    def test_output_file_still_created_when_no_assessments(self, use_case, request_, client, tmp_path):
+    def test_output_file_still_created_when_no_assessments(
+        self, use_case, request_, client, tmp_path
+    ):
         client.rubric_assessments = []
         use_case.execute(request_)
         assert (tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json").exists()
@@ -214,41 +216,51 @@ class TestApiErrors:
 class TestValidation:
     def test_raises_for_zero_course_id(self, use_case, tmp_path):
         with pytest.raises(ValueError, match="course_id must be greater than zero"):
-            use_case.execute(DownloadRubricAssessmentRequest(
-                course_id=0,
-                assignment_id=ASSIGNMENT_ID,
-                output_dir=tmp_path,
-            ))
+            use_case.execute(
+                DownloadRubricAssessmentRequest(
+                    course_id=0,
+                    assignment_id=ASSIGNMENT_ID,
+                    output_dir=tmp_path,
+                )
+            )
 
     def test_raises_for_negative_course_id(self, use_case, tmp_path):
         with pytest.raises(ValueError, match="course_id must be greater than zero"):
-            use_case.execute(DownloadRubricAssessmentRequest(
-                course_id=-1,
-                assignment_id=ASSIGNMENT_ID,
-                output_dir=tmp_path,
-            ))
+            use_case.execute(
+                DownloadRubricAssessmentRequest(
+                    course_id=-1,
+                    assignment_id=ASSIGNMENT_ID,
+                    output_dir=tmp_path,
+                )
+            )
 
     def test_raises_for_zero_assignment_id(self, use_case, tmp_path):
         with pytest.raises(ValueError, match="assignment_id must be greater than zero"):
-            use_case.execute(DownloadRubricAssessmentRequest(
-                course_id=COURSE_ID,
-                assignment_id=0,
-                output_dir=tmp_path,
-            ))
+            use_case.execute(
+                DownloadRubricAssessmentRequest(
+                    course_id=COURSE_ID,
+                    assignment_id=0,
+                    output_dir=tmp_path,
+                )
+            )
 
     def test_raises_for_negative_assignment_id(self, use_case, tmp_path):
         with pytest.raises(ValueError, match="assignment_id must be greater than zero"):
-            use_case.execute(DownloadRubricAssessmentRequest(
-                course_id=COURSE_ID,
-                assignment_id=-1,
-                output_dir=tmp_path,
-            ))
+            use_case.execute(
+                DownloadRubricAssessmentRequest(
+                    course_id=COURSE_ID,
+                    assignment_id=-1,
+                    output_dir=tmp_path,
+                )
+            )
 
     def test_client_not_called_for_invalid_request(self, use_case, tmp_path, client):
         with pytest.raises(ValueError):
-            use_case.execute(DownloadRubricAssessmentRequest(
-                course_id=0,
-                assignment_id=ASSIGNMENT_ID,
-                output_dir=tmp_path,
-            ))
+            use_case.execute(
+                DownloadRubricAssessmentRequest(
+                    course_id=0,
+                    assignment_id=ASSIGNMENT_ID,
+                    output_dir=tmp_path,
+                )
+            )
         assert client.fetch_rubric_calls == []
