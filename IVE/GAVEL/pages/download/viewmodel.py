@@ -17,6 +17,10 @@ from GAVEL.app.usecases.download_consent_form import (
     DownloadConsentFormUseCase,
 )
 from GAVEL.app.usecases.download_gradebook import DownloadGradebookRequest, DownloadGradebookUseCase
+from GAVEL.app.usecases.download_gradescope_submissions import (
+    DownloadGradescopeSubmissionsRequest,
+    DownloadGradescopeSubmissionsUseCase,
+)
 from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
 from GAVEL.services.logger import AppLogger
@@ -70,6 +74,10 @@ class DownloadUiState:
     @property
     def canvas_token_available(self) -> bool:
         return os.getenv("CANVAS_TOKEN") is not None
+
+    @property
+    def canvas_credentials_available(self) -> bool:
+        return bool(os.getenv("CANVAS_USERNAME")) and bool(os.getenv("CANVAS_PASSWORD"))
 
 
 @dataclass(frozen=True)
@@ -342,6 +350,40 @@ class DownloadViewModel(QObject):
             )
         except Exception as exc:  # noqa: BLE001
             self._logger.error(f"Gradebook download failed: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            self.event_raised.emit(ShowError(str(exc)))
+            return
+
+        self._state = replace(
+            self._state,
+            is_busy=False,
+            status=Status.NOMINAL,
+            message=result.message,
+            last_saved_path=str(result.saved_path),
+        )
+        self.state_changed.emit(self._state)
+        self.event_raised.emit(ShowInfo(result.message))
+
+    def download_gradescope_submissions(self) -> None:
+        if self._state.is_busy:
+            return
+        course_id_str = self._state.selected_course_id.strip()
+        if not course_id_str:
+            self._emit_error("Select a course first.")
+            return
+        try:
+            course_id = int(course_id_str)
+        except ValueError:
+            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+            return
+
+        self._set_busy(f"Downloading Gradescope submissions for course {course_id}...")
+        try:
+            result = DownloadGradescopeSubmissionsUseCase().execute(
+                DownloadGradescopeSubmissionsRequest(course_id=course_id)
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Gradescope submissions download failed: {exc}")
             self._set_idle(Status.CRITICAL, str(exc))
             self.event_raised.emit(ShowError(str(exc)))
             return
