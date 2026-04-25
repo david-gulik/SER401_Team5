@@ -59,6 +59,17 @@ class GradescopeClient:
         self.assignments_suffix = os.getenv("GRADESCOPE_ASSIGNMENTS_SUFFIX")
         self.review_grades_suffix = os.getenv("GRADESCOPE_REVIEW_GRADES_SUFFIX")
         self.generated_files_suffix = os.getenv("GRADESCOPE_GENERATED_FILES_SUFFIX")
+        self.submissions_folder = os.getenv("SUBMISSIONS_FOLDER")
+
+        env_variables = [(self.base_url, "GRADESCOPE_BASE_URL"), (self.courses_suffix, "GRADESCOPE_COURSES_SUFFIX"), (self.assignments_suffix, "GRADESCOPE_ASSIGNMENTS_SUFFIX"), (self.review_grades_suffix, "GRADESCOPE_REVIEW_GRADES_SUFFIX"),
+                         (self.generated_files_suffix, "GRADESCOPE_GENERATED_FILES_SUFFIX"), (self.submissions_folder, "SUBMISSIONS_FOLDER")]
+        empty_env_variables = []
+        for e in env_variables:
+            if None in e:
+                empty_env_variables.append(e[-1])
+        if empty_env_variables:
+            raise ValueError(f"Certain required environment variables are empty: {empty_env_variables}")
+
 
     # -------------------------
     # Driver
@@ -268,10 +279,8 @@ class GradescopeClient:
 
         assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
 
-        for a in assignments:
-            print(a, assignments[a])
-
-        sub_folder = os.getenv("SUBMISSIONS_FOLDER")
+        # for a in assignments:
+        #     print(a, assignments[a])
 
         for name, assignment_id in assignments.items():
             # download autograder also!
@@ -284,7 +293,7 @@ class GradescopeClient:
                 log.info("Downloading Autograder for assignment: %s", name)
                 autograder_download = session.get(href)
                 safe_name = self.remove_illegal_download_characters(name)
-                output_path = os.path.join(sub_folder, safe_name + "_autograder.zip")
+                output_path = os.path.join(self.submissions_folder, safe_name + "_autograder.zip")
                 with open(output_path, "wb") as f:
                     f.write(autograder_download.content)
 
@@ -301,8 +310,8 @@ class GradescopeClient:
                 zip_resp = session.get(f"{self.base_url}" + link["href"])
 
                 safe_name = self.remove_illegal_download_characters(name)
-                print(sub_folder, safe_name)
-                output_path = os.path.join(sub_folder, safe_name + ".zip")
+                print(self.submissions_folder, safe_name)
+                output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
 
                 with open(output_path, "wb") as f:
                     f.write(zip_resp.content)
@@ -344,8 +353,8 @@ class GradescopeClient:
             zip_resp = session.get(zip_url)
 
             safe_name = self.remove_illegal_download_characters(name)
-            print(sub_folder, safe_name)
-            output_path = os.path.join(sub_folder, safe_name + ".zip")
+            print(self.submissions_folder, safe_name)
+            output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
 
             with open(output_path, "wb") as f:
                 f.write(zip_resp.content)
@@ -361,7 +370,6 @@ class GradescopeClient:
 
 def main():
     return
-
 
 #     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
 #         log.error("ERROR: Must enter courseID as integer for argument!")
