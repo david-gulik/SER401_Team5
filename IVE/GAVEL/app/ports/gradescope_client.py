@@ -61,15 +61,26 @@ class GradescopeClient:
         self.generated_files_suffix = os.getenv("GRADESCOPE_GENERATED_FILES_SUFFIX")
         self.submissions_folder = os.getenv("SUBMISSIONS_FOLDER")
 
-        env_variables = [(self.base_url, "GRADESCOPE_BASE_URL"), (self.courses_suffix, "GRADESCOPE_COURSES_SUFFIX"), (self.assignments_suffix, "GRADESCOPE_ASSIGNMENTS_SUFFIX"), (self.review_grades_suffix, "GRADESCOPE_REVIEW_GRADES_SUFFIX"),
-                         (self.generated_files_suffix, "GRADESCOPE_GENERATED_FILES_SUFFIX"), (self.submissions_folder, "SUBMISSIONS_FOLDER")]
+        env_variables = [
+            (self.base_url, "GRADESCOPE_BASE_URL"),
+            (self.courses_suffix, "GRADESCOPE_COURSES_SUFFIX"),
+            (self.assignments_suffix, "GRADESCOPE_ASSIGNMENTS_SUFFIX"),
+            (self.review_grades_suffix, "GRADESCOPE_REVIEW_GRADES_SUFFIX"),
+            (self.generated_files_suffix, "GRADESCOPE_GENERATED_FILES_SUFFIX"),
+            (self.submissions_folder, "SUBMISSIONS_FOLDER"),
+        ]
         empty_env_variables = []
         for e in env_variables:
             if None in e:
                 empty_env_variables.append(e[-1])
         if empty_env_variables:
-            raise ValueError(f"Certain required environment variables are empty: {empty_env_variables}")
-
+            raise ValueError(
+                f"Certain required environment variables are empty: {empty_env_variables}"
+            )
+        if os.getenv("CANVAS_USERNAME") is None or os.getenv("CANVAS_PASSWORD") is None:
+            log.error(
+                "NOTICE: You can add your Canvas login as CANVAS_USERNAME and CANVAS_PASSWORD in your .env file for easier login!"
+            )
 
     # -------------------------
     # Driver
@@ -370,6 +381,7 @@ class GradescopeClient:
 
 def main():
     return
+
 
 #     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
 #         log.error("ERROR: Must enter courseID as integer for argument!")
