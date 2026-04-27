@@ -5,7 +5,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
+
+from GAVEL.services.env_service import SCHEMA_NAMES
 
 
 @dataclass(frozen=True)
@@ -37,10 +39,27 @@ class AppConfig:
 
 class ConfigService:
     def __init__(self, env: Mapping[str, str] | None = None) -> None:
+        self._env_path = Path(__file__).resolve().parents[2] / ".env"
+        self._env_override = env
         if env is None:
-            _project_root = Path(__file__).resolve().parents[2]
-            load_dotenv(_project_root / ".env")
-        source = env or os.environ
+            load_dotenv(self._env_path)
+        self._config = self._build()
+
+    @property
+    def env_path(self) -> Path:
+        return self._env_path
+
+    def get(self) -> AppConfig:
+        return self._config
+
+    def reload(self) -> None:
+        """Re-read .env from disk and rebuild the AppConfig snapshot."""
+        if self._env_override is None:
+            load_dotenv(self._env_path, override=True)
+        self._config = self._build()
+
+    def _build(self) -> AppConfig:
+        source = self._resolve_source()
         canvas_cfg = CanvasConfig(
             base_url=source.get("CANVAS_BASE_URL"),
             token=source.get("CANVAS_TOKEN"),
@@ -58,7 +77,23 @@ class ConfigService:
             page_load_timeout=int(source.get("ROSTER_PAGE_LOAD_TIMEOUT", "30")),
             token_exchange_timeout=int(source.get("ROSTER_TOKEN_EXCHANGE_TIMEOUT", "30")),
         )
-        self._config = AppConfig(canvas=canvas_cfg, roster=roster_cfg)
+        return AppConfig(canvas=canvas_cfg, roster=roster_cfg)
 
-    def get(self) -> AppConfig:
-        return self._config
+    def _resolve_source(self) -> Mapping[str, str]:
+        if self._env_override is not None:
+            return self._env_override
+        # File is authoritative for documented schema keys; for anything else
+        # (e.g. CANVAS_ACCOUNT_ID set in the shell, CI overrides) fall back
+        # to the process environment.
+        try:
+            file_values = {
+                k: v for k, v in dict(dotenv_values(self._env_path) or {}).items() if v is not None
+            }
+        except OSError:
+            file_values = {}
+        merged: dict[str, str] = {**os.environ}
+        merged.update(file_values)
+        for name in SCHEMA_NAMES:
+            if name not in file_values:
+                merged.pop(name, None)
+        return merged

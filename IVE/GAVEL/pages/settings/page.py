@@ -5,8 +5,9 @@ from PyQt6.QtWidgets import QTabWidget, QVBoxLayout
 from GAVEL.app_context import AppContext
 from GAVEL.core.base_page import BasePage
 from GAVEL.core.page_registry import PageRegistry, PageSpec
-from GAVEL.pages.settings.tabs import AboutTab, PreferencesTab
+from GAVEL.pages.settings.tabs import AboutTab, EnvironmentTab, PreferencesTab
 from GAVEL.pages.settings.viewmodel import SettingsViewModel
+from GAVEL.services.env_service import EnvService
 
 
 class SettingsPage(BasePage):
@@ -17,8 +18,8 @@ class SettingsPage(BasePage):
         super().__init__()
         self._theme = ctx.theme
 
-        # Page-scoped VM, shared across settings tabs
-        self._vm = SettingsViewModel(ctx.config, ctx.logger)
+        self._env_service = EnvService(ctx.config.env_path)
+        self._vm = SettingsViewModel(ctx.config, self._env_service, ctx.logger)
 
         self._tabs = QTabWidget()
         for tab_title, tab_widget in self.build_tabs():
@@ -29,6 +30,7 @@ class SettingsPage(BasePage):
 
     def build_tabs(self):
         return [
+            ("Environment", EnvironmentTab(self._theme, self._vm)),
             ("Preferences", PreferencesTab(self._theme, self._vm)),
             ("About", AboutTab(self._theme, self._vm)),
         ]
