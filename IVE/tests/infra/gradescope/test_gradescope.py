@@ -59,8 +59,10 @@ def test_download_all_assignments(mock_session_cls, _):
 
     # Fake responses for each GET call
     assignments_html = """
-        <div data-assignment-id="123456">Module 3: Programming</div>
+        <div data-assignment-id="123456" aria-describedby="course-999">Module 3: Programming</div>
     """
+
+    autograder_html = "<html></html>"
 
     review_grades_html = """
         <a class="js-bulkExportModalDownload" href="/submissions.zip"></a>
@@ -68,9 +70,10 @@ def test_download_all_assignments(mock_session_cls, _):
 
     zip_bytes = b"SUBMISSIONS.ZIP"
 
-    # GET assignments page, GET review_grades, GET zip download
+    # GET assignments page, GET autograder page, GET review_grades, GET zip download
     mock_session.get.side_effect = [
         MagicMock(text=assignments_html),  # assignments list
+        MagicMock(text=autograder_html),  # autograder configure page (no link)
         MagicMock(text=review_grades_html),  # review page
         MagicMock(content=zip_bytes),  # ZIP download
     ]
@@ -86,5 +89,5 @@ def test_download_all_assignments(mock_session_cls, _):
     with patch("builtins.open", MagicMock()):
         client.download_all_assignments("user", "password")
 
-    # assert we made three GET calls in the previous series
-    assert mock_session.get.call_count == 3
+    # assert we made four GET calls in the previous series
+    assert mock_session.get.call_count == 4
