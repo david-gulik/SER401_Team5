@@ -137,7 +137,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output", "-o", required=True, help="Directory where the JSON file will be written"
     )
     rubric_dl.set_defaults(handler=handle_rubric_assessment_download)
-    
+
     # consent form commands
     consent_parser = subparsers.add_parser("consent_form", help="Canvas consent form operations")
     consent_subparsers = consent_parser.add_subparsers(dest="consent_command", required=True)
