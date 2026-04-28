@@ -57,4 +57,5 @@ Desktop.ini
 .pyright/
 
 # Download storage
-/data_original/submissions/
+/data_original
+/data_processed

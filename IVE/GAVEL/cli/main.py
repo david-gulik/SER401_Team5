@@ -16,6 +16,7 @@ from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
 from GAVEL.cli.commands.gradescope_download import handle_gradescope_download
 from GAVEL.cli.commands.quiz_analysis import handle_quiz_analysis_download
 from GAVEL.cli.commands.roster import handle_roster_download, handle_roster_list_terms
+from GAVEL.cli.commands.rubric_assessment import handle_rubric_assessment_download
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger
 from GAVEL.theme.context import ThemeContext
@@ -118,6 +119,23 @@ def _build_parser() -> argparse.ArgumentParser:
     quiz_dl.add_argument("--quiz-id", required=True, help="Canvas quiz numeric identifier")
     quiz_dl.add_argument("--output", "-o", help="Save CSV to this file (default: stdout)")
     quiz_dl.set_defaults(handler=handle_quiz_analysis_download)
+
+    # rubric commands
+    rubric_parser = subparsers.add_parser("rubric", help="Canvas rubric assessment operations")
+    rubric_subparsers = rubric_parser.add_subparsers(dest="rubric_command", required=True)
+
+    # rubric download
+    rubric_dl = rubric_subparsers.add_parser(
+        "download", help="Download rubric assessments for an assignment"
+    )
+    rubric_dl.add_argument("--course-id", required=True, help="Canvas course numeric identifier")
+    rubric_dl.add_argument(
+        "--assignment-id", required=True, help="Canvas assignment numeric identifier"
+    )
+    rubric_dl.add_argument(
+        "--output", "-o", required=True, help="Directory where the JSON file will be written"
+    )
+    rubric_dl.set_defaults(handler=handle_rubric_assessment_download)
 
     # Gradescope downloader parser
     gradescope_parser = subparsers.add_parser("gradescope", help="Gradescope Submission Downloader")
