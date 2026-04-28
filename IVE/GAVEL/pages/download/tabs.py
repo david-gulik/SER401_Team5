@@ -122,6 +122,15 @@ class DownloadTab(ScrollableTab):
         self._download_consent_btn.setProperty("role", "primary")
 
         # Gradescope submissions
+        self._gradescope_credentials_warning = QLabel(
+            "Warning: CANVAS_USERNAME and/or CANVAS_PASSWORD not found in .env file. "
+            "Please set them to use Gradescope features."
+        )
+        self._gradescope_credentials_warning.setProperty("role", "warning")
+        self._gradescope_credentials_warning.setWordWrap(True)
+        self._gradescope_credentials_warning.hide()
+        self._gradescope_credentials_recheck_btn = QPushButton("Recheck")
+        self._gradescope_credentials_recheck_btn.hide()
         self._download_gradescope_btn = QPushButton("Download Submissions")
         self._download_gradescope_btn.setToolTip("Requires a valid course to be selected above.")
         self._download_gradescope_btn.setProperty("role", "primary")
@@ -163,6 +172,7 @@ class DownloadTab(ScrollableTab):
         self._download_all_btn.clicked.connect(self._on_download_all)
 
         self._canvas_recheck_btn.clicked.connect(self._vm.recheck)
+        self._gradescope_credentials_recheck_btn.clicked.connect(self._vm.recheck)
         self._load_courses_btn.clicked.connect(self._vm.load_courses)
         self._vm.state_changed.connect(self.render)
         self._vm.event_raised.connect(self._handle_event)
@@ -306,6 +316,15 @@ class DownloadTab(ScrollableTab):
 
         # Gradescope Submissions
         gradescope_panel = SubPanel(self._theme, "Gradescope Submissions")
+
+        gradescope_warning_row = QWidget()
+        gradescope_warning_layout = QHBoxLayout(gradescope_warning_row)
+        gradescope_warning_layout.setContentsMargins(0, 0, 0, 0)
+        set_spacing(gradescope_warning_layout, self._theme, 8)
+        gradescope_warning_layout.addWidget(self._gradescope_credentials_warning, 1)
+        gradescope_warning_layout.addWidget(self._gradescope_credentials_recheck_btn)
+        gradescope_panel.add_widget(gradescope_warning_row)
+
         gradescope_panel.add_widget(self._download_gradescope_btn)
         card.add_row(gradescope_panel)
 
@@ -375,7 +394,7 @@ class DownloadTab(ScrollableTab):
         self._vm.download_consent()
 
     def _on_download_gradescope(self) -> None:
-        pass
+        self._vm.download_gradescope_submissions()
 
     def _on_download_all(self) -> None:
         pass
@@ -400,6 +419,9 @@ class DownloadTab(ScrollableTab):
         token_missing = not state.canvas_token_available
         self._canvas_warning.setVisible(token_missing)
         self._canvas_recheck_btn.setVisible(token_missing)
+        credentials_missing = not state.canvas_credentials_available
+        self._gradescope_credentials_warning.setVisible(credentials_missing)
+        self._gradescope_credentials_recheck_btn.setVisible(credentials_missing)
         self._status_pill.set_status(state.status)
         self._message_label.setText(state.message)
 
