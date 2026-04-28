@@ -40,7 +40,5 @@ class DownloadGradescopeSubmissionsUseCase:
         client.download_all_assignments(username=username, password=password)
 
         saved_path = Path(client.submissions_folder)
-        message = (
-            f"Gradescope submissions for course {request.course_id} saved to {saved_path}"
-        )
+        message = f"Gradescope submissions for course {request.course_id} saved to {saved_path}"
         return DownloadGradescopeSubmissionsResult(saved_path=saved_path, message=message)
