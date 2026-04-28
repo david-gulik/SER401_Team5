@@ -121,6 +121,13 @@ class DownloadTab(ScrollableTab):
         )
         self._download_consent_btn.setProperty("role", "primary")
 
+        # Canvas - Rubric Assessment
+        self._assignment_id_input = QLineEdit()
+        self._assignment_id_input.setPlaceholderText("e.g. 7216983")
+        self._download_rubric_btn = QPushButton("Download Rubric Assessment")
+        self._download_rubric_btn.setProperty("role", "primary")
+        self._download_rubric_btn.setToolTip("Requires a valid course and assignment ID.")
+
         # Gradescope submissions
         self._gradescope_credentials_warning = QLabel(
             "Warning: CANVAS_USERNAME and/or CANVAS_PASSWORD not found in .env file. "
@@ -163,6 +170,8 @@ class DownloadTab(ScrollableTab):
         self._course_combo.currentIndexChanged.connect(self._on_course_changed)
         self._course_id_override.textChanged.connect(self._vm.set_course_id)
         self._consent_quiz_combo.currentIndexChanged.connect(self._on_consent_quiz_changed)
+        self._assignment_id_input.textChanged.connect(self._vm.set_assignment_id)
+        self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
 
         # Stubs: controls added for the new scaffold. Functionality lands later.
         self._reset_path_btn.clicked.connect(self._on_reset_path)
@@ -314,6 +323,17 @@ class DownloadTab(ScrollableTab):
         consent_panel.add_widget(self._download_consent_btn)
         card.add_row(consent_panel)
 
+        # Rubric Assessment
+        rubric_panel = SubPanel(self._theme, "Rubric Assessment")
+        rubric_host = QWidget()
+        rubric_form = QFormLayout(rubric_host)
+        rubric_form.setContentsMargins(0, 0, 0, 0)
+        set_spacing(rubric_form, self._theme, 8)
+        rubric_form.addRow("Assignment ID", self._assignment_id_input)
+        rubric_panel.add_widget(rubric_host)
+        rubric_panel.add_widget(self._download_rubric_btn)
+        card.add_row(rubric_panel)
+
         # Gradescope Submissions
         gradescope_panel = SubPanel(self._theme, "Gradescope Submissions")
 
@@ -433,6 +453,7 @@ class DownloadTab(ScrollableTab):
         self._download_gradebook_btn.setEnabled(not busy and state.can_download_gradebook)
         self._download_gradescope_btn.setEnabled(not busy and state.can_download_submissions)
         self._download_consent_btn.setEnabled(not busy and state.can_download_consent)
+        self._download_rubric_btn.setEnabled(not busy and state.can_download_rubric)
         self._download_all_btn.setEnabled(not busy and state.can_download_all)
 
         if state.terms and self._term_combo.count() != len(state.terms):

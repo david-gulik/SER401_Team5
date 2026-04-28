@@ -21,6 +21,10 @@ from GAVEL.app.usecases.download_gradescope_submissions import (
     DownloadGradescopeSubmissionsRequest,
     DownloadGradescopeSubmissionsUseCase,
 )
+from GAVEL.app.usecases.download_rubric_assessment import (
+    DownloadRubricAssessmentRequest,
+    DownloadRubricAssessmentUseCase,
+)
 from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
 from GAVEL.services.logger import AppLogger
@@ -33,6 +37,7 @@ class DownloadUiState:
     subject: str = ""
     catalog_number: str = ""
     class_number: str = ""
+    assignment_id: str = ""
     courses: Sequence[CanvasCourse] = ()
     quizzes: Sequence[CanvasQuiz] = ()
     sections: Sequence[ClassSection] = ()
@@ -61,6 +66,10 @@ class DownloadUiState:
     @property
     def can_download_consent(self) -> bool:
         return bool(self.selected_course_id) and bool(self.selected_consent_quiz_id)
+
+    @property
+    def can_download_rubric(self) -> bool:
+        return bool(self.selected_course_id) and bool(self.assignment_id.strip())
 
     @property
     def can_download_all(self) -> bool:
@@ -175,6 +184,13 @@ class DownloadViewModel(QObject):
         self._state = replace(self._state, selected_consent_quiz_id=text)
         self.state_changed.emit(self._state)
         self._logger.info(f"Selected consent quiz ID set to {text}")
+
+    def set_assignment_id(self, value: str) -> None:
+        text = value.strip()
+        if text == self._state.assignment_id:
+            return
+        self._state = replace(self._state, assignment_id=text)
+        self.state_changed.emit(self._state)
 
     # Actions
 
@@ -425,6 +441,51 @@ class DownloadViewModel(QObject):
             )
         except Exception as exc:  # noqa: BLE001
             self._logger.error(f"Consent form download failed: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            self.event_raised.emit(ShowError(str(exc)))
+            return
+
+        self._state = replace(
+            self._state,
+            is_busy=False,
+            status=Status.NOMINAL,
+            message=result.message,
+            last_saved_path=str(result.saved_path),
+        )
+        self.state_changed.emit(self._state)
+        self.event_raised.emit(ShowInfo(result.message))
+
+    def download_rubric_assessment(self) -> None:
+        if self._state.is_busy:
+            return
+        course_id_str = self._state.selected_course_id.strip()
+        assignment_id_str = self._state.assignment_id.strip()
+        if not course_id_str:
+            self._emit_error("Select a course first.")
+            return
+        if not assignment_id_str:
+            self._emit_error("Enter an assignment ID first.")
+            return
+        try:
+            course_id = int(course_id_str)
+            assignment_id = int(assignment_id_str)
+        except ValueError:
+            self._emit_error("Course ID and Assignment ID must be numeric.")
+            return
+
+        self._set_busy(
+            f"Downloading rubric assessment for course {course_id}, assignment {assignment_id}..."
+        )
+        try:
+            result = DownloadRubricAssessmentUseCase(self._canvas_client).execute(
+                DownloadRubricAssessmentRequest(
+                    course_id=course_id,
+                    assignment_id=assignment_id,
+                    output_dir=self._output_dir,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Rubric assessment download failed: {exc}")
             self._set_idle(Status.CRITICAL, str(exc))
             self.event_raised.emit(ShowError(str(exc)))
             return
