@@ -76,7 +76,7 @@ def process(filename_gradebook: str, filename_roster: str, filename_consent: str
 def generate_id_map(path_gradebook: str) -> dict[int, int]:
     """
     Generates an int to int map from original gradebook IDs to randomly generated four-digit IDs. Used for protocols
-    performing global (rather than local) anonymization that preserve the same anonymized ID across multiple items.
+    performing global (rather than local) temp_anonymization that preserve the same anonymized ID across multiple items.
     Mapping is stored only in memory and never saved to storage.
 
     :param path_gradebook: input gradebook.
