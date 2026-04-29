@@ -4,6 +4,11 @@ import re
 import sys
 import time
 from dataclasses import dataclass
+from rich.progress import Progress, TaskID
+import aiohttp
+import asyncio
+
+
 
 import requests
 from bs4 import BeautifulSoup
@@ -249,114 +254,327 @@ class GradescopeClient:
 
         return session
 
-    def download_all_assignments(self, username: str, password: str):
+    async def fetch_assignments_async(self, username: str, password: str):
         """
-        Logs in, captures session, and downloads all assignment bulk exports.
+        Logs in, captures session, and returns:
+        - aiohttp session
+        - course_id
+        - {assignment_name: assignment_id}
         """
 
         gs_session, gs_course_id = self.capture_session(username, password)
-        session = self._build_requests_session(gs_session, course_id=gs_course_id)
 
-        # Fetch assignments list
-        resp = session.get(
-            f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}"
-        )
-        print(f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}")
-        soup = BeautifulSoup(resp.text, "html.parser")
+        # Build aiohttp session with cookies
+        jar = aiohttp.CookieJar()
+        jar.update_cookies(gs_session.all_cookies)
+
+        session = aiohttp.ClientSession(cookie_jar=jar)
+
+        url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}"
+        async with session.get(url) as resp:
+            text = await resp.text()
+
+        soup = BeautifulSoup(text, "html.parser")
         elements = soup.find_all(
             attrs={"data-assignment-id": True, "aria-describedby": f"course-{gs_course_id}"}
         )
 
         assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
 
-        for a in assignments:
-            print(a, assignments[a])
+        return session, gs_course_id, assignments
+
+    async def download_assignment_async(
+            self,
+            session,
+            course_id,
+            assignment_id,
+            name,
+            sub_folder,
+            progress: Progress,
+            task_id: TaskID
+    ):
+        """
+        Downloads a single assignment export using aiohttp with progress bars.
+        """
+
+        review_url = (
+            f"{self.base_url}{self.courses_suffix}/{course_id}"
+            f"{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
+        )
+
+        async with session.get(review_url) as resp:
+            html = await resp.text()
+
+        soup = BeautifulSoup(html, "html.parser")
+        link = soup.find("a", class_="js-bulkExportModalDownload")
+
+        safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+        output_path = os.path.join(sub_folder, safe_name + ".zip")
+
+        # Case 1: Export already exists
+        if link and ".zip" in link["href"]:
+            zip_url = f"{self.base_url}{link['href']}"
+            async with session.get(zip_url) as zip_resp:
+                total = zip_resp.content_length or 1
+                downloaded = 0
+
+                with open(output_path, "wb") as f:
+                    async for chunk in zip_resp.content.iter_chunked(8192):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        progress.update(task_id, completed=downloaded, total=total)
+
+            progress.update(task_id, completed=total)
+            await self.download_autograder_async(
+                session, course_id, assignment_id, name, sub_folder
+            )
+            return
+
+        # Case 2: Need to trigger export
+
+        csrf = soup.find("meta", attrs={"name": "csrf-token"})["content"]
+        headers = {"X-CSRF-Token": csrf, "Referer": review_url}
+
+        export_url = (
+            f"{self.base_url}{self.courses_suffix}/{course_id}"
+            f"{self.assignments_suffix}/{assignment_id}/export"
+        )
+
+        async with session.post(export_url, headers=headers) as export_resp:
+            data = await export_resp.json()
+
+        file_id = data["generated_file_id"]
+
+        # Polling progress
+        poll_url = (
+            f"{self.base_url}{self.courses_suffix}/{course_id}"
+            f"{self.generated_files_suffix}/{file_id}.json"
+        )
+
+        while True:
+            async with session.get(poll_url) as poll_resp:
+                poll_data = await poll_resp.json()
+
+            progress.update(task_id, completed=poll_data["progress"] * 100)
+
+            if poll_data["progress"] == 1.0:
+                break
+
+            await asyncio.sleep(0.5)
+
+        # Download final ZIP
+        zip_url = (
+            f"{self.base_url}{self.courses_suffix}/{course_id}"
+            f"{self.generated_files_suffix}/{file_id}.zip"
+        )
+
+        async with session.get(zip_url) as zip_resp:
+            total = zip_resp.content_length or 1
+            downloaded = 0
+
+            with open(output_path, "wb") as f:
+                async for chunk in zip_resp.content.iter_chunked(8192):
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    progress.update(task_id, completed=downloaded, total=total)
+
+        progress.update(task_id, completed=total)
+        await self.download_autograder_async(
+            session, course_id, assignment_id, name, sub_folder
+        )
+
+    async def download_autograder_async(self, session, course_id, assignment_id, name, sub_folder):
+        autograder_url = (
+            f"{self.base_url}{self.courses_suffix}/{course_id}"
+            f"{self.assignments_suffix}/{assignment_id}/configure_autograder"
+        )
+
+        async with session.get(autograder_url) as resp:
+            html = await resp.text()
+
+        soup = BeautifulSoup(html, "html.parser")
+        link = soup.find("a", string=lambda t: t and "Download Autograder" in t)
+
+        # if no autograder, skip it
+
+        if not link or ".zip" not in link["href"]:
+            return
+
+        href = link["href"]
+        safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+        output_path = os.path.join(sub_folder, safe_name + "_autograder.zip")
+
+        async with session.get(href) as dl:
+            total = dl.content_length or 1
+            downloaded = 0
+
+            with open(output_path, "wb") as f:
+                async for chunk in dl.content.iter_chunked(8192):
+                    f.write(chunk)
+                    downloaded += len(chunk)
+
+        return output_path
+
+    async def download_all_assignments_async(self, username: str, password: str):
+        session, course_id, assignments = await self.fetch_assignments_async(username, password)
+        initial_sub_folder = os.getenv("SUBMISSIONS_FOLDER")
 
         sub_folder = os.getenv("SUBMISSIONS_FOLDER")
 
-        for name, assignment_id in assignments.items():
-            review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
-            print("Review_grades URL: ", review_url)
-            resp = session.get(review_url)
-            soup = BeautifulSoup(resp.text, "html.parser")
+        with Progress() as progress:
+            tasks = []
 
-            link = soup.find("a", class_="js-bulkExportModalDownload")
+            for name, assignment_id in assignments.items():
+                task_id = progress.add_task(f"[cyan]{name}", total=100)
 
-            # Case 1: Export already exists
-            if link and ".zip" in link["href"]:
-                log.info("Downloading assignment: %s", name)
-                zip_resp = session.get(f"{self.base_url}" + link["href"])
+                tasks.append(
+                    self.download_assignment_async(
+                        session,
+                        course_id,
+                        assignment_id,
+                        name,
+                        sub_folder,
+                        progress,
+                        task_id
+                    )
+                )
 
-                safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
-                print(sub_folder, safe_name)
-                output_path = os.path.join(sub_folder, safe_name + ".zip")
+            await asyncio.gather(*tasks)
 
-                with open(output_path, "wb") as f:
-                    f.write(zip_resp.content)
+        await session.close()
+        log.info(f"Download of course {course_id} materials completed successfully!")
 
-                log.info("Assignment %s downloaded!", name)
-                continue
 
-            # Case 2: Need to trigger export
-            log.info("Export not created yet; exporting assignment: %s", assignment_id)
+    # def download_all_assignments(self, username: str, password: str):
+    #     """
+    #     Logs in, captures session, and downloads all assignment bulk exports.
+    #     """
+    #
+    #     gs_session, gs_course_id = self.capture_session(username, password)
+    #     session = self._build_requests_session(gs_session, course_id=gs_course_id)
+    #
+    #     # Fetch assignments list
+    #     resp = session.get(
+    #         f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}"
+    #     )
+    #     print(f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}")
+    #     soup = BeautifulSoup(resp.text, "html.parser")
+    #     elements = soup.find_all(
+    #         attrs={"data-assignment-id": True, "aria-describedby": f"course-{gs_course_id}"}
+    #     )
+    #
+    #     assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
+    #
+    #     for a in assignments:
+    #         print(a, assignments[a])
+    #
+    #     sub_folder = os.getenv("SUBMISSIONS_FOLDER")
+    #
+    #     for name, assignment_id in assignments.items():
+    #         review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
+    #         print("Review_grades URL: ", review_url)
+    #         resp = session.get(review_url)
+    #         soup = BeautifulSoup(resp.text, "html.parser")
+    #
+    #         link = soup.find("a", class_="js-bulkExportModalDownload")
+    #
+    #         # Case 1: Export already exists
+    #         if link and ".zip" in link["href"]:
+    #             log.info("Downloading assignment: %s", name)
+    #             zip_resp = session.get(f"{self.base_url}" + link["href"])
+    #
+    #             safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+    #             print(sub_folder, safe_name)
+    #             output_path = os.path.join(sub_folder, safe_name + ".zip")
+    #
+    #             with open(output_path, "wb") as f:
+    #                 f.write(zip_resp.content)
+    #
+    #             log.info("Assignment %s downloaded!", name)
+    #             continue
+    #
+    #         # Case 2: Need to trigger export
+    #         log.info("Export not created yet; exporting assignment: %s", assignment_id)
+    #
+    #         csrf = soup.find("meta", attrs={"name": "csrf-token"})["content"]
+    #         session.headers["X-CSRF-Token"] = csrf
+    #
+    #         export_resp = session.post(
+    #             f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/export",
+    #             headers={"Referer": review_url},
+    #         )
+    #         print("POST response code: ", export_resp.status_code)
+    #         data = export_resp.json()
+    #         file_id = data["generated_file_id"]
+    #
+    #         # Polling
+    #         poll_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.json"
+    #
+    #         while True:
+    #             poll_resp = session.get(poll_url)
+    #             poll_data = poll_resp.json()
+    #             progress = poll_data["progress"]
+    #
+    #             if progress == 1.0:
+    #                 log.info("Export completed!")
+    #                 break
+    #
+    #             log.info("Waiting for export... (%s%%)", int(progress * 100))
+    #             time.sleep(0.5)
+    #
+    #         # Download final ZIP
+    #         zip_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.zip"
+    #         zip_resp = session.get(zip_url)
+    #
+    #         safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+    #         print(sub_folder, safe_name)
+    #         output_path = os.path.join(sub_folder, safe_name + ".zip")
+    #
+    #         with open(output_path, "wb") as f:
+    #             f.write(zip_resp.content)
+    #
+    #         log.info("Assignment %s downloaded!", name)
+    #
+    #     log.info("Download of class %s complete!", gs_course_id)
 
-            csrf = soup.find("meta", attrs={"name": "csrf-token"})["content"]
-            session.headers["X-CSRF-Token"] = csrf
-
-            export_resp = session.post(
-                f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/export",
-                headers={"Referer": review_url},
-            )
-            print("POST response code: ", export_resp.status_code)
-            data = export_resp.json()
-            file_id = data["generated_file_id"]
-
-            # Polling
-            poll_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.json"
-
-            while True:
-                poll_resp = session.get(poll_url)
-                poll_data = poll_resp.json()
-                progress = poll_data["progress"]
-
-                if progress == 1.0:
-                    log.info("Export completed!")
-                    break
-
-                log.info("Waiting for export... (%s%%)", int(progress * 100))
-                time.sleep(0.5)
-
-            # Download final ZIP
-            zip_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.zip"
-            zip_resp = session.get(zip_url)
-
-            safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
-            print(sub_folder, safe_name)
-            output_path = os.path.join(sub_folder, safe_name + ".zip")
-
-            with open(output_path, "wb") as f:
-                f.write(zip_resp.content)
-
-            log.info("Assignment %s downloaded!", name)
-
-        log.info("Download of class %s complete!", gs_course_id)
 
 
 def main():
 
-    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
-        log.error("ERROR: Must enter courseID as integer for argument!")
-        return
+    # if len(sys.argv) != 2 or not sys.argv[1].isdigit():
+    #     log.error("ERROR: Must enter courseID as integer for argument!")
+    #     return
+    #
+    # course_id = int(sys.argv[1])
+    # client = GradescopeClient(
+    #     course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
+    # )
+    #
+    # client.download_all_assignments(
+    #     username=os.getenv("CANVAS_USERNAME"),
+    #     password=os.getenv("CANVAS_PASSWORD"),
+    # )
+    def main():
+        if len(sys.argv) != 2 or not sys.argv[1].isdigit():
+            log.error("ERROR: Must enter courseID as integer for argument!")
+            return
 
-    course_id = int(sys.argv[1])
-    client = GradescopeClient(
-        course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
-    )
+        course_id = int(sys.argv[1])
 
-    client.download_all_assignments(
-        username=os.getenv("CANVAS_USERNAME"),
-        password=os.getenv("CANVAS_PASSWORD"),
-    )
+        client = GradescopeClient(
+            course_url=f"https://canvas.asu.edu/courses/{course_id}",
+            headless=False
+        )
+
+        asyncio.run(
+            client.download_all_assignments_async(
+                username=os.getenv("CANVAS_USERNAME"),
+                password=os.getenv("CANVAS_PASSWORD"),
+            )
+        )
+
+    if __name__ == "__main__":
+        main()
 
 
 if __name__ == "__main__":

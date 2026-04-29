@@ -1,0 +1,26 @@
+{
+    "module": "m3",
+    "uid": "01_03",
+    "filepath_results": "/autograder/results/results.json",
+    "submission_location": "/autograder/submission/",
+    "project_location": "/autograder/source/src/main/java/edu/ser222/m01_03/",
+    "files_required":[
+        "CompletedList.java",
+        "CompletedOrderedList.java",
+              "DoubleLinearNode.java"
+    ],
+    "files_optional":[
+
+    ],
+    "package_whitelist":[
+        "java.util.ConcurrentModificationException",
+        "java.util.Iterator",
+        "java.util.NoSuchElementException"
+    ],
+    "assert_perf_constant":[
+    ],
+    "assert_perf_linear":[
+    ],
+    "assert_no_class_variables":[
+    ]
+}
