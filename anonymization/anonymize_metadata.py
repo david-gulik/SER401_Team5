@@ -10,7 +10,7 @@ def anonymize_roster(path_roster: str, path_roster_clean: str, map_ids: dict[int
     with open(path_roster) as input_csv:
         reader = csv.DictReader(input_csv)
 
-        path_roster_clean_pkl = path_roster_clean[:-4] + "_anonymized.pkl"
+        path_roster_clean_pkl = path_roster_clean[:-4] + ".pkl"
 
         rows = []
 
@@ -62,7 +62,7 @@ def anonymize_gradebook(path_gradebook:str, path_gradebook_clean: str, map_ids: 
     with open(path_gradebook) as input_csv:
         reader = csv.DictReader(input_csv)
 
-        path_gradebook_clean_pkl = path_gradebook_clean[:-4] + "_anonymized.pkl"
+        path_gradebook_clean_pkl = path_gradebook_clean[:-4] + ".pkl"
 
         # create anonymized file
         with open(path_gradebook_clean, 'w', newline="") as output_csv:
@@ -87,7 +87,7 @@ def anonymize_gradebook(path_gradebook:str, path_gradebook_clean: str, map_ids: 
                 anonymized_id = map_ids[real_id]
                 df_row = df_roster[df_roster['ID'] == anonymized_id].iloc[0]
                 row["Student"] = f"{df_row["Last Name"]}, {df_row["First Name"]}"
-                row["ID"] = str(123456)
+                row["ID"] = str(anonymized_id)
                 row["SIS Login ID"] = df_row["ASURITE"]
                 row["SIS User ID"] = anonymized_id
 
