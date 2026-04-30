@@ -69,6 +69,9 @@ class MockCanvasClient(CanvasClient):
     def list_quizzes(self, course_id: int) -> list:
         return []
 
+    def list_assignments(self, course_id: int) -> list:
+        return []
+
     def fetch_rubric_assessments(
         self, course_id: int, assignment_id: int
     ) -> list[RubricAssessment]:

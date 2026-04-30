@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
+from pathlib import Path
 
-from PyQt6.QtCore import QEasingCurve, QParallelAnimationGroup, QPropertyAnimation
+from PyQt6.QtCore import QEasingCurve, QParallelAnimationGroup, QPropertyAnimation, QSize, Qt
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -17,6 +20,23 @@ from PyQt6.QtWidgets import (
 from GAVEL.core.page_registry import PageSpec
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.layout import set_spacing
+
+_ICON_RENDER_SIZE = 24
+
+
+def _load_recolored_icon(svg_path: Path, color: str = "white") -> QIcon:
+    """Render an SVG to a pixmap and recolor opaque areas to ``color``."""
+    pixmap = QPixmap(_ICON_RENDER_SIZE, _ICON_RENDER_SIZE)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    renderer = QSvgRenderer(str(svg_path))
+    painter = QPainter(pixmap)
+    try:
+        renderer.render(painter)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+        painter.fillRect(pixmap.rect(), QColor(color))
+    finally:
+        painter.end()
+    return QIcon(pixmap)
 
 
 class NavigationDrawer(QFrame):
@@ -64,7 +84,7 @@ class NavigationDrawer(QFrame):
         self._toggle.setProperty("role", "nav_toggle")
         self._toggle.clicked.connect(self.toggle)
 
-        self._title = QLabel("My App", self)
+        self._title = QLabel("Menu", self)
 
         header.addWidget(self._toggle)
         header.addWidget(self._title)
@@ -83,6 +103,7 @@ class NavigationDrawer(QFrame):
         self._group.setExclusive(True)
 
         self._buttons_by_id: dict[str, QToolButton] = {}
+        self._icons_by_id: dict[str, QIcon] = {}
         for spec in pages:
             btn = QToolButton(self)
             btn.setCheckable(True)
@@ -90,6 +111,12 @@ class NavigationDrawer(QFrame):
             btn.setProperty("role", "nav_item")
             btn.setToolTip(spec.title)
             btn.clicked.connect(partial(self._handle_clicked, spec.page_id))
+
+            if spec.icon_path is not None:
+                icon = _load_recolored_icon(spec.icon_path)
+                self._icons_by_id[spec.page_id] = icon
+                btn.setIcon(icon)
+                btn.setIconSize(QSize(20, 20))
 
             self._buttons_by_id[spec.page_id] = btn
             self._group.addButton(btn)
@@ -150,8 +177,17 @@ class NavigationDrawer(QFrame):
     def _render_buttons(self) -> None:
         for page_id, btn in self._buttons_by_id.items():
             spec = self._specs_by_id[page_id]
-            btn.setText(self._nav_label(spec))
-            # Keep left alignment in expanded mode, in collapsed mode it will still look centered enough
+            has_icon = page_id in self._icons_by_id
+            if has_icon:
+                style = (
+                    Qt.ToolButtonStyle.ToolButtonIconOnly
+                    if self._is_collapsed
+                    else Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+                )
+                btn.setToolButtonStyle(style)
+                btn.setText("" if self._is_collapsed else f"  {spec.title}")
+            else:
+                btn.setText(self._nav_label(spec))
             btn.setMinimumHeight(self._theme.tokens.sp(32))
 
     def _nav_label(self, spec: PageSpec) -> str:

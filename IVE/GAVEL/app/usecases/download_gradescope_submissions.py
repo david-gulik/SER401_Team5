@@ -11,6 +11,7 @@ from GAVEL.app.ports.gradescope_client import GradescopeClient
 class DownloadGradescopeSubmissionsRequest:
     course_id: int
     headless: bool = False
+    output_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -33,9 +34,15 @@ class DownloadGradescopeSubmissionsUseCase:
                 "Environment variables CANVAS_USERNAME and CANVAS_PASSWORD are required."
             )
 
+        submissions_folder: str | None = None
+        if request.output_dir is not None:
+            request.output_dir.mkdir(parents=True, exist_ok=True)
+            submissions_folder = str(request.output_dir)
+
         client = GradescopeClient(
             course_url=f"https://canvas.asu.edu/courses/{request.course_id}",
             headless=request.headless,
+            submissions_folder=submissions_folder,
         )
         client.download_all_assignments(username=username, password=password)
 

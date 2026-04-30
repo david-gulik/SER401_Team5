@@ -22,6 +22,19 @@ class EnvVarSpec:
 # Single source of truth for variables exposed in the settings UI.
 # Order here drives display order within each group.
 ENV_SCHEMA: tuple[EnvVarSpec, ...] = (
+    # -- General -------------------------------------------------------------
+    EnvVarSpec(
+        name="DEFAULT_OUTPUT_DIR",
+        group="General",
+        label="Default output folder",
+        kind="path",
+        path_kind="folder",
+        placeholder="~/Downloads/GAVEL",
+        help=(
+            "Default folder for all GAVEL downloads. Used as the starting value "
+            "on the Download page; can be overridden there per-session."
+        ),
+    ),
     # -- Canvas --------------------------------------------------------------
     EnvVarSpec(
         name="CANVAS_BASE_URL",

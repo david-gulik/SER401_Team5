@@ -178,7 +178,7 @@ def _build_app_context() -> AppContext:
     theme = ThemeContext(tokens=tokens)
 
     config_service = ConfigService()
-    logger = AppLogger(name="my_app.cli")
+    logger = AppLogger(name="GAVEL.cli")
 
     canvas_client = build_canvas_client(config_service.get(), logger)
     roster_client = build_roster_client(config_service.get(), logger)

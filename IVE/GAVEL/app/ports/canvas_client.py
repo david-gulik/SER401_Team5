@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasQuiz
+from GAVEL.app.dtos.canvas_course import (
+    CanvasAssignment,
+    CanvasCourse,
+    CanvasCourseData,
+    CanvasQuiz,
+)
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 
@@ -37,6 +42,11 @@ class CanvasClient(ABC):
     @abstractmethod
     def list_quizzes(self, course_id: int) -> list[CanvasQuiz]:
         """List quizzes for a Canvas course."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_assignments(self, course_id: int) -> list[CanvasAssignment]:
+        """List assignments for a Canvas course."""
         raise NotImplementedError
 
     @abstractmethod

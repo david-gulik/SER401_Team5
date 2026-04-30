@@ -6,7 +6,13 @@ from typing import Any
 
 import requests
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule, CanvasQuiz
+from GAVEL.app.dtos.canvas_course import (
+    CanvasAssignment,
+    CanvasCourse,
+    CanvasCourseData,
+    CanvasModule,
+    CanvasQuiz,
+)
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
 from GAVEL.app.ports.canvas_client import CanvasClient
@@ -488,6 +494,17 @@ class HttpCanvasClient(CanvasClient):
             CanvasQuiz(id=int(q["id"]), name=str(q.get("title") or ""))
             for q in pages
             if q.get("id")
+        ]
+
+    def list_assignments(self, course_id: int) -> list[CanvasAssignment]:
+        pages = self._get_all_pages(
+            f"/api/v1/courses/{course_id}/assignments",
+            params={"per_page": 100},
+        )
+        return [
+            CanvasAssignment(id=int(a["id"]), name=str(a.get("name") or ""))
+            for a in pages
+            if a.get("id")
         ]
 
     def fetch_gradebook(self, course_id: int) -> CanvasGradebook:

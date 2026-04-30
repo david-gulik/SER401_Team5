@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from PyQt6.QtWidgets import QWidget
 
@@ -16,6 +17,7 @@ class PageSpec:
     factory: Callable[[AppContext], QWidget]
     order: int = 100
     group: str = "General"
+    icon_path: Path | None = None
 
 
 class PageRegistry:

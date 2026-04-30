@@ -1,8 +1,9 @@
 import sys
 from pathlib import Path
 
-from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtWidgets import QApplication, QSplashScreen
 
 from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
@@ -19,8 +20,27 @@ from GAVEL.theme.qss_builder import build_app_qss
 from GAVEL.theme.tokens import load_tokens
 
 
+def _build_splash() -> QSplashScreen | None:
+    splash_path = Path(__file__).resolve().parents[1] / "assets" / "icons" / "GAVEL_logo.png"
+    pixmap = QPixmap(str(splash_path))
+    if pixmap.isNull():
+        return None
+    pixmap = pixmap.scaled(
+        480,
+        480,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    return QSplashScreen(pixmap, Qt.WindowType.WindowStaysOnTopHint)
+
+
 def main() -> None:
     app = QApplication(sys.argv)
+
+    splash = _build_splash()
+    if splash is not None:
+        splash.show()
+        app.processEvents()
 
     tokens_path = Path(__file__).resolve().parents[1] / "theme" / "tokens_dark.json"
     tokens = load_tokens(tokens_path)
@@ -49,6 +69,8 @@ def main() -> None:
     window.resize(1200, 800)
     window.setWindowIcon(app_icon)
     window.show()
+    if splash is not None:
+        splash.finish(window)
 
     sys.exit(app.exec())
 

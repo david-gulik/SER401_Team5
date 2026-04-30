@@ -12,8 +12,6 @@ from GAVEL.services.logger import AppLogger
 
 @dataclass(frozen=True)
 class SettingsUiState:
-    enable_feature_x: bool
-    enable_logging: bool
     environment: str
     version: str
     env_values: Mapping[str, str]
@@ -38,8 +36,6 @@ class SettingsViewModel(QObject):
 
         cfg = self._config.get()
         self._state = SettingsUiState(
-            enable_feature_x=False,
-            enable_logging=True,
             environment=cfg.environment,
             version=cfg.version,
             env_values=dict(self._env.read()),
@@ -48,20 +44,6 @@ class SettingsViewModel(QObject):
 
     def get_state(self) -> SettingsUiState:
         return self._state
-
-    def set_enable_feature_x(self, value: bool) -> None:
-        if value == self._state.enable_feature_x:
-            return
-        self._state = replace(self._state, enable_feature_x=value)
-        self._logger.info(f"Preference changed: enable_feature_x={value}")
-        self.state_changed.emit(self._state)
-
-    def set_enable_logging(self, value: bool) -> None:
-        if value == self._state.enable_logging:
-            return
-        self._state = replace(self._state, enable_logging=value)
-        self._logger.info(f"Preference changed: enable_logging={value}")
-        self.state_changed.emit(self._state)
 
     def set_env_value(self, name: str, value: str) -> None:
         """Stage an env value change. Does not emit; tab owns its own widgets."""
