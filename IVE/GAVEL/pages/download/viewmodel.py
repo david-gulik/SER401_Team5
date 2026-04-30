@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
+from PyQt6.QtWidgets import QApplication
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasQuiz
+from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQuiz
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
@@ -40,6 +41,7 @@ class DownloadUiState:
     assignment_id: str = ""
     courses: Sequence[CanvasCourse] = ()
     quizzes: Sequence[CanvasQuiz] = ()
+    assignments: Sequence[CanvasAssignment] = ()
     sections: Sequence[ClassSection] = ()
     selected_section_idx: int = -1
     selected_course_id: str = ""
@@ -48,6 +50,7 @@ class DownloadUiState:
     status: Status = Status.UNKNOWN
     message: str = "Enter search criteria or a class number."
     last_saved_path: str | None = None
+    output_dir: str = ""
 
     @property
     def can_download_roster(self) -> bool:
@@ -99,6 +102,28 @@ class ShowInfo:
     message: str
 
 
+class _WorkerSignals(QObject):
+    result = pyqtSignal(object)
+    error = pyqtSignal(object)
+
+
+class _BackgroundTask(QRunnable):
+    """Runs a callable on QThreadPool, marshalling result/error back via signals."""
+
+    def __init__(self, fn: Callable[[], object]) -> None:
+        super().__init__()
+        self._fn = fn
+        self.signals = _WorkerSignals()
+
+    def run(self) -> None:
+        try:
+            value = self._fn()
+        except Exception as exc:  # noqa: BLE001
+            self.signals.error.emit(exc)
+        else:
+            self.signals.result.emit(value)
+
+
 class DownloadViewModel(QObject):
     state_changed = pyqtSignal(object)  # DownloadUiState
     event_raised = pyqtSignal(object)  # ShowError | ShowInfo
@@ -114,7 +139,7 @@ class DownloadViewModel(QObject):
         super().__init__()
         self._client = roster_client
         self._canvas_client = canvas_client
-        self._output_dir = default_output_dir
+        self._default_output_dir = default_output_dir
         self._logger = logger
         self._roster_configured = roster_configured
 
@@ -127,6 +152,7 @@ class DownloadViewModel(QObject):
         self._state = DownloadUiState(
             status=initial_status,
             message=initial_msg,
+            output_dir=str(default_output_dir),
         )
 
     def get_state(self) -> DownloadUiState:
@@ -172,7 +198,12 @@ class DownloadViewModel(QObject):
         if text == self._state.selected_course_id:
             return
         self._state = replace(
-            self._state, selected_course_id=text, quizzes=(), selected_consent_quiz_id=""
+            self._state,
+            selected_course_id=text,
+            quizzes=(),
+            selected_consent_quiz_id="",
+            assignments=(),
+            assignment_id="",
         )
         self.state_changed.emit(self._state)
         self._logger.info(f"Selected course ID set to {text}")
@@ -192,34 +223,69 @@ class DownloadViewModel(QObject):
         self._state = replace(self._state, assignment_id=text)
         self.state_changed.emit(self._state)
 
+    def set_output_dir(self, value: str) -> None:
+        text = value.strip()
+        if text == self._state.output_dir:
+            return
+        self._state = replace(self._state, output_dir=text)
+        self.state_changed.emit(self._state)
+
+    def reset_output_dir(self) -> None:
+        env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
+        default = env_dir or str(self._default_output_dir)
+        if default == self._state.output_dir:
+            return
+        self._state = replace(self._state, output_dir=default)
+        self.state_changed.emit(self._state)
+
+    def _resolve_output_dir(self) -> Path:
+        text = self._state.output_dir.strip()
+        return Path(text).expanduser() if text else self._default_output_dir
+
+    def _run_async(
+        self,
+        fn: Callable[[], object],
+        on_result: Callable[[object], None],
+        on_error: Callable[[object], None],
+    ) -> None:
+        """Run `fn` on QThreadPool; result/error fire on the GUI thread."""
+        task = _BackgroundTask(fn)
+        task.signals.result.connect(on_result)
+        task.signals.error.connect(on_error)
+        QThreadPool.globalInstance().start(task)
+
     # Actions
 
     def load_terms(self) -> None:
         if self._state.is_busy or not self._roster_configured:
             return
         self._set_busy("Loading terms...")
-        try:
-            terms = self._client.list_terms()
-        except Exception as exc:  # noqa: BLE001
-            self._logger.error(f"Failed to load terms: {exc}")
-            self._set_idle(Status.CRITICAL, str(exc))
-            return
+        self._run_async(
+            self._client.list_terms,
+            self._on_terms_loaded,
+            self._on_load_terms_error,
+        )
 
+    def _on_terms_loaded(self, terms: object) -> None:
+        terms_seq: Sequence[TermInfo] = terms  # type: ignore[assignment]
         default_term = ""
-        for t in terms:
+        for t in terms_seq:
             if t.default:
                 default_term = t.code
                 break
-
         self._state = replace(
             self._state,
-            terms=terms,
+            terms=terms_seq,
             selected_term=default_term,
             is_busy=False,
             status=Status.NOMINAL,
-            message=f"Loaded {len(terms)} terms.",
+            message=f"Loaded {len(terms_seq)} terms.",
         )
         self.state_changed.emit(self._state)
+
+    def _on_load_terms_error(self, exc: object) -> None:
+        self._logger.error(f"Failed to load terms: {exc}")
+        self._set_idle(Status.CRITICAL, str(exc))
 
     def find_sections(self) -> None:
         if self._state.is_busy or not self._roster_configured:
@@ -232,31 +298,35 @@ class DownloadViewModel(QObject):
             return
 
         self._set_busy("Searching sections...")
-        try:
-            sections = self._client.find_sections(
-                self._state.selected_term,
-                self._state.subject,
-                self._state.catalog_number,
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._logger.error(f"Section lookup failed: {exc}")
-            self._set_idle(Status.CRITICAL, str(exc))
-            self.event_raised.emit(ShowError(str(exc)))
-            return
+        term = self._state.selected_term
+        subject = self._state.subject
+        catalog = self._state.catalog_number
+        self._run_async(
+            lambda: self._client.find_sections(term, subject, catalog),
+            self._on_sections_found,
+            self._on_find_sections_error,
+        )
 
-        if not sections:
+    def _on_sections_found(self, sections: object) -> None:
+        sections_seq: Sequence[ClassSection] = sections  # type: ignore[assignment]
+        if not sections_seq:
             self._set_idle(Status.WARNING, "No sections found.")
             return
-
+        sorted_sections = sorted(sections_seq, key=lambda s: (s.subject, s.catalog_number))
         self._state = replace(
             self._state,
-            sections=sections,
+            sections=sorted_sections,
             selected_section_idx=0,
             is_busy=False,
             status=Status.NOMINAL,
-            message=f"Found {len(sections)} section(s).",
+            message=f"Found {len(sorted_sections)} section(s).",
         )
         self.state_changed.emit(self._state)
+
+    def _on_find_sections_error(self, exc: object) -> None:
+        self._logger.error(f"Section lookup failed: {exc}")
+        self._set_idle(Status.CRITICAL, str(exc))
+        self.event_raised.emit(ShowError(str(exc)))
 
     def download_roster(self) -> None:
         if self._state.is_busy or not self._roster_configured:
@@ -278,21 +348,23 @@ class DownloadViewModel(QObject):
             term=self._state.selected_term,
             class_number=class_number,
         )
+        out_path = self._resolve_output_dir() / f"roster_{request.term}_{class_number}.csv"
 
-        filename = f"roster_{request.term}_{class_number}.csv"
-        out_path = self._output_dir / filename
+        def work() -> Path:
+            try:
+                self._client.authenticate()
+                download_roster_to_file(self._client, request, out_path)
+            finally:
+                self._client.close()
+            return out_path
 
-        try:
-            self._client.authenticate()
-            download_roster_to_file(self._client, request, out_path)
-        except Exception as exc:  # noqa: BLE001
-            self._logger.error(f"Roster download failed: {exc}")
-            self._set_idle(Status.CRITICAL, str(exc))
-            self.event_raised.emit(ShowError(str(exc)))
-            return
-        finally:
-            self._client.close()
+        self._run_async(
+            work,
+            self._on_roster_downloaded,
+            self._on_roster_error,
+        )
 
+    def _on_roster_downloaded(self, out_path: object) -> None:
         msg = f"Roster saved to {out_path}"
         self._state = replace(
             self._state,
@@ -303,6 +375,11 @@ class DownloadViewModel(QObject):
         )
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(msg))
+
+    def _on_roster_error(self, exc: object) -> None:
+        self._logger.error(f"Roster download failed: {exc}")
+        self._set_idle(Status.CRITICAL, str(exc))
+        self.event_raised.emit(ShowError(str(exc)))
 
     def load_quizzes(self, course_id: str) -> None:
         if self._state.is_busy or not course_id:
@@ -318,12 +395,37 @@ class DownloadViewModel(QObject):
             self._logger.error(f"Failed to load quizzes: {exc}")
             self._set_idle(Status.CRITICAL, str(exc))
             return
+        quizzes = sorted(quizzes, key=lambda q: q.name.lower())
         self._state = replace(
             self._state,
             quizzes=quizzes,
             is_busy=False,
             status=Status.NOMINAL,
             message=f"Loaded {len(quizzes)} quiz(zes).",
+        )
+        self.state_changed.emit(self._state)
+
+    def load_assignments(self, course_id: str) -> None:
+        if self._state.is_busy or not course_id:
+            return
+        try:
+            cid = int(course_id)
+        except ValueError:
+            return
+        self._set_busy("Loading assignments...")
+        try:
+            assignments = self._canvas_client.list_assignments(cid)
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Failed to load assignments: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            return
+        assignments = sorted(assignments, key=lambda a: a.name.lower())
+        self._state = replace(
+            self._state,
+            assignments=assignments,
+            is_busy=False,
+            status=Status.NOMINAL,
+            message=f"Loaded {len(assignments)} assignment(s).",
         )
         self.state_changed.emit(self._state)
 
@@ -362,7 +464,7 @@ class DownloadViewModel(QObject):
         self._set_busy(f"Downloading gradebook for course {course_id}...")
         try:
             result = DownloadGradebookUseCase(self._canvas_client).execute(
-                DownloadGradebookRequest(course_id=course_id, output_dir=self._output_dir)
+                DownloadGradebookRequest(course_id=course_id, output_dir=self._resolve_output_dir())
             )
         except Exception as exc:  # noqa: BLE001
             self._logger.error(f"Gradebook download failed: {exc}")
@@ -396,7 +498,9 @@ class DownloadViewModel(QObject):
         self._set_busy(f"Downloading Gradescope submissions for course {course_id}...")
         try:
             result = DownloadGradescopeSubmissionsUseCase().execute(
-                DownloadGradescopeSubmissionsRequest(course_id=course_id)
+                DownloadGradescopeSubmissionsRequest(
+                    course_id=course_id, output_dir=self._resolve_output_dir()
+                )
             )
         except Exception as exc:  # noqa: BLE001
             self._logger.error(f"Gradescope submissions download failed: {exc}")
@@ -436,7 +540,7 @@ class DownloadViewModel(QObject):
         try:
             result = DownloadConsentFormUseCase(self._canvas_client).execute(
                 DownloadConsentFormRequest(
-                    course_id=course_id, quiz_id=quiz_id, output_dir=self._output_dir
+                    course_id=course_id, quiz_id=quiz_id, output_dir=self._resolve_output_dir()
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -481,7 +585,7 @@ class DownloadViewModel(QObject):
                 DownloadRubricAssessmentRequest(
                     course_id=course_id,
                     assignment_id=assignment_id,
-                    output_dir=self._output_dir,
+                    output_dir=self._resolve_output_dir(),
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -509,6 +613,9 @@ class DownloadViewModel(QObject):
     def _set_busy(self, message: str) -> None:
         self._state = replace(self._state, is_busy=True, status=Status.WARNING, message=message)
         self.state_changed.emit(self._state)
+        # Flush a paint so the busy bar shows before the synchronous fetch
+        # blocks the GUI thread. Drop this once blocking calls move off-thread.
+        QApplication.processEvents()
 
     def _set_idle(self, status: Status, message: str) -> None:
         self._state = replace(self._state, is_busy=False, status=status, message=message)

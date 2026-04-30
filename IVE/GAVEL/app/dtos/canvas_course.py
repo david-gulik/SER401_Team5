@@ -26,3 +26,9 @@ class CanvasCourseData:
 class CanvasQuiz:
     id: int
     name: str
+
+
+@dataclass(frozen=True)
+class CanvasAssignment:
+    id: int
+    name: str

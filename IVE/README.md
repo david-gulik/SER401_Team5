@@ -162,7 +162,7 @@ If either Canvas variable is missing, the app falls back to `UnconfiguredCanvasC
 ## CLI Usage
 
 ```
-python -m my_app.cli.main canvas-course download --course-id 123 --output-dir ./dump
+python -m GAVEL.cli.main canvas-course download --course-id 123 --output-dir ./dump
 ```
 
 The CLI shares the same `AppContext`, so any new use cases/services wired in GUI land can be exposed here by adding a subcommand.

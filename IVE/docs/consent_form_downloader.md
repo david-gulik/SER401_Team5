@@ -6,8 +6,8 @@ Before running any commands, create a `.env` file in the `IVE/` directory with t
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `CANVAS_BASE_URL` | Yes | Base URL of your Canvas LMS instance (e.g. `https://canvas.asu.edu`) |
-| `CANVAS_TOKEN` | Yes | Your Canvas API access token |
+| `CANVAS_BASE_URL`   | Yes | Base URL of your Canvas LMS instance (e.g. `https://canvas.asu.edu`) |
+| `CANVAS_TOKEN`      | Yes | Your Canvas API access token |
 
 ---
 
@@ -90,8 +90,8 @@ The signed file URL from Step 3 is fetched with Bearer token authentication. The
 On a successful run:
 
 ```
-[INFO] my_app.cli: Configuring Canvas HTTP client
-[INFO] my_app.cli: AppServices: initializing use cases
+[INFO] GAVEL.cli: Configuring Canvas HTTP client
+[INFO] GAVEL.cli: AppServices: initializing use cases
 [QUIZ] Downloading student analysis for course=253450, quiz=1960789...
 [QUIZ] Saved to consent_form.csv
 ```

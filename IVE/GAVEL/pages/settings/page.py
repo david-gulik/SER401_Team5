@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtWidgets import QTabWidget, QVBoxLayout
 
 from GAVEL.app_context import AppContext
 from GAVEL.core.base_page import BasePage
 from GAVEL.core.page_registry import PageRegistry, PageSpec
-from GAVEL.pages.settings.tabs import AboutTab, EnvironmentTab, PreferencesTab
+from GAVEL.pages.settings.tabs import AboutTab, EnvironmentTab
 from GAVEL.pages.settings.viewmodel import SettingsViewModel
 from GAVEL.services.env_service import EnvService
+
+_ICONS_DIR = Path(__file__).resolve().parents[2] / "assets" / "icons"
 
 
 class SettingsPage(BasePage):
@@ -31,7 +35,6 @@ class SettingsPage(BasePage):
     def build_tabs(self):
         return [
             ("Environment", EnvironmentTab(self._theme, self._vm)),
-            ("Preferences", PreferencesTab(self._theme, self._vm)),
             ("About", AboutTab(self._theme, self._vm)),
         ]
 
@@ -44,5 +47,6 @@ PageRegistry.get().register(
         factory=lambda ctx: SettingsPage(ctx),
         order=20,
         group="General",
+        icon_path=_ICONS_DIR / "settings.svg",
     )
 )

@@ -46,7 +46,9 @@ class GradescopeClient:
     SESSION_COOKIE_NAME = "_gradescope_session"
     TOKEN_COOKIE_NAME = "token"
 
-    def __init__(self, course_url: str, headless: bool = True):
+    def __init__(
+        self, course_url: str, headless: bool = True, submissions_folder: str | None = None
+    ):
 
         load_dotenv()
 
@@ -59,7 +61,7 @@ class GradescopeClient:
         self.assignments_suffix = os.getenv("GRADESCOPE_ASSIGNMENTS_SUFFIX")
         self.review_grades_suffix = os.getenv("GRADESCOPE_REVIEW_GRADES_SUFFIX")
         self.generated_files_suffix = os.getenv("GRADESCOPE_GENERATED_FILES_SUFFIX")
-        self.submissions_folder = os.getenv("SUBMISSIONS_FOLDER")
+        self.submissions_folder = submissions_folder or os.getenv("SUBMISSIONS_FOLDER")
 
         env_variables = [
             (self.base_url, "GRADESCOPE_BASE_URL"),

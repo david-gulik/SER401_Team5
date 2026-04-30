@@ -46,19 +46,19 @@ Before diving in, here's what the sponsor's repos already give us. Knowing this 
 
 | Path | Description |
 | --- | --- |
-| `app.py` | Minimal shim that imports `main` from `my_app.app`. Launches the GUI when you run `python app.py`. |
-| `my_app/__init__.py` | Package marker; nothing fancy here but keeps `my_app` importable. |
-| `my_app/app/` | **Application layer** modules that are GUI-agnostic. Loaded by both GUI (`my_app/app/main.py`) and CLI (`my_app/cli/main.py`).<br>• `main.py`: PyQt bootstrap that loads theme tokens, builds `AppContext`, and shows `MainWindow`.<br>• `dtos/`: Typed DTOs handed to/from use cases and ports. Used by use cases, infra, and viewmodels to describe data contracts.<br>• `ports/`: Abstract base classes (e.g., `CanvasClient`) consumed by use cases; concrete adapters live elsewhere.<br>• `usecases/`: Workflow logic (e.g., `canvas_download_course.py`). Imported by viewmodels and CLI command handlers.<br>• `__init__.py`: Re-exports `main` so callers can simply `from my_app.app import main`. |
-| `my_app/app_context.py` | Defines `AppContext`, an immutable dependency bundle (theme/config/logger/services) passed into every page factory by `PageRegistry`. |
-| `my_app/app_services.py` | Hosts `AppServices`, which is constructed once at startup. Use to register new use cases/services that pages or CLI should share. |
-| `my_app/bootstrap.py` | Glue that reads config/environment and builds concrete infra clients (e.g., HTTP adapters). `main.py` and CLI use this when wiring services. |
-| `my_app/cli/` | Complete CLI stack:<br>• `main.py`: Builds argparse tree, constructs the same `AppContext`, then dispatches to handlers.<br>• `commands/`: Each file exports thin handlers wrapping use cases (e.g., Canvas download). Useful for automation/testing. |
-| `my_app/core/` | Reusable GUI scaffolding consumed by every page:<br>• `base_page.py` / `base_tab.py`: Contracts for page/tab implementations.<br>• `page_registry.py`: Singleton registry; pages register themselves so `MainWindow` can auto-wire nav + content.<br>• `navigation_drawer.py`: Loads registered pages and exposes callbacks.<br>• `status.py`: `Status` enum + styling helpers supporting Astro UXDS status semantics.<br>`MainWindow` loads this layer and stays unaware of individual pages. |
-| `my_app/pages/` | Feature-specific MVVM modules. Each folder (e.g., `home`, `settings`, `canvas_course`) contains:<br>• `page.py`: Registers the page, instantiates viewmodels with `AppContext`, and assembles tabs.<br>• `viewmodel.py`: Qt-based VM bridging views and use cases/services.<br>• `tabs.py`: Pure view layer that binds signals to the VM and renders `UiState`. Imported only by PyQt components. |
-| `my_app/services/` | Cross-cutting singleton-like utilities:<br>• `config_service.py`: Loaded at startup (GUI + CLI) to fetch env vars such as `CANVAS_BASE_URL` / `CANVAS_TOKEN`. Viewmodels read from `ctx.config` to display environment/versions.<br>• `logger.py`: Wraps Python logging with a simple interface; both VMs and CLI share it. |
-| `my_app/theme/` | Styling system consumed by GUI bootstrap and UI components:<br>• `tokens.py`: Loads token JSON (fonts, colors, spacing).<br>• `context.py`: Lightweight wrapper referencing the tokens.<br>• `qss_builder.py`: Converts tokens to QSS applied globally (keeps visuals aligned with Astro UXDS). |
-| `my_app/ui_components/` | Shared widgets used by tabs (e.g., `SectionCard`, `StatusPill`, layout helpers). Only views import these; viewmodels remain oblivious to Qt specifics. |
-| `my_app/infra/` | Concrete implementations of ports. Loaded during bootstrap when building services (e.g., `HttpCanvasClient`). This is the only directory that imports external SDKs like `requests`. |
+| `app.py` | Minimal shim that imports `main` from `GAVEL.app`. Launches the GUI when you run `python app.py`. |
+| `GAVEL/__init__.py` | Package marker; nothing fancy here but keeps `GAVEL` importable. |
+| `GAVEL/app/` | **Application layer** modules that are GUI-agnostic. Loaded by both GUI (`GAVEL/app/main.py`) and CLI (`GAVEL/cli/main.py`).<br>• `main.py`: PyQt bootstrap that loads theme tokens, builds `AppContext`, and shows `MainWindow`.<br>• `dtos/`: Typed DTOs handed to/from use cases and ports. Used by use cases, infra, and viewmodels to describe data contracts.<br>• `ports/`: Abstract base classes (e.g., `CanvasClient`) consumed by use cases; concrete adapters live elsewhere.<br>• `usecases/`: Workflow logic (e.g., `canvas_download_course.py`). Imported by viewmodels and CLI command handlers.<br>• `__init__.py`: Re-exports `main` so callers can simply `from GAVEL.app import main`. |
+| `GAVEL/app_context.py` | Defines `AppContext`, an immutable dependency bundle (theme/config/logger/services) passed into every page factory by `PageRegistry`. |
+| `GAVEL/app_services.py` | Hosts `AppServices`, which is constructed once at startup. Use to register new use cases/services that pages or CLI should share. |
+| `GAVEL/bootstrap.py` | Glue that reads config/environment and builds concrete infra clients (e.g., HTTP adapters). `main.py` and CLI use this when wiring services. |
+| `GAVEL/cli/` | Complete CLI stack:<br>• `main.py`: Builds argparse tree, constructs the same `AppContext`, then dispatches to handlers.<br>• `commands/`: Each file exports thin handlers wrapping use cases (e.g., Canvas download). Useful for automation/testing. |
+| `GAVEL/core/` | Reusable GUI scaffolding consumed by every page:<br>• `base_page.py` / `base_tab.py`: Contracts for page/tab implementations.<br>• `page_registry.py`: Singleton registry; pages register themselves so `MainWindow` can auto-wire nav + content.<br>• `navigation_drawer.py`: Loads registered pages and exposes callbacks.<br>• `status.py`: `Status` enum + styling helpers supporting Astro UXDS status semantics.<br>`MainWindow` loads this layer and stays unaware of individual pages. |
+| `GAVEL/pages/` | Feature-specific MVVM modules. Each folder (e.g., `home`, `settings`, `canvas_course`) contains:<br>• `page.py`: Registers the page, instantiates viewmodels with `AppContext`, and assembles tabs.<br>• `viewmodel.py`: Qt-based VM bridging views and use cases/services.<br>• `tabs.py`: Pure view layer that binds signals to the VM and renders `UiState`. Imported only by PyQt components. |
+| `GAVEL/services/` | Cross-cutting singleton-like utilities:<br>• `config_service.py`: Loaded at startup (GUI + CLI) to fetch env vars such as `CANVAS_BASE_URL` / `CANVAS_TOKEN`. Viewmodels read from `ctx.config` to display environment/versions.<br>• `logger.py`: Wraps Python logging with a simple interface; both VMs and CLI share it. |
+| `GAVEL/theme/` | Styling system consumed by GUI bootstrap and UI components:<br>• `tokens.py`: Loads token JSON (fonts, colors, spacing).<br>• `context.py`: Lightweight wrapper referencing the tokens.<br>• `qss_builder.py`: Converts tokens to QSS applied globally (keeps visuals aligned with Astro UXDS). |
+| `GAVEL/ui_components/` | Shared widgets used by tabs (e.g., `SectionCard`, `StatusPill`, layout helpers). Only views import these; viewmodels remain oblivious to Qt specifics. |
+| `GAVEL/infra/` | Concrete implementations of ports. Loaded during bootstrap when building services (e.g., `HttpCanvasClient`). This is the only directory that imports external SDKs like `requests`. |
 
 Generated caches (e.g., `__pycache__`) should not be committed.
 
@@ -69,31 +69,31 @@ Generated caches (e.g., `__pycache__`) should not be committed.
 This end-to-end checklist shows how to introduce a new feature (for example, a “Telemetry” page with an “Upload” tab). It follows the existing Canvas Course implementation as a template.
 
 ### 1. Define Data & Contracts
-1. **DTOs**: In `my_app/app/dtos/`, create models that describe the data your use case will return.
-2. **Port interface**: In `my_app/app/ports/`, declare an abstract class describing the operations your use case needs (e.g., `TelemetryClient.fetch_samples`). No PyQt imports; just pure Python types/DTOs.
+1. **DTOs**: In `GAVEL/app/dtos/`, create models that describe the data your use case will return.
+2. **Port interface**: In `GAVEL/app/ports/`, declare an abstract class describing the operations your use case needs (e.g., `TelemetryClient.fetch_samples`). No PyQt imports; just pure Python types/DTOs.
 
 ### 2. Implement the Use Case
-1. Add a file under `my_app/app/usecases/`. Export request/result dataclasses + a `UseCase` class with an `execute` method.
+1. Add a file under `GAVEL/app/usecases/`. Export request/result dataclasses + a `UseCase` class with an `execute` method.
 2. Enforce validation, call the port, and return structured data (no printing, no QWidget references).
 
 ### 3. Provide Infrastructure
-1. Under `my_app/infra/<domain>/`, create a concrete adapter implementing your port (e.g., HTTP REST client).
+1. Under `GAVEL/infra/<domain>/`, create a concrete adapter implementing your port (e.g., HTTP REST client).
 2. Handle serialization, error reporting (`raise_for_status`), and mapping into DTOs.
 3. Keep third-party imports contained here.
 
 ### 4. Wire Services
-1. Update `my_app/app_services.py` to instantiate the new use case and expose it via `AppServices`.
-2. Extend `my_app/bootstrap.py` (or a new helper) to build any new adapters based on config/environment.
-3. Adjust `my_app/app/main.py` (and `my_app/cli/main.py` if needed) to pass these services into `AppContext`.
+1. Update `GAVEL/app_services.py` to instantiate the new use case and expose it via `AppServices`.
+2. Extend `GAVEL/bootstrap.py` (or a new helper) to build any new adapters based on config/environment.
+3. Adjust `GAVEL/app/main.py` (and `GAVEL/cli/main.py` if needed) to pass these services into `AppContext`.
 
 ### 5. Build the GUI Page
-1. **ViewModel** (`my_app/pages/<feature>/viewmodel.py`):<br>   * Subclass `QObject`.<br>   * Store the relevant use case + logger + config.<br>   * Define a dataclass `UiState` and PyQt signals (`state_changed`, `event_raised`).<br>   * Expose command methods (`load_data()`, `submit()`) that guard against reentry, call the use case, and emit new states/events.
+1. **ViewModel** (`GAVEL/pages/<feature>/viewmodel.py`):<br>   * Subclass `QObject`.<br>   * Store the relevant use case + logger + config.<br>   * Define a dataclass `UiState` and PyQt signals (`state_changed`, `event_raised`).<br>   * Expose command methods (`load_data()`, `submit()`) that guard against reentry, call the use case, and emit new states/events.
 2. **Tabs** (`tabs.py`):<br>   * Subclass `ScrollableTab`.<br>   * Accept only `(ThemeContext, ViewModel)` in the constructor.<br>   * Build widgets, wire signals (`textChanged`, `clicked`, etc.) to VM methods.<br>   * Listen to `state_changed` to re-render & `event_raised` for dialogs/toasts.<br>   * No direct use case or service imports.
 3. **Page** (`page.py`):<br>   * Subclass `BasePage` and register it with `PageRegistry` (icon, title, group, order).<br>   * In `__init__`, grab `ctx.services`, instantiate the viewmodel, and add tabs to a `QTabWidget`. Tabs receive only theme + VM.
 
 ### 6. Update Navigation & CLI (Optional but recommended)
-1. Import your new `Page` in `my_app/app/main.py` so it registers at startup.
-2. If the feature benefits from CLI access, add a command handler in `my_app/cli/commands/` that reuses the same use case.
+1. Import your new `Page` in `GAVEL/app/main.py` so it registers at startup.
+2. If the feature benefits from CLI access, add a command handler in `GAVEL/cli/commands/` that reuses the same use case.
 
 ### 7. Configuration & Testing
 1. Document any required environment variables or config knobs in the README.
@@ -105,9 +105,9 @@ Following these steps ensures new functionality remains decoupled, testable, and
 
 ## Current Feature Modules
 
-* **Home (`my_app/pages/home/`)**: Demonstrates MVVM with shared viewmodels. Overview tab shows status pills; Data Entry tab submits mock data and proves event routing.
-* **Settings (`my_app/pages/settings/`)**: Preferences stored within the viewmodel; tabs render environment/version metadata from config service.
-* **Canvas Course (`my_app/pages/canvas_course/`)**: Full-stack example tying ports, use cases, infra, GUI, and CLI together to download Canvas course metadata into JSON.
+* **Home (`GAVEL/pages/home/`)**: Demonstrates MVVM with shared viewmodels. Overview tab shows status pills; Data Entry tab submits mock data and proves event routing.
+* **Settings (`GAVEL/pages/settings/`)**: Tabs render environment/version metadata from config service and let users edit `.env` values.
+* **Canvas Course (`GAVEL/pages/canvas_course/`)**: Full-stack example tying ports, use cases, infra, GUI, and CLI together to download Canvas course metadata into JSON.
 
 
 ## Quality & Style Notes
@@ -127,7 +127,7 @@ The following snippets show the minimum code required to add a brand-new page wi
 
 **Why:** Define the exact data shape and external operations before writing logic so use cases remain UI-agnostic and easily testable.
 
-`my_app/app/dtos/my_feature.py`
+`GAVEL/app/dtos/my_feature.py`
 ```python
 from dataclasses import dataclass
 
@@ -139,10 +139,10 @@ class MyFeatureRecord:
     name: str
 ```
 
-`my_app/app/ports/my_feature_client.py`
+`GAVEL/app/ports/my_feature_client.py`
 ```python
 from abc import ABC, abstractmethod
-from my_app.app.dtos.my_feature import MyFeatureRecord
+from GAVEL.app.dtos.my_feature import MyFeatureRecord
 
 class MyFeatureClient(ABC):
     """
@@ -160,11 +160,11 @@ class MyFeatureClient(ABC):
 
 **Why:** Centralize workflow/business rules so both GUI and CLI trigger the same behavior without duplicating logic.
 
-`my_app/app/usecases/my_feature_sync.py`
+`GAVEL/app/usecases/my_feature_sync.py`
 ```python
 from dataclasses import dataclass
 from pathlib import Path
-from my_app.app.ports.my_feature_client import MyFeatureClient
+from GAVEL.app.ports.my_feature_client import MyFeatureClient
 
 @dataclass(frozen=True)
 class SyncMyFeatureRequest:
@@ -198,12 +198,12 @@ class SyncMyFeatureUseCase:
 
 **Why:** Encapsulate network/file integrations behind the port, keeping third-party libraries isolated and replaceable.
 
-`my_app/infra/my_feature/http_my_feature_client.py`
+`GAVEL/infra/my_feature/http_my_feature_client.py`
 ```python
 import requests
 from dataclasses import dataclass
-from my_app.app.dtos.my_feature import MyFeatureRecord
-from my_app.app.ports.my_feature_client import MyFeatureClient
+from GAVEL.app.dtos.my_feature import MyFeatureRecord
+from GAVEL.app.ports.my_feature_client import MyFeatureClient
 
 @dataclass(frozen=True)
 class MyFeatureApiConfig:
@@ -234,10 +234,10 @@ class HttpMyFeatureClient(MyFeatureClient):
 
 **Why:** Register the new use case/client once so every consumer (pages, CLI, background tasks) can access the same instances.
 
-`my_app/app_services.py`
+`GAVEL/app_services.py`
 ```python
-from my_app.app.ports.my_feature_client import MyFeatureClient
-from my_app.app.usecases.my_feature_sync import SyncMyFeatureUseCase
+from GAVEL.app.ports.my_feature_client import MyFeatureClient
+from GAVEL.app.usecases.my_feature_sync import SyncMyFeatureUseCase
 
 @dataclass(frozen=True)
 class AppServices:
@@ -258,19 +258,19 @@ class AppServices:
         )
 ```
 
-Update `my_app/bootstrap.py` to construct `HttpMyFeatureClient` from config/env, then pass it into `AppServices.build`.
+Update `GAVEL/bootstrap.py` to construct `HttpMyFeatureClient` from config/env, then pass it into `AppServices.build`.
 
 ### 5. ViewModel
 
 **Why:** Bridge UI and use cases—manage state, handle validation feedback, and expose Qt signals without letting widgets talk to services directly.
 
-`my_app/pages/my_feature/viewmodel.py`
+`GAVEL/pages/my_feature/viewmodel.py`
 ```python
 from dataclasses import dataclass, replace
 from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
-from my_app.core.status import Status
-from my_app.app.usecases.my_feature_sync import (
+from GAVEL.core.status import Status
+from GAVEL.app.usecases.my_feature_sync import (
     SyncMyFeatureRequest,
     SyncMyFeatureUseCase,
 )
@@ -323,13 +323,13 @@ class MyFeatureViewModel(QObject):
 
 **Why:** Provide the minimal PyQt wiring (inputs, buttons, status pill) that renders `UiState` and forwards user actions to the ViewModel.
 
-`my_app/pages/my_feature/tabs.py`
+`GAVEL/pages/my_feature/tabs.py`
 ```python
 from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton, QFormLayout, QWidget
-from my_app.core.base_tab import ScrollableTab
-from my_app.pages.my_feature.viewmodel import MyFeatureViewModel, MyFeatureUiState
-from my_app.ui_components.section_card import SectionCard
-from my_app.ui_components.status_pill import StatusPill
+from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.my_feature.viewmodel import MyFeatureViewModel, MyFeatureUiState
+from GAVEL.ui_components.section_card import SectionCard
+from GAVEL.ui_components.status_pill import StatusPill
 
 class MyFeatureTab(ScrollableTab):
     def __init__(self, theme: ThemeContext, vm: MyFeatureViewModel) -> None:
@@ -373,15 +373,15 @@ class MyFeatureTab(ScrollableTab):
 
 **Why:** Hook your feature into the shell via `PageRegistry` so it appears in navigation and constructs VMs with the proper dependencies.
 
-`my_app/pages/my_feature/page.py`
+`GAVEL/pages/my_feature/page.py`
 ```python
 from pathlib import Path
 from PyQt6.QtWidgets import QTabWidget, QVBoxLayout
-from my_app.app_context import AppContext
-from my_app.core.base_page import BasePage
-from my_app.core.page_registry import PageRegistry, PageSpec
-from my_app.pages.my_feature.tabs import MyFeatureTab
-from my_app.pages.my_feature.viewmodel import MyFeatureViewModel
+from GAVEL.app_context import AppContext
+from GAVEL.core.base_page import BasePage
+from GAVEL.core.page_registry import PageRegistry, PageSpec
+from GAVEL.pages.my_feature.tabs import MyFeatureTab
+from GAVEL.pages.my_feature.viewmodel import MyFeatureViewModel
 
 class MyFeaturePage(BasePage):
     page_id = "my_feature"
@@ -412,11 +412,11 @@ PageRegistry.get().register(
 
 **Why:** Expose the same workflow to automation/scripting by reusing the use case and returning clear exit codes.
 
-`my_app/cli/commands/my_feature.py`
+`GAVEL/cli/commands/my_feature.py`
 ```python
 from argparse import Namespace
 from pathlib import Path
-from my_app.app.usecases.my_feature_sync import SyncMyFeatureRequest
+from GAVEL.app.usecases.my_feature_sync import SyncMyFeatureRequest
 
 def handle_my_feature_sync(ctx: AppContext, args: Namespace) -> int:
     try:
@@ -439,4 +439,4 @@ def handle_my_feature_sync(ctx: AppContext, args: Namespace) -> int:
     return 0
 ```
 
-Wire this handler into `my_app/cli/main.py` via argparse routing similar to the existing Canvas command.
+Wire this handler into `GAVEL/cli/main.py` via argparse routing similar to the existing Canvas command.

@@ -4,7 +4,7 @@ import logging
 
 
 class AppLogger:
-    def __init__(self, name: str = "my_app") -> None:
+    def __init__(self, name: str = "GAVEL") -> None:
         self._logger = logging.getLogger(name)
         if not self._logger.handlers:
             handler = logging.StreamHandler()

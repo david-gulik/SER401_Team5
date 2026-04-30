@@ -70,7 +70,7 @@ The assessments are serialized into a flat JSON array and written to:
 On a successful run:
 
 ```
-[INFO] my_app.cli: Configuring Canvas HTTP client
+[INFO] GAVEL.cli: Configuring Canvas HTTP client
 [INFO] AppServices: Initializing use cases
 [RUBRIC] Downloading rubric assessments for course=253450, assignment=7216983...
 [RUBRIC] Rubric assessment for course 253450, assignment 7216983 saved to rubric_assessments/rubric_assessment_253450_7216983.json

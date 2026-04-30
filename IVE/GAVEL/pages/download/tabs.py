@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QFrame,
     QGridLayout,
@@ -10,6 +13,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -23,7 +27,7 @@ from GAVEL.pages.download.viewmodel import (
     ShowInfo,
 )
 from GAVEL.theme.context import ThemeContext
-from GAVEL.ui_components.layout import set_spacing
+from GAVEL.ui_components.layout import set_h_margins, set_spacing
 from GAVEL.ui_components.section_card import SectionCard
 from GAVEL.ui_components.status_pill import StatusPill
 from GAVEL.ui_components.sub_panel import SubPanel
@@ -37,13 +41,18 @@ class DownloadTab(ScrollableTab):
 
         self._build_widgets()
         self._connect_signals()
+        self.layout().insertWidget(0, self._busy_bar)
 
         self.add_section(self._build_output_path_card())
         self.add_section(self._build_myasu_card())
         self.add_section(self._build_canvas_card())
-        self.add_section(self._build_status_card())
         self.add_section(self._build_download_all())
         self.add_stretch()
+        status_host = QWidget()
+        status_layout = QVBoxLayout(status_host)
+        set_h_margins(status_layout, self._theme, 16, 8)
+        status_layout.addWidget(self._build_status_card())
+        self.layout().addWidget(status_host)
 
         self.render(self._vm.get_state())
 
@@ -53,10 +62,23 @@ class DownloadTab(ScrollableTab):
     # ---------- Widget construction ----------
 
     def _build_widgets(self) -> None:
+        # Busy indicator
+        self._busy_bar = QProgressBar()
+        self._busy_bar.setRange(0, 0)
+        self._busy_bar.setTextVisible(False)
+        self._busy_bar.setFixedHeight(6)
+        self._busy_bar.hide()
+
         # Output path
         self._output_path = QLineEdit()
         self._output_path.setPlaceholderText("Enter custom output path")
+        self._browse_path_btn = QPushButton("Browse…")
+        self._browse_path_btn.setProperty("role", "secondary")
         self._reset_path_btn = QPushButton("Reset to Default")
+        self._reset_path_btn.setProperty("role", "secondary")
+        self._reset_path_btn.setToolTip(
+            "Reset to the default output folder configured in Settings → Environment."
+        )
         self._output_path_hint = QLabel("All downloads will be saved to this location.")
         self._output_path_hint.setProperty("role", "text_muted")
         self._output_path_hint.setWordWrap(True)
@@ -122,11 +144,13 @@ class DownloadTab(ScrollableTab):
         self._download_consent_btn.setProperty("role", "primary")
 
         # Canvas - Rubric Assessment
-        self._assignment_id_input = QLineEdit()
-        self._assignment_id_input.setPlaceholderText("e.g. 7216983")
+        self._assignment_combo = QComboBox()
+        self._assignment_combo.setEnabled(False)
         self._download_rubric_btn = QPushButton("Download Rubric Assessment")
         self._download_rubric_btn.setProperty("role", "primary")
-        self._download_rubric_btn.setToolTip("Requires a valid course and assignment ID.")
+        self._download_rubric_btn.setToolTip(
+            "Requires a valid course and assignment to be selected above."
+        )
 
         # Gradescope submissions
         self._gradescope_credentials_warning = QLabel(
@@ -170,11 +194,14 @@ class DownloadTab(ScrollableTab):
         self._course_combo.currentIndexChanged.connect(self._on_course_changed)
         self._course_id_override.textChanged.connect(self._vm.set_course_id)
         self._consent_quiz_combo.currentIndexChanged.connect(self._on_consent_quiz_changed)
-        self._assignment_id_input.textChanged.connect(self._vm.set_assignment_id)
+        self._assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
 
+        self._output_path.textEdited.connect(self._vm.set_output_dir)
+        self._browse_path_btn.clicked.connect(self._on_browse_output_path)
+        self._reset_path_btn.clicked.connect(self._vm.reset_output_dir)
+
         # Stubs: controls added for the new scaffold. Functionality lands later.
-        self._reset_path_btn.clicked.connect(self._on_reset_path)
         self._download_gradebook_btn.clicked.connect(self._on_download_gradebook)
         self._download_consent_btn.clicked.connect(self._on_download_consent)
         self._download_gradescope_btn.clicked.connect(self._on_download_gradescope)
@@ -198,6 +225,7 @@ class DownloadTab(ScrollableTab):
         row_layout.setContentsMargins(0, 0, 0, 0)
         set_spacing(row_layout, self._theme, 8)
         row_layout.addWidget(self._output_path, 1)
+        row_layout.addWidget(self._browse_path_btn)
         row_layout.addWidget(self._reset_path_btn)
 
         output_controls.add_widget(row)
@@ -329,7 +357,7 @@ class DownloadTab(ScrollableTab):
         rubric_form = QFormLayout(rubric_host)
         rubric_form.setContentsMargins(0, 0, 0, 0)
         set_spacing(rubric_form, self._theme, 8)
-        rubric_form.addRow("Assignment ID", self._assignment_id_input)
+        rubric_form.addRow("Assignment", self._assignment_combo)
         rubric_panel.add_widget(rubric_host)
         rubric_panel.add_widget(self._download_rubric_btn)
         card.add_row(rubric_panel)
@@ -402,10 +430,12 @@ class DownloadTab(ScrollableTab):
         layout.addWidget(right, 1)
         return host
 
-    # ---------- Stub handlers ----------
-
-    def _on_reset_path(self) -> None:
-        pass
+    def _on_browse_output_path(self) -> None:
+        start = self._output_path.text().strip() or str(Path.home())
+        chosen = QFileDialog.getExistingDirectory(self, "Select output folder", start)
+        if chosen:
+            self._output_path.setText(chosen)
+            self._vm.set_output_dir(chosen)
 
     def _on_download_gradebook(self) -> None:
         self._vm.download_gradebook()
@@ -416,9 +446,6 @@ class DownloadTab(ScrollableTab):
     def _on_download_gradescope(self) -> None:
         self._vm.download_gradescope_submissions()
 
-    def _on_download_all(self) -> None:
-        pass
-
     def _on_term_changed(self, text: str) -> None:
         code = text.split("  ")[0].strip() if text else ""
         self._vm.set_term(code)
@@ -428,14 +455,33 @@ class DownloadTab(ScrollableTab):
         self._vm.set_course_id(course_id)
         if course_id:
             self._vm.load_quizzes(course_id)
+            self._vm.load_assignments(course_id)
 
     def _on_consent_quiz_changed(self, index: int) -> None:
         quiz_id = self._consent_quiz_combo.itemData(index) or ""
         self._vm.set_consent_quiz_id(str(quiz_id))
 
+    def _on_assignment_changed(self, index: int) -> None:
+        assignment_id = self._assignment_combo.itemData(index) or ""
+        self._vm.set_assignment_id(str(assignment_id))
+
+    # ---------- Stub handlers ----------
+
+    def _on_download_all(self) -> None:
+        pass
+
     # ---------- View model rendering ----------
 
     def render(self, state: DownloadUiState) -> None:
+        self._busy_bar.setVisible(state.is_busy)
+
+        if self._output_path.text() != state.output_dir:
+            self._output_path.blockSignals(True)
+            try:
+                self._output_path.setText(state.output_dir)
+            finally:
+                self._output_path.blockSignals(False)
+
         token_missing = not state.canvas_token_available
         self._canvas_warning.setVisible(token_missing)
         self._canvas_recheck_btn.setVisible(token_missing)
@@ -522,6 +568,22 @@ class DownloadTab(ScrollableTab):
             self._consent_quiz_combo.setEnabled(False)
             if self._consent_quiz_combo.count():
                 self._consent_quiz_combo.clear()
+
+        if state.assignments:
+            self._assignment_combo.setEnabled(True)
+            if self._assignment_combo.count() != len(state.assignments):
+                self._assignment_combo.blockSignals(True)
+                try:
+                    self._assignment_combo.clear()
+                    for a in state.assignments:
+                        self._assignment_combo.addItem(a.name, a.id)
+                finally:
+                    self._assignment_combo.blockSignals(False)
+                self._on_assignment_changed(self._assignment_combo.currentIndex())
+        else:
+            self._assignment_combo.setEnabled(False)
+            if self._assignment_combo.count():
+                self._assignment_combo.clear()
 
         if state.last_saved_path:
             self._last_saved_label.setText(state.last_saved_path)
