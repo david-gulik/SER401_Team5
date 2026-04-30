@@ -420,6 +420,7 @@ class GradescopeClient:
         initial_sub_folder = os.getenv("SUBMISSIONS_FOLDER")
 
         sub_folder = os.getenv("SUBMISSIONS_FOLDER")
+        os.makedirs(sub_folder, exist_ok=True)
 
         with Progress() as progress:
             tasks = []
