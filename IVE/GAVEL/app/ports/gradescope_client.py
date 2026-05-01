@@ -30,6 +30,7 @@ def _env_or_default(name: str) -> str | None:
         return value
     return SCHEMA_DEFAULTS.get(name)
 
+
 # -------------------------
 # Data Class
 # -------------------------

@@ -301,7 +301,7 @@ def _unescape_double_quoted(s: str) -> str:
     i = 0
     n = len(s)
     while i < n:
-        if s[i] == "\\" and i + 1 < n and s[i + 1] in ('\\', '"'):
+        if s[i] == "\\" and i + 1 < n and s[i + 1] in ("\\", '"'):
             out.append(s[i + 1])
             i += 2
         else:
