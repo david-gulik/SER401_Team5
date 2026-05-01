@@ -426,7 +426,7 @@ class GradescopeClient:
             tasks = []
 
             for name, assignment_id in assignments.items():
-                task_id = progress.add_task(f"[cyan]{name}", total=100)
+                task_id = progress.add_task(f"[yellow]{name}", total=100)
 
                 tasks.append(
                     self.download_assignment_async(
@@ -555,27 +555,25 @@ def main():
     #     username=os.getenv("CANVAS_USERNAME"),
     #     password=os.getenv("CANVAS_PASSWORD"),
     # )
-    def main():
-        if len(sys.argv) != 2 or not sys.argv[1].isdigit():
-            log.error("ERROR: Must enter courseID as integer for argument!")
-            return
 
-        course_id = int(sys.argv[1])
+    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
+        log.error("ERROR: Must enter courseID as integer for argument!")
+        return
 
-        client = GradescopeClient(
-            course_url=f"https://canvas.asu.edu/courses/{course_id}",
-            headless=False
+    course_id = int(sys.argv[1])
+
+    client = GradescopeClient(
+        course_url=f"https://canvas.asu.edu/courses/{course_id}",
+        headless=False
+    )
+
+    asyncio.run(
+        client.download_all_assignments_async(
+            username=os.getenv("CANVAS_USERNAME"),
+            password=os.getenv("CANVAS_PASSWORD"),
         )
+    )
 
-        asyncio.run(
-            client.download_all_assignments_async(
-                username=os.getenv("CANVAS_USERNAME"),
-                password=os.getenv("CANVAS_PASSWORD"),
-            )
-        )
-
-    if __name__ == "__main__":
-        main()
 
 
 if __name__ == "__main__":
