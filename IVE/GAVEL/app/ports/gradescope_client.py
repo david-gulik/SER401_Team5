@@ -13,12 +13,23 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
+from GAVEL.services.env_service import SCHEMA_DEFAULTS
+
 # -------------------------
 # Logging Setup
 # -------------------------
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("GradescopeClient")
+
+
+def _env_or_default(name: str) -> str | None:
+    """Return the env var if set & non-empty, otherwise the schema default."""
+    value = os.getenv(name)
+    if value:
+        return value
+    return SCHEMA_DEFAULTS.get(name)
+
 
 # -------------------------
 # Data Class
@@ -56,28 +67,17 @@ class GradescopeClient:
         self.headless = headless
         self._driver: webdriver.Chrome | None = None  # noqa:
 
-        self.base_url = os.getenv("GRADESCOPE_BASE_URL")
-        self.courses_suffix = os.getenv("GRADESCOPE_COURSES_SUFFIX")
-        self.assignments_suffix = os.getenv("GRADESCOPE_ASSIGNMENTS_SUFFIX")
-        self.review_grades_suffix = os.getenv("GRADESCOPE_REVIEW_GRADES_SUFFIX")
-        self.generated_files_suffix = os.getenv("GRADESCOPE_GENERATED_FILES_SUFFIX")
+        self.base_url = _env_or_default("GRADESCOPE_BASE_URL")
+        self.courses_suffix = _env_or_default("GRADESCOPE_COURSES_SUFFIX")
+        self.assignments_suffix = _env_or_default("GRADESCOPE_ASSIGNMENTS_SUFFIX")
+        self.review_grades_suffix = _env_or_default("GRADESCOPE_REVIEW_GRADES_SUFFIX")
+        self.generated_files_suffix = _env_or_default("GRADESCOPE_GENERATED_FILES_SUFFIX")
         self.submissions_folder = submissions_folder or os.getenv("SUBMISSIONS_FOLDER")
 
-        env_variables = [
-            (self.base_url, "GRADESCOPE_BASE_URL"),
-            (self.courses_suffix, "GRADESCOPE_COURSES_SUFFIX"),
-            (self.assignments_suffix, "GRADESCOPE_ASSIGNMENTS_SUFFIX"),
-            (self.review_grades_suffix, "GRADESCOPE_REVIEW_GRADES_SUFFIX"),
-            (self.generated_files_suffix, "GRADESCOPE_GENERATED_FILES_SUFFIX"),
-            (self.submissions_folder, "SUBMISSIONS_FOLDER"),
-        ]
-        empty_env_variables = []
-        for e in env_variables:
-            if None in e:
-                empty_env_variables.append(e[-1])
-        if empty_env_variables:
+        if not self.submissions_folder:
             raise ValueError(
-                f"Certain required environment variables are empty: {empty_env_variables}"
+                "SUBMISSIONS_FOLDER is required. Set it in .env or pass an output "
+                "folder via the download page."
             )
         if os.getenv("CANVAS_USERNAME") is None or os.getenv("CANVAS_PASSWORD") is None:
             log.error(
