@@ -182,6 +182,11 @@ ENV_SCHEMA: tuple[EnvVarSpec, ...] = (
 
 SCHEMA_NAMES: frozenset[str] = frozenset(spec.name for spec in ENV_SCHEMA)
 
+# Map of env var name -> default value, for specs that declare one. Consumers
+# read this when an env var is unset so the schema stays the single source of
+# truth for default URLs/paths/etc.
+SCHEMA_DEFAULTS: dict[str, str] = {spec.name: spec.default for spec in ENV_SCHEMA if spec.default}
+
 
 def grouped_schema() -> tuple[tuple[str, tuple[EnvVarSpec, ...]], ...]:
     """Return ENV_SCHEMA bucketed by group, preserving first-seen order."""
@@ -282,8 +287,27 @@ class EnvService:
 def _unquote(value: str) -> str:
     v = value.strip()
     if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
-        return v[1:-1]
+        inner = v[1:-1]
+        if v[0] == '"':
+            return _unescape_double_quoted(inner)
+        return inner
     return v
+
+
+def _unescape_double_quoted(s: str) -> str:
+    # Reverses _quote_if_needed's escaping (\\ -> \ and \" -> ") in one pass
+    # so repeated read/write cycles don't keep doubling backslashes.
+    out: list[str] = []
+    i = 0
+    n = len(s)
+    while i < n:
+        if s[i] == "\\" and i + 1 < n and s[i + 1] in ('\\', '"'):
+            out.append(s[i + 1])
+            i += 2
+        else:
+            out.append(s[i])
+            i += 1
+    return "".join(out)
 
 
 def _quote_if_needed(value: str) -> str:

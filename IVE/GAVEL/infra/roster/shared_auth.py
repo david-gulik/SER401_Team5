@@ -13,6 +13,7 @@ silently refreshed without requiring the user to log in again.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 
@@ -93,10 +94,17 @@ class SharedAuthProvider:
         self._driver = self._create_driver()
         try:
             # Phase 1: catalog API token
-            print(
-                f"[AUTH] Browser opened. Complete CAS login and Duo MFA.\n"
-                f"[AUTH] Waiting up to {self._cfg.mfa_timeout}s..."
-            )
+            if self._canvas_credentials():
+                print(
+                    "[AUTH] Browser opened. Auto-filling Canvas credentials; "
+                    f"approve the Duo prompt on your device (timeout: {self._cfg.mfa_timeout}s)."
+                )
+            else:
+                print(
+                    f"[AUTH] Browser opened. Complete CAS login and Duo MFA.\n"
+                    f"[AUTH] Tip: set CANVAS_USERNAME and CANVAS_PASSWORD in .env to auto-fill.\n"
+                    f"[AUTH] Waiting up to {self._cfg.mfa_timeout}s..."
+                )
             self._catalog_token = self._obtain_catalog_token(self._driver)
             print("[AUTH] Catalog API token acquired.")
 
@@ -324,6 +332,9 @@ class SharedAuthProvider:
                 print(f"[AUTH] Current URL: {display}")
                 last_printed = current
 
+            self._fill_cas_credentials_if_present(driver)
+            self._dismiss_duo_trusted_device_if_present(driver)
+
             if catalog_domain in current:
                 # SPA received ?code= and should exchange it for a JWT.
                 for _ in range(self._cfg.token_exchange_timeout):
@@ -417,6 +428,77 @@ class SharedAuthProvider:
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         return webdriver.Chrome(options=options)
+
+    @staticmethod
+    def _canvas_credentials() -> tuple[str, str] | None:
+        username = os.getenv("CANVAS_USERNAME")
+        password = os.getenv("CANVAS_PASSWORD")
+        if username and password:
+            return username, password
+        return None
+
+    @classmethod
+    def _fill_cas_credentials_if_present(cls, driver) -> bool:
+        """Auto-submit the CAS form using CANVAS_USERNAME / CANVAS_PASSWORD.
+
+        No-op if creds aren't set, the page isn't CAS, the form isn't ready,
+        or the username field is already populated (avoids resubmitting while
+        the redirect is in flight).
+        """
+        creds = cls._canvas_credentials()
+        if creds is None:
+            return False
+        try:
+            if "weblogin.asu.edu" not in driver.current_url:
+                return False
+        except Exception:
+            return False
+
+        from selenium.common.exceptions import (
+            NoSuchElementException,
+            WebDriverException,
+        )
+        from selenium.webdriver.common.by import By
+
+        try:
+            user_field = driver.find_element(By.ID, "username")
+            pass_field = driver.find_element(By.ID, "password")
+        except (NoSuchElementException, WebDriverException):
+            return False
+
+        try:
+            if user_field.get_attribute("value"):
+                return False
+            user_field.send_keys(creds[0])
+            pass_field.send_keys(creds[1])
+            driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
+        except WebDriverException as exc:
+            logger.debug("CAS auto-fill failed: %s", exc)
+            return False
+
+        print("[AUTH] Auto-filled CAS credentials.")
+        return True
+
+    @staticmethod
+    def _dismiss_duo_trusted_device_if_present(driver) -> None:
+        """Click 'No, other people use this device' on the Duo prompt if shown."""
+        from selenium.common.exceptions import WebDriverException
+        from selenium.webdriver.common.by import By
+
+        try:
+            elements = driver.find_elements(
+                By.XPATH,
+                "//*[contains(text(), 'No, other people use this device')]",
+            )
+        except WebDriverException:
+            return
+        if not elements:
+            return
+        try:
+            elements[0].click()
+            print("[AUTH] Dismissed Duo trusted-device prompt.")
+        except WebDriverException:
+            pass
 
     def _quit_driver(self) -> None:
         """Safely quit the stored Selenium driver."""

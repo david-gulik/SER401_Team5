@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
@@ -434,6 +435,7 @@ class DownloadTab(ScrollableTab):
         start = self._output_path.text().strip() or str(Path.home())
         chosen = QFileDialog.getExistingDirectory(self, "Select output folder", start)
         if chosen:
+            chosen = os.path.normpath(chosen)
             self._output_path.setText(chosen)
             self._vm.set_output_dir(chosen)
 
