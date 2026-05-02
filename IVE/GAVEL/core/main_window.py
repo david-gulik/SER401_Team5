@@ -10,7 +10,7 @@ from GAVEL.core.page_registry import PageRegistry, PageSpec
 class MainWindow(QMainWindow):
     def __init__(self, registry: PageRegistry, ctx: AppContext) -> None:
         super().__init__()
-        self.setWindowTitle("Modular PyQt App")
+        self.setWindowTitle("GAVEL")
 
         self._registry = registry
         self._ctx = ctx

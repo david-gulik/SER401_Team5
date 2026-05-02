@@ -9,9 +9,15 @@ from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_canvas_client, build_roster_client
 from GAVEL.cli.commands.canvas_course import handle_canvas_course_download
+from GAVEL.cli.commands.canvas_course_dataset import (
+    handle_canvas_course_dataset_download,
+)
 from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
+from GAVEL.cli.commands.consent_form import handle_consent_form_download
+from GAVEL.cli.commands.gradescope_download import handle_gradescope_download
 from GAVEL.cli.commands.quiz_analysis import handle_quiz_analysis_download
 from GAVEL.cli.commands.roster import handle_roster_download, handle_roster_list_terms
+from GAVEL.cli.commands.rubric_assessment import handle_rubric_assessment_download
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger
 from GAVEL.theme.context import ThemeContext
@@ -45,6 +51,30 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory where the JSON course data will be written",
     )
     download_parser.set_defaults(handler=handle_canvas_course_download)
+
+    dataset_parser = canvas_subparsers.add_parser(
+        "download-dataset",
+        help="Download full Canvas dataset (gradebook, consent form, rubric assessments)",
+    )
+
+    dataset_parser.add_argument(
+        "--course-id", type=int, required=True, help="Canvas course numeric identifier"
+    )
+    dataset_parser.add_argument(
+        "--quiz-id", type=int, required=True, help="Canvas quiz numeric identifier"
+    )
+    dataset_parser.add_argument(
+        "--assignment-ids",
+        default="",
+        help="Comma-separated assignment IDs (e.g. 1,2,3)",
+    )
+    dataset_parser.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory where dataset will be written",
+    )
+
+    dataset_parser.set_defaults(handler=handle_canvas_course_dataset_download)
 
     gradebook_parser = subparsers.add_parser("canvas-gradebook", help="Canvas gradebook operations")
     gradebook_subparsers = gradebook_parser.add_subparsers(dest="gradebook_command", required=True)
@@ -91,6 +121,53 @@ def _build_parser() -> argparse.ArgumentParser:
     quiz_dl.add_argument("--output", "-o", help="Save CSV to this file (default: stdout)")
     quiz_dl.set_defaults(handler=handle_quiz_analysis_download)
 
+    # rubric commands
+    rubric_parser = subparsers.add_parser("rubric", help="Canvas rubric assessment operations")
+    rubric_subparsers = rubric_parser.add_subparsers(dest="rubric_command", required=True)
+
+    # rubric download
+    rubric_dl = rubric_subparsers.add_parser(
+        "download", help="Download rubric assessments for an assignment"
+    )
+    rubric_dl.add_argument("--course-id", required=True, help="Canvas course numeric identifier")
+    rubric_dl.add_argument(
+        "--assignment-id", required=True, help="Canvas assignment numeric identifier"
+    )
+    rubric_dl.add_argument(
+        "--output", "-o", required=True, help="Directory where the JSON file will be written"
+    )
+    rubric_dl.set_defaults(handler=handle_rubric_assessment_download)
+
+    # consent form commands
+    consent_parser = subparsers.add_parser("consent_form", help="Canvas consent form operations")
+    consent_subparsers = consent_parser.add_subparsers(dest="consent_command", required=True)
+
+    # consent form download
+    consent_dl = consent_subparsers.add_parser("download", help="Download consent form CSV")
+    consent_dl.add_argument("--course-id", required=True, help="Canvas course numeric identifier")
+    consent_dl.add_argument("--quiz-id", required=True, help="Canvas quiz numeric identifier")
+    consent_dl.add_argument(
+        "--output", "-o", required=True, help="Directory where the CSV file will be written"
+    )
+    consent_dl.set_defaults(handler=handle_consent_form_download)
+
+    # Gradescope downloader parser
+    gradescope_parser = subparsers.add_parser("gradescope", help="Gradescope Submission Downloader")
+    gradescope_subparsers = gradescope_parser.add_subparsers(
+        dest="gradescope_command", required=True
+    )
+
+    gradescope_dl = gradescope_subparsers.add_parser(
+        "download", help="Download all Gradescope assignment submissions for a given Canvas course"
+    )
+    gradescope_dl.add_argument("--course-id", required=True)
+    gradescope_dl.add_argument(
+        "--show-browser",
+        action="store_true",
+        help="Show Chrome instead of running headless",
+    )
+    gradescope_dl.set_defaults(handler=handle_gradescope_download)
+
     return parser
 
 
@@ -101,7 +178,7 @@ def _build_app_context() -> AppContext:
     theme = ThemeContext(tokens=tokens)
 
     config_service = ConfigService()
-    logger = AppLogger(name="my_app.cli")
+    logger = AppLogger(name="GAVEL.cli")
 
     canvas_client = build_canvas_client(config_service.get(), logger)
     roster_client = build_roster_client(config_service.get(), logger)

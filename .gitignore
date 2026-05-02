@@ -36,8 +36,6 @@ tests/infra/canvas/canvas_rubric_try.py
 
 # Scripts / temp Files
 scripts/
-gradebook.csv
-test_gradebook.csv
 
 # Logs
 *.log
@@ -59,4 +57,5 @@ Desktop.ini
 .pyright/
 
 # Download storage
-/data_original/submissions/
+/data_original
+/data_processed

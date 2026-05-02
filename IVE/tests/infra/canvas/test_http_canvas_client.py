@@ -118,7 +118,7 @@ def test_fetch_gradebook_csv_builds_csv_from_grouped_submissions():
     result = client.fetch_gradebook_csv(course_id=456).decode("utf-8")
 
     expected_header = (
-        "Student Name,Student ID,SIS User ID,SIS Login ID,Section,"
+        "Student,ID,SIS User ID,SIS Login ID,Section,"
         "Assignment A (10),Assignment B (11),Activities Total,Final Grade"
     )
     assert expected_header in result
@@ -180,6 +180,153 @@ def test_build_grouped_submission_lookup_computes_group_totals():
     assert result[1]["group_totals"]["Activities"] == 25.5
     assert result[1]["group_totals"]["Homework"] == 63.0
     assert result[1]["computed_final_score"] == 88.5
+
+
+def test_build_gradebook_columns_sorts_and_skips_omitted_assignments():
+    client = make_client(FakeSession([]))
+
+    assignment_groups = [
+        {
+            "name": "Activities",
+            "position": 2,
+            "group_weight": 25,
+            "assignments": [
+                {"id": 22, "name": "Z Activity", "position": 2},
+                {"id": 21, "name": "A Activity", "position": 1},
+            ],
+        },
+        {
+            "name": "Cairns",
+            "position": 1,
+            "group_weight": 15,
+            "assignments": [
+                {"id": 11, "name": "Cairn 1", "position": 1},
+                {"id": 12, "name": "Hidden", "position": 2, "omit_from_final_grade": True},
+                {"name": "No ID Assignment", "position": 3},
+            ],
+        },
+    ]
+
+    assignment_columns, assignment_group_columns = client._build_gradebook_columns(
+        assignment_groups
+    )
+
+    assert [col["name"] for col in assignment_group_columns] == [
+        "Cairns Total",
+        "Activities Total",
+    ]
+    assert [col["name"] for col in assignment_columns] == [
+        "Cairn 1 (11)",
+        "A Activity (21)",
+        "Z Activity (22)",
+    ]
+
+
+def test_build_grouped_submission_lookup_leaves_none_scores_blank():
+    client = make_client(FakeSession([]))
+
+    assignment_columns = [
+        {"assignment_id": 10, "name": "A", "group_name": "Activities"},
+    ]
+
+    grouped_submissions = [
+        {
+            "user_id": 1,
+            "computed_final_score": "",
+            "submissions": [
+                {"assignment_id": 10, "score": None},
+            ],
+        }
+    ]
+
+    result = client._build_grouped_submission_lookup(grouped_submissions, assignment_columns)
+
+    assert result[1]["assignment_scores"][10] == ""
+    assert result[1]["group_totals"] == {}
+    assert result[1]["computed_final_score"] == ""
+
+
+def test_fetch_gradebook_csv_writes_blank_and_weights_rows():
+    session = FakeSession(
+        [
+            FakeResponse(
+                json_data=[
+                    {
+                        "user": {
+                            "name": "Jane Doe",
+                            "id": 1,
+                            "sis_user_id": "S001",
+                            "login_id": "jdoe",
+                        },
+                        "user_id": 1,
+                        "course_section_id": 100,
+                    }
+                ]
+            ),
+            FakeResponse(json_data=[{"id": 100, "name": "Section 1"}]),
+            FakeResponse(
+                json_data=[
+                    {
+                        "name": "Activities",
+                        "position": 1,
+                        "group_weight": 25,
+                        "assignments": [
+                            {"id": 10, "name": "Assignment A", "position": 1},
+                        ],
+                    }
+                ]
+            ),
+            FakeResponse(
+                json_data=[
+                    {
+                        "user_id": 1,
+                        "computed_final_score": 40.0,
+                        "submissions": [
+                            {"assignment_id": 10, "score": 40.0},
+                        ],
+                    }
+                ]
+            ),
+        ]
+    )
+
+    client = make_client(session)
+    rows = client.fetch_gradebook_csv(course_id=456).decode("utf-8").splitlines()
+
+    assert rows[0] == (
+        "Student,ID,SIS User ID,SIS Login ID,Section,Assignment A (10),Activities Total,Final Grade"
+    )
+    assert rows[1] == ",,,,,,,"
+    assert rows[2] == ",,,,,,25,"
+    assert rows[3] == "Jane Doe,1,S001,jdoe,Section 1,40.0,40.0,40.0"
+
+
+def test_request_with_retries_retries_on_429():
+    session = FakeSession(
+        [
+            FakeResponse(status_code=429, headers={"Retry-After": "0"}),
+            FakeResponse(json_data={"ok": True}),
+        ]
+    )
+
+    client = make_client(session)
+
+    with patch("time.sleep") as sleep_mock:
+        response = client._request_with_retries(
+            method="GET",
+            path="/api/v1/courses/1",
+            accept="application/json",
+        )
+
+    assert response.json() == {"ok": True}
+    assert len(session.calls) == 2
+    sleep_mock.assert_called_once()
+
+
+TEST_COURSE_ID = 101
+TEST_QUIZ_ID = 5
+TEST_REPORT_ID = 98765
+TEST_CSV_BYTES = b"name,sis_id,attempt\nDalinar Kholin,309780,1"
 
 
 @pytest.fixture

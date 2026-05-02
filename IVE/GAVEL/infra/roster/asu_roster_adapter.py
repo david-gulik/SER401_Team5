@@ -11,7 +11,7 @@ from GAVEL.infra.roster.catalog_api import (
 from GAVEL.infra.roster.roster_fetcher import (
     CookieFileRosterFetcher,
     MyASUEndpoints,
-    SeleniumRosterFetcher,
+    fetch_roster_csv,
 )
 from GAVEL.infra.roster.shared_auth import SharedAuthProvider
 from GAVEL.services.config_service import RosterConfig
@@ -48,18 +48,12 @@ class ASURosterClient(RosterClient):
 
     def fetch_roster(self, request: RosterRequest) -> str:
         session = self._auth.get_roster_session()
-        params = {
-            "term": request.term,
-            "class": request.class_number,
-            "format": "csv",
-        }
-        response = session.get(
-            self._endpoints.roster_url,
-            params=params,
-            timeout=self._cfg.http_timeout,
+        return fetch_roster_csv(
+            session,
+            self._endpoints,
+            request,
+            self._cfg.http_timeout,
         )
-        SeleniumRosterFetcher._check_response(response)
-        return response.text
 
     def close(self) -> None:
         self._auth.close()

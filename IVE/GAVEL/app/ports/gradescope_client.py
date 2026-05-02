@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-import sys
 import time
 from dataclasses import dataclass
 
@@ -14,12 +13,23 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
+from GAVEL.services.env_service import SCHEMA_DEFAULTS
+
 # -------------------------
 # Logging Setup
 # -------------------------
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("GradescopeClient")
+
+
+def _env_or_default(name: str) -> str | None:
+    """Return the env var if set & non-empty, otherwise the schema default."""
+    value = os.getenv(name)
+    if value:
+        return value
+    return SCHEMA_DEFAULTS.get(name)
+
 
 # -------------------------
 # Data Class
@@ -47,7 +57,9 @@ class GradescopeClient:
     SESSION_COOKIE_NAME = "_gradescope_session"
     TOKEN_COOKIE_NAME = "token"
 
-    def __init__(self, course_url: str, headless: bool = True):
+    def __init__(
+        self, course_url: str, headless: bool = True, submissions_folder: str | None = None
+    ):
 
         load_dotenv()
 
@@ -55,11 +67,22 @@ class GradescopeClient:
         self.headless = headless
         self._driver: webdriver.Chrome | None = None  # noqa:
 
-        self.base_url = os.getenv("GRADESCOPE_BASE_URL")
-        self.courses_suffix = os.getenv("GRADESCOPE_COURSES_SUFFIX")
-        self.assignments_suffix = os.getenv("GRADESCOPE_ASSIGNMENTS_SUFFIX")
-        self.review_grades_suffix = os.getenv("GRADESCOPE_REVIEW_GRADES_SUFFIX")
-        self.generated_files_suffix = os.getenv("GRADESCOPE_GENERATED_FILES_SUFFIX")
+        self.base_url = _env_or_default("GRADESCOPE_BASE_URL")
+        self.courses_suffix = _env_or_default("GRADESCOPE_COURSES_SUFFIX")
+        self.assignments_suffix = _env_or_default("GRADESCOPE_ASSIGNMENTS_SUFFIX")
+        self.review_grades_suffix = _env_or_default("GRADESCOPE_REVIEW_GRADES_SUFFIX")
+        self.generated_files_suffix = _env_or_default("GRADESCOPE_GENERATED_FILES_SUFFIX")
+        self.submissions_folder = submissions_folder or os.getenv("SUBMISSIONS_FOLDER")
+
+        if not self.submissions_folder:
+            raise ValueError(
+                "SUBMISSIONS_FOLDER is required. Set it in .env or pass an output "
+                "folder via the download page."
+            )
+        if os.getenv("CANVAS_USERNAME") is None or os.getenv("CANVAS_PASSWORD") is None:
+            log.error(
+                "NOTICE: You can add your Canvas login as CANVAS_USERNAME and CANVAS_PASSWORD in your .env file for easier login!"
+            )
 
     # -------------------------
     # Driver
@@ -126,7 +149,7 @@ class GradescopeClient:
 
         log.info("Clicking Gradescope nav link...")
         nav_link = wait.until(
-            ec.element_to_be_clickable((By.ID, "context_external_tool_171355-link"))
+            ec.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Gradescope')]"))
         )
         nav_link.click()
 
@@ -249,9 +272,6 @@ class GradescopeClient:
 
         return session
 
-    # ---------------------------------------------------------
-    # NEW: Downloader (moved from global function)
-    # ---------------------------------------------------------
     def download_all_assignments(self, username: str, password: str):
         """
         Logs in, captures session, and downloads all assignment bulk exports.
@@ -264,15 +284,34 @@ class GradescopeClient:
         resp = session.get(
             f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}"
         )
+        print(f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}")
         soup = BeautifulSoup(resp.text, "html.parser")
-        elements = soup.find_all(attrs={"data-assignment-id": True})
+        elements = soup.find_all(
+            attrs={"data-assignment-id": True, "aria-describedby": f"course-{gs_course_id}"}
+        )
 
         assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
 
-        sub_folder = os.getenv("SUBMISSIONS_FOLDER")
+        # for a in assignments:
+        #     print(a, assignments[a])
 
         for name, assignment_id in assignments.items():
+            # download autograder also!
+            autograder_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/configure_autograder"
+            resp = session.get(autograder_url)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            link = soup.find("a", string=lambda t: t and "Download Autograder" in t)
+            if link and ".zip" in link["href"]:
+                href = link["href"]
+                log.info("Downloading Autograder for assignment: %s", name)
+                autograder_download = session.get(href)
+                safe_name = self.remove_illegal_download_characters(name)
+                output_path = os.path.join(self.submissions_folder, safe_name + "_autograder.zip")
+                with open(output_path, "wb") as f:
+                    f.write(autograder_download.content)
+
             review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
+            print("Review_grades URL: ", review_url)
             resp = session.get(review_url)
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -283,8 +322,9 @@ class GradescopeClient:
                 log.info("Downloading assignment: %s", name)
                 zip_resp = session.get(f"{self.base_url}" + link["href"])
 
-                safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
-                output_path = os.path.join(sub_folder, safe_name + ".zip")
+                safe_name = self.remove_illegal_download_characters(name)
+                print(self.submissions_folder, safe_name)
+                output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
 
                 with open(output_path, "wb") as f:
                     f.write(zip_resp.content)
@@ -302,6 +342,7 @@ class GradescopeClient:
                 f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/export",
                 headers={"Referer": review_url},
             )
+            print("POST response code: ", export_resp.status_code)
             data = export_resp.json()
             file_id = data["generated_file_id"]
 
@@ -318,39 +359,46 @@ class GradescopeClient:
                     break
 
                 log.info("Waiting for export... (%s%%)", int(progress * 100))
-                time.sleep(1)
+                time.sleep(1.5)
 
             # Download final ZIP
             zip_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.zip"
             zip_resp = session.get(zip_url)
 
-            safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
-            output_path = os.path.join(sub_folder, safe_name + ".zip")
+            safe_name = self.remove_illegal_download_characters(name)
+            print(self.submissions_folder, safe_name)
+            output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
 
             with open(output_path, "wb") as f:
                 f.write(zip_resp.content)
 
-            log.info("Assignment %s downloaded!", assignment_id)
+            log.info("Assignment %s downloaded!", name)
 
         log.info("Download of class %s complete!", gs_course_id)
 
+    def remove_illegal_download_characters(self, name: str) -> str:
+        safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+        return safe_name
+
 
 def main():
-
-    if len(sys.argv) != 2 or not sys.argv[1].isdigit():
-        log.error("ERROR: Must enter courseID as integer for argument!")
-        return
-
-    course_id = int(sys.argv[1])
-    client = GradescopeClient(
-        course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
-    )
-
-    client.download_all_assignments(
-        username=os.getenv("CANVAS_USERNAME"),
-        password=os.getenv("CANVAS_PASSWORD"),
-    )
+    return
 
 
-if __name__ == "__main__":
-    main()
+#     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
+#         log.error("ERROR: Must enter courseID as integer for argument!")
+#         return
+#
+#     course_id = int(sys.argv[1])
+#     client = GradescopeClient(
+#         course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
+#     )
+#
+#     client.download_all_assignments(
+#         username=os.getenv("CANVAS_USERNAME"),
+#         password=os.getenv("CANVAS_PASSWORD"),
+#     )
+#
+#
+# if __name__ == "__main__":
+#     main()
