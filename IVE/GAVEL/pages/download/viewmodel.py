@@ -684,9 +684,7 @@ class DownloadViewModel(QObject):
 
             try:
                 gs_result = DownloadGradescopeSubmissionsUseCase().execute(
-                    DownloadGradescopeSubmissionsRequest(
-                        course_id=course_id, output_dir=output_dir
-                    )
+                    DownloadGradescopeSubmissionsRequest(course_id=course_id, output_dir=output_dir)
                 )
                 successes.append("Gradescope Submissions")
                 last_path = gs_result.saved_path
