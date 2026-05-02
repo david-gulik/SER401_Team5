@@ -467,10 +467,8 @@ class DownloadTab(ScrollableTab):
         assignment_id = self._assignment_combo.itemData(index) or ""
         self._vm.set_assignment_id(str(assignment_id))
 
-    # ---------- Stub handlers ----------
-
     def _on_download_all(self) -> None:
-        pass
+        self._vm.download_all()
 
     # ---------- View model rendering ----------
 
