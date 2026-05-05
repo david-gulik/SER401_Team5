@@ -1,0 +1,13 @@
+name,id,sis_id,section,attempt,Type your name below (leave blank if you do not consent to participate),Do you consent to participate in this research study?
+"Bourque, Bailey",8001,309780,TRN-2026Spring-IVECapstone,1,Bailey Bourque,True
+"Crain, Lindy",8002,494030,TRN-2026Spring-IVECapstone,1,Lindy Crain,True
+"Vonweinstein, Carli",8003,771671,TRN-2026Spring-IVECapstone,1,Carli,True
+"Gulik, David",8004,600001,TRN-2026Spring-IVECapstone,1,,False
+"Reyes, Maria",8005,600002,TRN-2026Spring-IVECapstone,1,Maria Reyes,False
+"Nguyen, Kevin",8006,600003,TRN-2026Spring-IVECapstone,1,,
+"Patel, Riya",8007,600004,TRN-2026Spring-IVECapstone,1,wrongname,True
+"Torres, James",8008,600005,TRN-2026Spring-IVECapstone,1,James Torres,True
+"Torres, James",8008,600005,TRN-2026Spring-IVECapstone,2,,False
+"Park, Soo",8009,600006,TRN-2026Spring-IVECapstone,1,,False
+"Park, Soo",8009,600006,TRN-2026Spring-IVECapstone,2,Soo Park,True
+"Student, Test",9999,1521801,TRN-2026Spring-IVECapstone,1,Test Student,True

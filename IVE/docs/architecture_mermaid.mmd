@@ -1,0 +1,89 @@
+flowchart LR
+
+subgraph Presentation
+  subgraph GUI[GUI PyQt6 MVVM]
+    Shell[App Shell
+    MainWindow
+    Drawer
+    Page Registry]
+    Pages[Capability Pages and Tabs
+    Views only]
+    VMs[ViewModels
+    UI State
+    Commands]
+    Components[Reusable UI Components
+    SectionCard
+    StatusPill
+    Theme]
+    Shell --> Pages
+    Pages --> VMs
+    Pages --> Components
+  end
+
+  subgraph CLI[CLI]
+    CliCommands[CLI Commands
+    Thin adapters]
+  end
+end
+
+subgraph Application[Application Layer Use Cases]
+  UseCases[Use Cases
+  Download Course Data
+  Run Autograder
+  Compute Rubric Delta
+  Compare Runs
+  Stability Check
+  Update Ground Truth
+  Report Metrics]
+end
+
+subgraph Integration[Integration Layer Ports and Adapters]
+  Ports[Ports
+  Interfaces
+  CanvasClient
+  GradescopeClient
+  AutograderRunner
+  ArtifactStore
+  DatasetStore]
+  Adapters[Adapters
+  Implementations
+  HttpCanvasClient
+  HttpGradescopeClient
+  LocalRunner
+  File Stores or DB]
+end
+
+subgraph Data[Data and Artifacts]
+  Dataset[Dataset Store
+  Submissions
+  Ground Truth]
+  Artifacts[Artifact Store
+  Run Inputs
+  Run Outputs
+  Deltas
+  Metrics
+  Logs]
+end
+
+subgraph External[External Systems]
+  Canvas[Canvas]
+  Gradescope[Gradescope]
+  Runner[Autograder Runtime
+  Shoggoth]
+end
+
+VMs --> UseCases
+CliCommands --> UseCases
+
+UseCases --> Ports
+Ports --> Adapters
+
+Adapters --> Canvas
+Adapters --> Gradescope
+Adapters --> Runner
+
+Adapters --> Dataset
+Adapters --> Artifacts
+
+UseCases --> Dataset
+UseCases --> Artifacts

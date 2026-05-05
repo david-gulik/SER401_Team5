@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from pathlib import Path
+
+from GAVEL.app.dtos.asu_roster import RosterStudent
+
+
+class RosterReader(ABC):
+    @abstractmethod
+    def read(self, path: Path) -> list[RosterStudent]:
+        """Load a roster file and return one RosterStudent per row."""
+        raise NotImplementedError
