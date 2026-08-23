@@ -11,7 +11,9 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 10
+# Ratchet: keep just below actual coverage so regressions fail CI.
+# Raise as coverage improves.
+fail_under = 21
 
 [tool.ruff]
 target-version = "py311"

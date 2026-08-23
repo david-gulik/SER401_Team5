@@ -1,5 +1,6 @@
 -r ../requirements.txt
-ruff
+# Keep this pin in sync with .github/workflows/ci.yml
+ruff==0.16.4
 pytest
 pytest-cov
 coverage
