@@ -3,7 +3,7 @@ beautifulsoup4
 selenium
 matplotlib==3.10.1
 pandas==2.2.3
-python-dotenv==1.1.0
+python-dotenv==1.2.2
 PyYAML
 scipy==1.15.2
-pytest==7.4.0
+pytest==9.0.3

@@ -25,9 +25,9 @@ from GAVEL.app.usecases.anonymize_rubric_assessment import (
 
 result = AnonymizeRubricAssessmentUseCase().execute(
     AnonymizeRubricAssessmentRequest(
-        assessments=tuple(assessments),    # tuple[RubricAssessment, ...]
-        consented_ids=tuple(consented),    # tuple[int, ...] — real Canvas user IDs
-        id_map=tuple(map_ids.items()),     # tuple[tuple[int, int], ...] — real → anonymous
+        assessments=tuple(assessments),  # tuple[RubricAssessment, ...]
+        consented_ids=tuple(consented),  # tuple[int, ...] — real Canvas user IDs
+        id_map=tuple(map_ids.items()),  # tuple[tuple[int, int], ...] — real → anonymous
     )
 )
 

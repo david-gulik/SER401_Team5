@@ -131,6 +131,7 @@ The following snippets show the minimum code required to add a brand-new page wi
 ```python
 from dataclasses import dataclass
 
+
 @dataclass(frozen=True)
 class MyFeatureRecord:
     # DTOs are pure data holders shared between use cases, viewmodels, and adapters.
@@ -143,6 +144,7 @@ class MyFeatureRecord:
 ```python
 from abc import ABC, abstractmethod
 from GAVEL.app.dtos.my_feature import MyFeatureRecord
+
 
 class MyFeatureClient(ABC):
     """
@@ -166,15 +168,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from GAVEL.app.ports.my_feature_client import MyFeatureClient
 
+
 @dataclass(frozen=True)
 class SyncMyFeatureRequest:
     course_id: int
     output_dir: Path
 
+
 @dataclass(frozen=True)
 class SyncMyFeatureResult:
     saved_path: Path
     record_count: int
+
 
 class SyncMyFeatureUseCase:
     def __init__(self, client: MyFeatureClient) -> None:
@@ -205,10 +210,12 @@ from dataclasses import dataclass
 from GAVEL.app.dtos.my_feature import MyFeatureRecord
 from GAVEL.app.ports.my_feature_client import MyFeatureClient
 
+
 @dataclass(frozen=True)
 class MyFeatureApiConfig:
     base_url: str
     token: str
+
 
 class HttpMyFeatureClient(MyFeatureClient):
     """Only place that imports requests; map JSON → DTOs."""
@@ -224,10 +231,7 @@ class HttpMyFeatureClient(MyFeatureClient):
             timeout=30,
         )
         resp.raise_for_status()
-        return [
-            MyFeatureRecord(id=item["id"], name=item["name"])
-            for item in resp.json()
-        ]
+        return [MyFeatureRecord(id=item["id"], name=item["name"]) for item in resp.json()]
 ```
 
 ### 4. App Services Wiring
@@ -239,6 +243,7 @@ class HttpMyFeatureClient(MyFeatureClient):
 from GAVEL.app.ports.my_feature_client import MyFeatureClient
 from GAVEL.app.usecases.my_feature_sync import SyncMyFeatureUseCase
 
+
 @dataclass(frozen=True)
 class AppServices:
     my_feature_client: MyFeatureClient
@@ -246,7 +251,9 @@ class AppServices:
     # ...
 
     @classmethod
-    def build(cls, canvas_client: CanvasClient, logger: AppLogger, *, my_feature_client: MyFeatureClient) -> "AppServices":
+    def build(
+        cls, canvas_client: CanvasClient, logger: AppLogger, *, my_feature_client: MyFeatureClient
+    ) -> "AppServices":
         """
         Central factory: create use cases once and share across GUI/CLI.
         Inject any instrumentation/loggers here rather than deep in views.
@@ -275,12 +282,14 @@ from GAVEL.app.usecases.my_feature_sync import (
     SyncMyFeatureUseCase,
 )
 
+
 @dataclass(frozen=True)
 class MyFeatureUiState:
     course_id: str
     is_busy: bool
     status: Status
     message: str
+
 
 class MyFeatureViewModel(QObject):
     # Views subscribe to these signals to react to state changes/events.
@@ -303,12 +312,16 @@ class MyFeatureViewModel(QObject):
             return
         self._set_busy("Syncing...")  # Update state before long IO.
         try:
-            request = SyncMyFeatureRequest(course_id=int(self._state.course_id or "0"), output_dir=self._output_dir)
+            request = SyncMyFeatureRequest(
+                course_id=int(self._state.course_id or "0"), output_dir=self._output_dir
+            )
             result = self._use_case.execute(request)
         except Exception as exc:  # Catch exceptions to surface friendly UI messages.
             self._set_idle(Status.CRITICAL, str(exc))
             return
-        self._set_idle(Status.NOMINAL, f"Saved {result.record_count} records to {result.saved_path}")
+        self._set_idle(
+            Status.NOMINAL, f"Saved {result.record_count} records to {result.saved_path}"
+        )
 
     def _set_busy(self, message: str) -> None:
         self._state = replace(self._state, is_busy=True, status=Status.WARNING, message=message)
@@ -330,6 +343,7 @@ from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.my_feature.viewmodel import MyFeatureViewModel, MyFeatureUiState
 from GAVEL.ui_components.section_card import SectionCard
 from GAVEL.ui_components.status_pill import StatusPill
+
 
 class MyFeatureTab(ScrollableTab):
     def __init__(self, theme: ThemeContext, vm: MyFeatureViewModel) -> None:
@@ -383,6 +397,7 @@ from GAVEL.core.page_registry import PageRegistry, PageSpec
 from GAVEL.pages.my_feature.tabs import MyFeatureTab
 from GAVEL.pages.my_feature.viewmodel import MyFeatureViewModel
 
+
 class MyFeaturePage(BasePage):
     page_id = "my_feature"
     title = "My Feature"
@@ -390,11 +405,14 @@ class MyFeaturePage(BasePage):
     def __init__(self, ctx: AppContext) -> None:
         super().__init__()
         # Pages own dependency injection for their viewmodels.
-        vm = MyFeatureViewModel(ctx.services.sync_my_feature_uc, Path.home() / "Downloads" / "my_feature")
+        vm = MyFeatureViewModel(
+            ctx.services.sync_my_feature_uc, Path.home() / "Downloads" / "my_feature"
+        )
         tabs = QTabWidget()
         tabs.addTab(MyFeatureTab(ctx.theme, vm), "Sync")
         layout = QVBoxLayout(self)
         layout.addWidget(tabs)
+
 
 PageRegistry.get().register(
     PageSpec(
@@ -417,6 +435,7 @@ PageRegistry.get().register(
 from argparse import Namespace
 from pathlib import Path
 from GAVEL.app.usecases.my_feature_sync import SyncMyFeatureRequest
+
 
 def handle_my_feature_sync(ctx: AppContext, args: Namespace) -> int:
     try:

@@ -19,6 +19,7 @@ These outputs are typically used to analyze the grades produced by the autograde
 correlations can be used to find redundant tests. If grades are available, it can be used to compare grade accuracy with
 human grades.
 """
+
 __author__ = "Ruben Acuna"
 __copyright__ = "Copyright 2024-25, Ruben Acuna"
 
@@ -46,7 +47,9 @@ def analyze_assignment(course, config_file, canvas_gradebook, semester, proxy_fu
         config = json.load(file)
 
     module = config["module"]
-    input_folder = constants.FOLDER_EVALUATIONS + os.sep + f"{course}_{semester}_{module}"
+    input_folder = (
+        constants.FOLDER_EVALUATIONS + os.sep + f"{course}_{semester}_{module}"
+    )
     class_data = []
 
     if not os.path.exists(input_folder):
@@ -55,20 +58,21 @@ def analyze_assignment(course, config_file, canvas_gradebook, semester, proxy_fu
 
     # automatically detect common suffix so that UID can be found
     all_filenames = [f for f in os.listdir(input_folder) if ".json" in f]
-    all_filenames = [f[::-1] for f in all_filenames] #ugh
+    all_filenames = [f[::-1] for f in all_filenames]  # ugh
     fakey_suffix = os.path.commonprefix(all_filenames)
     suffix = fakey_suffix[::-1]
 
-    row_dict = {"last_name" : [],
-                "total_score_autograder": [],
-                "proxies": [],
-                "total_score_proxy": []}
+    row_dict = {
+        "last_name": [],
+        "total_score_autograder": [],
+        "proxies": [],
+        "total_score_proxy": [],
+    }
     number_of_tests = 0
 
     for filename in sorted([f for f in os.listdir(input_folder) if ".json" in f]):
         with open(input_folder + os.sep + filename) as f:
-
-            uid = filename[:-len(suffix)]
+            uid = filename[: -len(suffix)]
             print(f"  Processing {uid}")
 
             try:
@@ -101,7 +105,9 @@ def analyze_assignment(course, config_file, canvas_gradebook, semester, proxy_fu
             row_dict["proxies"] += [proxy_criteria_grades]
 
             # extract and sort the raw test results
-            test_results = sorted(student_data["tests"], key=lambda x: float(x["number"]))
+            test_results = sorted(
+                student_data["tests"], key=lambda x: float(x["number"])
+            )
 
             for test in test_results:
                 key_name = "T " + str(test["number"])
@@ -111,7 +117,9 @@ def analyze_assignment(course, config_file, canvas_gradebook, semester, proxy_fu
 
                 row_dict[key_name].append(test["score"])
 
-            print(f"    autograder: {score_autograder_total}, proxy: {total_score_proxy}, {proxy_criteria_grades}")
+            print(
+                f"    autograder: {score_autograder_total}, proxy: {total_score_proxy}, {proxy_criteria_grades}"
+            )
 
             class_data += [student_data]
 
@@ -122,25 +130,32 @@ def analyze_assignment(course, config_file, canvas_gradebook, semester, proxy_fu
     print(df_class)
 
     # compute and display correlation matrix
-    selected_columns = df_class.iloc[:, 4:4+number_of_tests]
+    selected_columns = df_class.iloc[:, 4 : 4 + number_of_tests]
     print(selected_columns.corr())
 
     # TODO: do PCA analysis.
 
     if os.path.exists(canvas_gradebook):
-        apc.compare_autograder_accuracy(course, canvas_gradebook, class_data, config, semester)
+        apc.compare_autograder_accuracy(
+            course, canvas_gradebook, class_data, config, semester
+        )
     else:
         print("Could not find canvas gradebook, skipping grade comparison.")
 
+
 # testing area
-if __name__ == '__main__':
-    #analyze_assignment("ser222", "ser222_config_m1.json", "ser222_21sc_gradebook.csv", "21sc", compute_proxy_grades_m1_21sc)
-    #analyze_assignment("ser222", "ser222_config_m12.json", "ser222_21sc_gradebook.csv", "21sc", compute_proxy_grades_m12_21sc)
-    #analyze_assignment("ser222", "ser222_config_m12.json", "ser222_21sa_gradebook.csv", "24sa", compute_proxy_grades_m12_21sc)
+if __name__ == "__main__":
+    # analyze_assignment("ser222", "ser222_config_m1.json", "ser222_21sc_gradebook.csv", "21sc", compute_proxy_grades_m1_21sc)
+    # analyze_assignment("ser222", "ser222_config_m12.json", "ser222_21sc_gradebook.csv", "21sc", compute_proxy_grades_m12_21sc)
+    # analyze_assignment("ser222", "ser222_config_m12.json", "ser222_21sa_gradebook.csv", "24sa", compute_proxy_grades_m12_21sc)
 
-    #analyze_assignment("ser334", constants.FOLDER_DATA_ORIGINAL + os.sep + "ser334_config_m2.json", constants.FOLDER_DATA_ORIGINAL + os.sep + "ser334_24sc_gradebook.csv", "24sc", proxy_ser334.compute_proxies_m2_24sc)
+    # analyze_assignment("ser334", constants.FOLDER_DATA_ORIGINAL + os.sep + "ser334_config_m2.json", constants.FOLDER_DATA_ORIGINAL + os.sep + "ser334_24sc_gradebook.csv", "24sc", proxy_ser334.compute_proxies_m2_24sc)
 
-    #SER334 M3 (developmental test set)
-    analyze_assignment("ser334", constants.FOLDER_DATA_ORIGINAL + os.sep + "ser334_config_m3.json",
-                       constants.FOLDER_DATA_ORIGINAL + os.sep + "ser334_00dv_gradebook.csv", "00dv",
-                       proxy_ser334.compute_proxies_m3_24fc)
+    # SER334 M3 (developmental test set)
+    analyze_assignment(
+        "ser334",
+        constants.FOLDER_DATA_ORIGINAL + os.sep + "ser334_config_m3.json",
+        constants.FOLDER_DATA_ORIGINAL + os.sep + "ser334_00dv_gradebook.csv",
+        "00dv",
+        proxy_ser334.compute_proxies_m3_24fc,
+    )
