@@ -25,7 +25,6 @@ def classes_payload(clas: dict) -> dict:
     return {"classes": [{"CLAS": base}]}
 
 
-
 def test_parse_classes_carries_session_code_onto_the_dto() -> None:
     sections = CatalogApiClassResolver._parse_classes(classes_payload({"SESSIONCODE": "B"}))
 
