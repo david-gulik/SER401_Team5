@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# Shown wherever the catalog API omits a session designator for a section.
+SESSION_PLACEHOLDER = "N/A"
+
 
 @dataclass(frozen=True)
 class ClassSection:
@@ -13,10 +16,15 @@ class ClassSection:
     title: str
     instructor: str
     days_times: str
-    session: str
+    session: str = ""
     campus: str = ""
     seats_open: int = 0
     component: str = ""
+
+    @property
+    def session_display(self) -> str:
+        """Session designator (A, B, C, ...) or a placeholder when unavailable."""
+        return self.session.strip() or SESSION_PLACEHOLDER
 
     @property
     def display_label(self) -> str:
@@ -24,7 +32,7 @@ class ClassSection:
         return (
             f"{self.subject} {self.catalog_number} "
             f"[{self.class_number}] - {self.title} "
-            f"({self.instructor}, {self.days_times})"
+            f"(Session {self.session_display}, {self.instructor}, {self.days_times})"
         )
 
 
