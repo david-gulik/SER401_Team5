@@ -351,7 +351,7 @@ class CatalogApiClassResolver:
                     title=str(clas.get("COURSETITLELONG", clas.get("DESCR", ""))),
                     instructor=str(clas.get("INSTRUCTORSLIST", "")),
                     days_times=str(clas.get("DAYSTIMES", "")),
-                    session=str(clas.get("SESSIONCODE", "")),
+                    session=str(clas.get("SESSIONCODE", "")).strip(),
                     campus=str(clas.get("CAMPUS", "")),
                     seats_open=int(clas.get("ENRLCAP", 0)) - int(clas.get("ENRLTOT", 0)),
                     component=str(clas.get("COMPONENTPRIMARY", "")),
