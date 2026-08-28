@@ -336,13 +336,13 @@ class DownloadTab(ScrollableTab):
 
         card.add_row(course_panel)
 
-        # Canvas Gradebook
-        gradebook_panel = SubPanel(self._theme, "Canvas Gradebook")
+        # Gradebook
+        gradebook_panel = SubPanel(self._theme, "Gradebook")
         gradebook_panel.add_widget(self._download_gradebook_btn)
         card.add_row(gradebook_panel)
 
-        # Canvas Consent Form
-        consent_panel = SubPanel(self._theme, "Canvas Consent Form")
+        # Consent Form
+        consent_panel = SubPanel(self._theme, "Consent Form")
         consent_host = QWidget()
         consent_form = QFormLayout(consent_host)
         consent_form.setContentsMargins(0, 0, 0, 0)
