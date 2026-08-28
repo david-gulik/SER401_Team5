@@ -76,11 +76,12 @@ class GradescopeClient:
             if None in e:
                 empty_env_variables.append(e[-1])
         if empty_env_variables:
+            log.error(f"Certain required environment variables are empty: {empty_env_variables}")
             raise ValueError(
                 f"Certain required environment variables are empty: {empty_env_variables}"
             )
         if os.getenv("CANVAS_USERNAME") is None or os.getenv("CANVAS_PASSWORD") is None:
-            log.error(
+            log.warning(
                 "NOTICE: You can add your Canvas login as CANVAS_USERNAME and CANVAS_PASSWORD in your .env file for easier login!"
             )
 
@@ -89,7 +90,8 @@ class GradescopeClient:
     # -------------------------
 
     def _build_driver(self) -> webdriver.Chrome:
-        log.info("Building Chrome driver... (headless=%s)", self.headless)
+        log.info("Logging on to Canvas/Gradescope...")
+        log.debug("Building Chrome driver... (headless=%s)", self.headless)
 
         options = webdriver.ChromeOptions()
         if self.headless:
@@ -105,7 +107,7 @@ class GradescopeClient:
           - "No, other people use this device"
         """
 
-        log.info("Checking for Duo Prompt...")
+        log.debug("Checking for Duo Prompt...")
 
         try:
             no_btn = wait.until(
@@ -113,10 +115,10 @@ class GradescopeClient:
                     (By.XPATH, "//*[contains(text(), 'No, other people use this device')]")
                 )
             )
-            log.info("Clicking 'No, other people use this device'...")
+            log.debug("Clicking 'No, other people use this device'...")
             no_btn.click()
         except TimeoutException:
-            log.info("No trusted device prompt detected.")
+            log.warning("No trusted device prompt detected.")
 
     # -------------------------
     # CAS Login
@@ -124,9 +126,10 @@ class GradescopeClient:
 
     def _handle_cas_login(self, wait: WebDriverWait, username: str, password: str):
         if "weblogin.asu.edu" not in self._driver.current_url:
+            log.error("ERROR: URL not configured correctly.")
             return
 
-        log.info("Performing CAS login...")
+        log.debug("Performing CAS login...")
 
         user_field = wait.until(ec.presence_of_element_located((By.ID, "username")))
         pass_field = self._driver.find_element(By.ID, "password")
@@ -134,47 +137,48 @@ class GradescopeClient:
         user_field.send_keys(username)
         pass_field.send_keys(password)
 
-        log.info("Submitting CAS login form...")
+        log.debug("Submitting CAS login form...")
         self._driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
         self._handle_duo(wait)
-        log.info("CAS login + Duo complete.")
+        log.debug("CAS login + Duo complete.")
 
     # -------------------------
     # Canvas → Gradescope
     # -------------------------
 
     def _open_gradescope_from_course_nav(self, wait: WebDriverWait):
-        log.info("Waiting for Canvas course nav to load...")
+        log.debug("Waiting for Canvas course nav to load...")
         wait.until(ec.presence_of_element_located((By.ID, "section-tabs")))
 
-        log.info("Clicking Gradescope nav link...")
+        log.debug("Clicking Gradescope nav link...")
         nav_link = wait.until(
             ec.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Gradescope')]"))
         )
         nav_link.click()
 
-        log.info("Waiting for new Gradescope tab...")
+        log.debug("Waiting for new Gradescope tab...")
         wait.until(lambda d: len(d.window_handles) > 1)
 
         handles = self._driver.window_handles
         self._driver.switch_to.window(handles[-1])
-        log.info("Switched to Gradescope tab...")
+        log.debug("Switched to Gradescope tab...")
 
     # -------------------------
     # Extract Cookies
     # -------------------------
 
     def _extract_session(self) -> GradescopeSession:
-        log.info("Extracting Gradescope cookies...")
+        log.debug("Extracting Gradescope cookies...")
 
         raw_cookies = self._driver.get_cookies()
         cookies = {c["name"]: c["value"] for c in raw_cookies}
-        log.info("Cookies found: %s", cookies)
+        log.debug("Cookies found: %s", cookies)
 
         session_cookie = cookies.get("_gradescope_session")
         token = cookies.get("token")
 
         if not session_cookie:
+            log.error("Gradescope session cookie not found.")
             raise RuntimeError("Gradescope session cookie not found.")
 
         return GradescopeSession(
@@ -194,7 +198,7 @@ class GradescopeClient:
         wait = WebDriverWait(self._driver, timeout)
 
         try:
-            log.info("Navigating to Canvas course: %s", self.course_url)
+            log.debug("Navigating to Canvas course: %s", self.course_url)
             self._driver.get(self.course_url)
             time.sleep(1)
 
@@ -208,13 +212,13 @@ class GradescopeClient:
             self._open_gradescope_from_course_nav(wait)
 
             # Wait for Gradescope
-            log.info("Waiting for Gradescope to load...")
+            log.debug("Waiting for Gradescope to load...")
             wait.until(lambda d: self.GRADESCOPE_DOMAIN in d.current_url)
 
             time.sleep(2)
 
             gs_course_id = self._extract_gradescope_course_id()
-            log.info("Detected Gradescope course ID: %s", gs_course_id)
+            log.debug("Detected Gradescope course ID: %s", gs_course_id)
 
             return self._extract_session(), gs_course_id
 
@@ -225,7 +229,7 @@ class GradescopeClient:
             ) from e
 
         finally:
-            log.info("Cookies extracted! Closing browser...")
+            log.debug("Cookies extracted! Closing browser...")
             self._driver.quit()
 
     def _extract_gradescope_course_id(self) -> str:
@@ -240,6 +244,7 @@ class GradescopeClient:
         parts = url.split("/")
 
         if "courses" not in parts:
+            log.error(f"Could not find 'courses' in URL: {url}")
             raise RuntimeError(f"Could not find 'courses' in URL: {url}")
 
         course_id = parts[parts.index("courses") + 1]
@@ -276,7 +281,7 @@ class GradescopeClient:
         """
         Logs in, captures session, and downloads all assignment bulk exports.
         """
-
+        log.info("Downloading all assignments...")
         gs_session, gs_course_id = self.capture_session(username, password)
         session = self._build_requests_session(gs_session, course_id=gs_course_id)
 
@@ -284,7 +289,7 @@ class GradescopeClient:
         resp = session.get(
             f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}"
         )
-        print(f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}")
+        # print(f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}")
         soup = BeautifulSoup(resp.text, "html.parser")
         elements = soup.find_all(
             attrs={"data-assignment-id": True, "aria-describedby": f"course-{gs_course_id}"}
@@ -311,7 +316,7 @@ class GradescopeClient:
                     f.write(autograder_download.content)
 
             review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
-            print("Review_grades URL: ", review_url)
+            # print("Review_grades URL: ", review_url)
             resp = session.get(review_url)
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -323,7 +328,7 @@ class GradescopeClient:
                 zip_resp = session.get(f"{self.base_url}" + link["href"])
 
                 safe_name = self.remove_illegal_download_characters(name)
-                print(self.submissions_folder, safe_name)
+                # print(self.submissions_folder, safe_name)
                 output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
 
                 with open(output_path, "wb") as f:
@@ -342,7 +347,7 @@ class GradescopeClient:
                 f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/export",
                 headers={"Referer": review_url},
             )
-            print("POST response code: ", export_resp.status_code)
+            # print("POST response code: ", export_resp.status_code)
             data = export_resp.json()
             file_id = data["generated_file_id"]
 
@@ -366,7 +371,7 @@ class GradescopeClient:
             zip_resp = session.get(zip_url)
 
             safe_name = self.remove_illegal_download_characters(name)
-            print(self.submissions_folder, safe_name)
+            # print(self.submissions_folder, safe_name)
             output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
 
             with open(output_path, "wb") as f:
