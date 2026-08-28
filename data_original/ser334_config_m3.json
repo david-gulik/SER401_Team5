@@ -8,168 +8,186 @@
       "method":"run_tests_wrapper",
       "tests": [
         {
-          "name": "[1.1] DIB Headers IO [Hint: incorrectly sized DIB header struct (remove this)]",
+          "name": "1.1) BMP Headers IO [Hint: incorrectly reading and/or writing of BMP header]",
           "number": 1.1,
-          "points": 0
+          "points": 2
         },
         {
-          "name": "[1.2] BMP Headers IO [Hint: incorrectly reading and/or writing of BMP header]",
+          "name": "1.2) DIB Headers IO [Hint: incorrectly reading and/or writing of DIB header]",
           "number": 1.2,
           "points": 2
         },
         {
-          "name": "[1.3] DIB Headers IO [Hint: incorrectly reading and/or writing of DIB header]",
-          "number": 1.3,
-          "points": 2
-        },
-        {
-          "name": "[2.1] Reading pixels single row [Hint: Case when padding is needed]",
+          "name": "2.1) DIB Headers IO [Hint: incorrectly sized DIB header struct (change this to pixel struct size check)]",
           "number": 2.1,
-          "points": 2
+          "points": 1
         },
         {
-          "name": "[2.2] Reading pixels single rows [Hint: Case when padding is not needed",
+          "name": "2.2) Reading pixels single row [Hint: Case when padding is needed. Potentially check for errors in how you are writing pixels as well...]",
           "number": 2.2,
-          "points": 2
+          "points": 0.50
         },
         {
-          "name": "[2.3] Reading pixels many rows  [Hint: Case when padding is needed]",
+          "name": "2.3) Reading pixels single rows [Hint: Case when padding is not needed. Potentially check for errors in how you are writing pixels as well...]",
           "number": 2.3,
-          "points": 2
+          "points": 0.25
         },
         {
-          "name": "[2.4] Reading pixels many rows [Hint: Case when padding is not needed]",
+          "name": "2.4) Reading pixels many rows  [Hint: Case when padding is needed. Potentially check for errors in how you are writing pixels as well...]",
           "number": 2.4,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[3.1] Write pixels single row [Hint: Case when padding is needed]",
+          "name": "2.5) Reading pixels many rows [Hint: Case when padding is not needed. Potentially check for errors in how you are writing pixels as well...]",
+          "number": 2.5,
+          "points": 0.25
+        },
+        {
+          "name": "3.1) Write pixels single row [Hint: Case when padding is needed]",
           "number": 3.1,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[3.2] Write pixels single row [Hint: Case when padding is not needed]",
+          "name": "3.2) Write pixels single row [Hint: Case when padding is not needed]",
           "number": 3.2,
-          "points": 2
+          "points": 0.25
         },
         {
-          "name": "[3.3] Write pixels many rows [Hint: Case when paddings is needed]",
+          "name": "3.3) Write pixels many rows [Hint: Case when paddings is needed]",
           "number": 3.3,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[3.4] Write pixels many rows [Hint: Case when paddings is not needed]",
+          "name": "3.4) Write pixels many rows [Hint: Case when paddings is not needed]",
           "number": 3.4,
-          "points": 2
+          "points": 0.25
         },
         {
-          "name": "[4.1] Image -- getWidth [Hint: Case when padding is not needed]",
+          "name": "4.1) Image -- getWidth [Hint: Case when padding is not needed]",
           "number": 4.1,
-          "points": 2
+          "points": 0.25
         },
         {
-          "name": "[4.2] Image -- getWidth [Hint: Case when there is padding present",
+          "name": "4.2) Image -- getWidth [Hint: Case when there is padding present",
           "number": 4.2,
-          "points": 2
+          "points": 0.25
         },
         {
-          "name": "[4.3] Image -- getHeight [Hint: Case when there is no padding present]",
+          "name": "4.3) Image -- getHeight [Hint: Case when there is no padding present]",
           "number": 4.3,
-          "points": 2
+          "points": 0.25
         },
         {
-          "name": "[4.4] Image -- getHeight [Hint: case when there is padding present]",
+          "name": "4.4) Image -- getHeight [Hint: case when there is padding present]",
           "number": 4.4,
-          "points": 2
+          "points": 0.25
         },
         {
-          "name": "[4.5] Image -- getPixels [Hint: padding necessary]",
+          "name": "4.5) Image -- getPixels [Hint: padding necessary]",
           "number": 4.5,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[4.6] Image -- getPixels [Hint: No padding needed]",
+          "name": "4.6) Image -- getPixels [Hint: No padding needed]",
           "number": 4.6,
-          "points": 2
+          "points": 0.25
         },
         {
-          "name": "[4.7] Image -- getPixels [Hint: No padding needed]",
+          "name": "4.7) Image -- getPixels [Hint: No padding needed]",
           "number": 4.7,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[4.8] Image -- getPixels [Hint: No padding needed]",
+          "name": "4.8) Image -- getPixels [Hint: No padding needed]",
           "number": 4.8,
-          "points": 2
+          "points": 0.25
         },
         {
-          "name": "[5.1] Divisible by 4, shfiting 0. [Hint no changes to pixels]",
+          "name": "5.1) Color shift - Divisible by 4, shfiting 0. [Hint no changes to pixels]",
           "number": 5.1,
-          "points": 2
+          "points": 0.125
         },
         {
-          "name": "[5.2] Divisible by 4, shfiting positive. [Hint: Clamping and positive shifts]",
+          "name": "5.2) Color shift - Divisible by 4, shfiting positive. [Hint: Clamping and positive shifts]",
           "number": 5.2,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[5.3] Divisible by 4, shfiting negative. [Hint: Clamping and negative shifts]",
+          "name": "5.3) Color shift - Divisible by 4, shfiting negative. [Hint: Clamping and negative shifts]",
           "number": 5.3,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[5.4] Non-Divisible by 4, shfiting 0. [Hint no changes to pixels]",
+          "name": "5.4) Color shift - Non-Divisible by 4, shfiting 0. [Hint no changes to pixels]",
           "number": 5.4,
-          "points": 2
+          "points": 0.125
         },
         {
-          "name": "[5.5] Non-Divisible by 4, shfiting positive. [Hint: Clamping and positive shifts]",
+          "name": "5.5) Color shift - Non-Divisible by 4, shfiting positive. [Hint: Clamping and positive shifts]",
           "number": 5.5,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[5.6] Non-Divisible by 4, shfiting negative. [Hint: Clamping and negative shifts]",
+          "name": "5.6) Color shift - Non-Divisible by 4, shfiting negative. [Hint: Clamping and negative shifts]",
           "number": 5.6,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[6.1] Image_BW divisble by 4 [Hint: basic functionality]",
+          "name": "6.1) Image_BW divisble by 4 [Hint: basic functionality]",
           "number": 6.1,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[6.2] Image_BW -- non divisble by 4 [Hint: basic functionality]",
+          "name": "6.2) Image_BW -- non divisble by 4 [Hint: basic functionality]",
           "number": 6.2,
-          "points": 2
+          "points": 0.5
         },
         {
-          "name": "[6.3] Image_BW -- Setting channels [Hint: Properties of grayscale ]",
+          "name": "6.3) Image_BW -- Setting channels [Hint: Properties of grayscale ]",
           "number": 6.3,
-          "points": 2
+          "points": 1
 
         },
         {
-          "name": "[7.1] Image -- Resize, number of pixels [Hint: scaling up]",
+          "name": "7.1) Image -- Resize, number of pixels [Hint: scaling up]",
           "number": 7.1,
-          "points": 2
+          "points": 0.75
 
         },
         {
-          "name": "[7.2] Image -- Resize, pixel data [Hint: scaling up]",
+          "name": "7.2) Image -- Resize, pixel data [Hint: scaling up]",
           "number": 7.2,
-          "points": 2
+          "points": 0.25
 
         },
         {
-          "name": "[7.3] Image -- Resize, number of pixels [Hint: scaling down]",
+          "name": "7.3) Image -- Resize, number of pixels [Hint: scaling down]",
           "number": 7.3,
-          "points": 2
+          "points": 0.75
 
         },
         {
-          "name": "[7.4] Image -- Resize, pixel data [Hint: scaling down]",
+          "name": "7.4) Image -- Resize, pixel data [Hint: scaling down]",
           "number": 7.4,
-          "points": 2
+          "points": 0.25
+
+        },
+        {
+          "name": "8.1) Image create [Hint: all fields set correctly]",
+          "number": 8.1,
+          "points": 0.5
+
+        },
+        {
+          "name": "8.2) Image destroy [Hint: 'Object' should be no longer usable]",
+          "number": 8.2,
+          "points": 0.5
+
+        },
+        {
+          "name": "8.3) Image destroy [Hint: Underlying pixel array should not be deallocated...]",
+          "number": 8.3,
+          "points": 0.5
 
         }
       ]
@@ -179,9 +197,9 @@
       "method":"test_file_name_no_output",
       "tests": [
         {
-          "name": "8.1) Program Input 1 [Hint: Default output file name is correct.]",
-          "number": 8.1,
-          "points": 1.5
+          "name": "9.1) Program Input 1 [Hint: Default output file name is correct.]",
+          "number": 9.1,
+          "points": 1
         }
       ]
     },
@@ -190,9 +208,9 @@
       "method":"test_file_name_output",
       "tests": [
         {
-          "name": "8.2) Program Input 2 [Hint: Output file matches argument.]",
-          "number": 8.2,
-          "points": 2
+          "name": "9.2) Program Input 2 [Hint: Output file matches argument.]",
+          "number": 9.2,
+          "points": 1.5
         }
       ]
     },
@@ -201,8 +219,8 @@
       "method":"test_file_name_nonexistent",
       "tests": [
         {
-          "name": "8.3) Program Input 3 [Hint: Input File Does not Exist.]",
-          "number": 8.3,
+          "name": "9.3) Program Input 3 [Hint: Input File Does not Exist.]",
+          "number": 9.3,
           "points": 1.5
         }
       ]
@@ -212,9 +230,9 @@
       "method":"test_rgb_arg",
       "tests": [
         {
-          "name": "9.1) Program Input 4 [Hint: Color Arguments.]",
-          "number": 9.1,
-          "points": 1
+          "name": "10.1) Program Input 4 [Hint: Color Arguments.]",
+          "number": 10.1,
+          "points": 0.25
         }
       ]
     },
@@ -223,9 +241,9 @@
       "method":"test_single_color_shift_up",
       "tests": [
         {
-          "name": "9.2) Color Shift 1 [Hint: Basic Behavior Shifting Up.]",
-          "number": 9.2,
-          "points": 2
+          "name": "10.2) Color Shift 1 [Hint: Basic Behavior Shifting Up.]",
+          "number": 10.2,
+          "points": 0.25
         }
       ]
     },
@@ -234,9 +252,9 @@
       "method":"test_single_color_shift_down",
       "tests": [
         {
-          "name": "9.3) Color Shift 2 [Hint: Basic Behavior Shifting Down.]",
-          "number": 9.3,
-          "points": 2
+          "name": "10.3) Color Shift 2 [Hint: Basic Behavior Shifting Down.]",
+          "number": 10.3,
+          "points": 0.25
         }
       ]
     },
@@ -245,9 +263,9 @@
       "method":"test_multiple_color_shift_up",
       "tests": [
         {
-          "name": "9.4) Color Shift 3 [Hint: Shifting Multiple Colors Up.]",
-          "number": 9.4,
-          "points": 2
+          "name": "10.4) Color Shift 3 [Hint: Shifting Multiple Colors Up.]",
+          "number": 10.4,
+          "points": 0.5
         }
       ]
     },
@@ -256,9 +274,9 @@
       "method":"test_multiple_color_shift_down",
       "tests": [
         {
-          "name": "9.5) Color Shift 4 [Hint: Shifting Multiple Colors Down.]",
-          "number": 9.5,
-          "points": 2
+          "name": "10.5) Color Shift 4 [Hint: Shifting Multiple Colors Down.]",
+          "number": 10.5,
+          "points": 0.5
         }
       ]
     },
@@ -267,14 +285,14 @@
       "method":"test_image_copy_nopad",
       "tests": [
         {
-          "name": "10.1) Copy Image 1 [Hint: Copied Image matches size of original image.]",
-          "number": 10.1,
-          "points": 1.25
+          "name": "11.1) Copy Image 1 [Hint: Copied Image matches size of original image.]",
+          "number": 11.1,
+          "points": 1
         },
         {
-          "name": "10.2) Copy Image 2 [Hint: Copied Image has matching pixel array.]",
-          "number": 10.2,
-          "points": 1.25
+          "name": "11.2) Copy Image 2 [Hint: Copied Image has matching pixel array.]",
+          "number": 11.2,
+          "points": 1
         }
       ]
     },
@@ -283,14 +301,14 @@
       "method":"test_image_copy_pad",
       "tests": [
         {
-          "name": "11.1) Copy Image 3 [Hint: Copied Image matches size of original image on image with padding.]",
-          "number": 11.1,
-          "points": 1.25
+          "name": "12.1) Copy Image 3 [Hint: Copied Image matches size of original image on image with padding.]",
+          "number": 12.1,
+          "points": 1
         },
         {
-          "name": "11.2) Copy Image 4 [Hint: Copied Image has matching pixel array on image with padding.]",
-          "number": 11.2,
-          "points": 1.25
+          "name": "12.2) Copy Image 4 [Hint: Copied Image has matching pixel array on image with padding.]",
+          "number": 12.2,
+          "points": 1
         }
       ]
     },
@@ -299,9 +317,9 @@
       "method":"test_grayscale_image",
       "tests": [
         {
-          "name": "12.1) Grayscale 1 [Hint: Basic Behavior.]",
-          "number": 12.1,
-          "points": 2.5
+          "name": "13.1) Grayscale 1 [Hint: Basic Behavior.]",
+          "number": 13.1,
+          "points": 1
         }
       ]
     },
@@ -310,9 +328,9 @@
       "method":"test_grayscale_ordering",
       "tests": [
         {
-          "name": "12.2) Grayscale 2 [Hint: Grayscale applied before color shift.]",
-          "number": 12.2,
-          "points": 2.5
+          "name": "13.2) Grayscale 2 [Hint: Grayscale applied before color shift.]",
+          "number": 13.2,
+          "points": 1
         }
       ]
     },
@@ -321,14 +339,14 @@
       "method":"test_scale_2",
       "tests": [
         {
-          "name": "13.1) Image Scaling 1 [Hint: Scaled up image has correct image size.]",
-          "number": 13.1,
-          "points": 1.25
+          "name": "14.1) Image Scaling 1 [Hint: Scaled up image has correct image size.]",
+          "number": 14.1,
+          "points": 0.75
         },
         {
-          "name": "13.2) Image Scaling 2 [Hint: Scaled up image has correct pixel array.]",
-          "number": 13.2,
-          "points": 1.25
+          "name": "14.2) Image Scaling 2 [Hint: Scaled up image has correct pixel array.]",
+          "number": 14.2,
+          "points": 0.25
         }
       ]
     },
@@ -337,14 +355,14 @@
       "method":"test_scale_half",
       "tests": [
         {
-          "name": "13.4) Image Scaling 3 [Hint: Scaled down image has correct image size.]",
-          "number": 13.4,
-          "points": 1.25
+          "name": "14.3) Image Scaling 3 [Hint: Scaled down image has correct image size.]",
+          "number": 14.3,
+          "points": 0.75
         },
         {
-          "name": "13.5) Image Scaling 4 [Hint: Scaled down image has correct pixel array.]",
-          "number": 13.5,
-          "points": 1.25
+          "name": "14.4) Image Scaling 4 [Hint: Scaled down image has correct pixel array.]",
+          "number": 14.4,
+          "points": 0.25
         }
       ]
     },
@@ -353,19 +371,19 @@
       "method":"test_malloc_same_size",
       "tests": [
         {
-          "name": "14.1) Memory Allocation 1 [Hint: Uses Malloc for the pixel array.]",
-          "number": 14.1,
-          "points": 2
+          "name": "15.1) Memory Allocation 1 [Hint: Uses Malloc for the pixel array.]",
+          "number": 15.1,
+          "points": 0
         },
         {
-          "name": "14.2) Memory Allocation 2 [Hint: Frees all Memory on close.]",
-          "number": 14.2,
-          "points": 1
+          "name": "15.2) Memory Allocation 2 [Hint: Frees all Memory on close.]",
+          "number": 15.2,
+          "points": 0
         },
         {
-          "name": "14.3) Memory Allocation 3 [Hint: Frees Correct Memory addresses on close.]",
-          "number": 14.3,
-          "points": 1
+          "name": "15.3) Memory Allocation 3 [Hint: Frees Correct Memory addresses on close.]",
+          "number": 15.3,
+          "points": 0
         }
       ]
     },
@@ -374,19 +392,30 @@
       "method":"test_malloc_resized",
       "tests": [
         {
-          "name": "14.4) Memory Allocation 4 [Hint: Uses Malloc for the pixel array on an enlarged output image.]",
-          "number": 14.4,
-          "points": 1
+          "name": "15.4) Memory Allocation 4 [Hint: Uses Malloc for the pixel array on an enlarged output image.]",
+          "number": 15.4,
+          "points": 0
         },
         {
-          "name": "14.5) Memory Allocation 5 [Hint: Frees all memory on close on an enlarged output image.]",
-          "number": 14.5,
-          "points": 1
+          "name": "15.5) Memory Allocation 5 [Hint: Frees all memory on close on an enlarged output image.]",
+          "number": 15.5,
+          "points": 0
         },
         {
-          "name": "14.6) Memory Allocation 5 [Hint: Frees Correct Memory addresses on an enlarged output image.]",
-          "number": 14.6,
-          "points": 1
+          "name": "15.6) Memory Allocation 5 [Hint: Frees Correct Memory addresses on an enlarged output image.]",
+          "number": 15.6,
+          "points": 0
+        }
+      ]
+    },
+    {
+      "module":"test_arg_parsing",
+      "method":"test_ordering_complex",
+      "tests": [
+        {
+          "name": "16.1) Program argument parsing [Hint: handle all permutations of argument ordering]",
+          "number": 16.1,
+          "points": 4
         }
       ]
     }
@@ -395,7 +424,7 @@
   "package_whitelist":[
     "<stdio.h>", "<string.h>", "<stdlib.h>", "Image.h", "BMPHandler.h",
     "<assert.h>", "<stdbool.h>", "<strings.h>", "<stdarg.h>", "<errno.h>", 
-    "<assert.h>", "<time.h>", "<math.h>", "<ctype.h>"
+    "<assert.h>", "<time.h>", "<math.h>", "<ctype.h>", "<unistd.h>", "<getopt.h>"
   ],
   "files_required": [
     "BMPHandler.c",
@@ -406,7 +435,6 @@
   ],
 
   "required_headers": [
-	
   ]
 
 }

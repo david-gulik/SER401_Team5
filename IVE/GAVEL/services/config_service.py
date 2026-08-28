@@ -61,7 +61,7 @@ class ConfigService:
     def _build(self) -> AppConfig:
         source = self._resolve_source()
         canvas_cfg = CanvasConfig(
-            base_url=source.get("CANVAS_BASE_URL"),
+            base_url=source.get("CANVAS_BASE_URL") or "https://canvas.asu.edu",
             token=source.get("CANVAS_TOKEN"),
             account_id=int(source.get("CANVAS_ACCOUNT_ID"))
             if source.get("CANVAS_ACCOUNT_ID")

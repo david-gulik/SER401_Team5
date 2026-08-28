@@ -2,6 +2,7 @@
 shoggoth-validation - constants.py
 Various constants.
 """
+
 __author__ = "Ruben Acuna"
 
 import os

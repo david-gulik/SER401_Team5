@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -297,6 +298,7 @@ class EnvironmentTab(ScrollableTab):
             else:
                 chosen, _ = QFileDialog.getOpenFileName(self, f"Select {spec.label}", start)
             if chosen:
+                chosen = os.path.normpath(chosen)
                 line.setText(chosen)
                 self._vm.set_env_value(spec.name, chosen)
 

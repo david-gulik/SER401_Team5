@@ -8,6 +8,7 @@ It is used by analysis_proxy_comparison.
 Each function takes a standard Gradescope result dictionary and returns a list of the scores for each criterion and
 their sum total.
 """
+
 __author__ = "Ruben Acuna, Mitchell Buckner"
 __copyright__ = "Copyright 2024, Ruben Acuna"
 
@@ -22,7 +23,9 @@ def compute_proxy_grades_m1_21sc(data):
     t1_2 = get_test_case_by_name(data, "Constructor 2")  # rect
     t1_3 = was_test_passed_by_name(data, "Constructor 3")  # imm
     t1_4 = get_test_case_by_name(data, "Constructor 4")  # 0x0
-    t1_5 = get_test_case_by_name(data, "Constructor 5")  # null case. not suggested anywhere
+    t1_5 = get_test_case_by_name(
+        data, "Constructor 5"
+    )  # null case. not suggested anywhere
 
     if t1_1 and t1_2 and t1_3 and t1_4:
         proxies += [4.0]
@@ -107,12 +110,21 @@ def compute_proxy_grades_m1_21sc(data):
         proxies += [0.0]
 
     # multiply (5 pts)
-    t8_1 = was_test_passed_by_name(data, "multiply() 1")  # [Hint: Basic Behavior (square matrices)]
-    t8_2 = was_test_passed_by_name(data, "multiply() 2")  # [Hint: Basic Behavior + Immutability Check]
-    t8_3 = was_test_passed_by_name(data, "multiply() 3")  # [Hint: Basic Behavior (rectangular matrices)]
-    t8_4 = was_test_passed_by_name(data, "multiply() 4")  # [Hint: Exceptions (incorrect shapes)]
-    t8_5 = was_test_passed_by_name(data,
-                                         "multiply() 5")  # [Hint: Exceptions (null matrix)] not in original HW.
+    t8_1 = was_test_passed_by_name(
+        data, "multiply() 1"
+    )  # [Hint: Basic Behavior (square matrices)]
+    t8_2 = was_test_passed_by_name(
+        data, "multiply() 2"
+    )  # [Hint: Basic Behavior + Immutability Check]
+    t8_3 = was_test_passed_by_name(
+        data, "multiply() 3"
+    )  # [Hint: Basic Behavior (rectangular matrices)]
+    t8_4 = was_test_passed_by_name(
+        data, "multiply() 4"
+    )  # [Hint: Exceptions (incorrect shapes)]
+    t8_5 = was_test_passed_by_name(
+        data, "multiply() 5"
+    )  # [Hint: Exceptions (null matrix)] not in original HW.
 
     # "Computed the result correctly, checked the dimensions match, built and returned the new matrix."
     if t8_1 and t8_2 and t8_3 and t8_4:
@@ -143,14 +155,17 @@ def compute_proxy_grades_m1_21sc(data):
         proxies += [0.0]
 
     # toString (5 pts)
-    t10_1 = was_test_passed_by_name(data,
-                                          "toString() 1")  # this checks for a crash... so technically we are aligned with rubric.
+    t10_1 = was_test_passed_by_name(
+        data, "toString() 1"
+    )  # this checks for a crash... so technically we are aligned with rubric.
     t10_2 = was_test_passed_by_name(data, "toString() 2")
     t10_3 = was_test_passed_by_name(data, "toString() 3")
     t10_4 = was_test_passed_by_name(data, "toString() 4")
     if t10_1 and t10_2 and t10_3 and t10_4:
         proxies += [5.0]
-    elif t10_1 or t10_2 or t10_3 or t10_4:  # this allows even a blank string, but that's okay. be lenient like human.
+    elif (
+        t10_1 or t10_2 or t10_3 or t10_4
+    ):  # this allows even a blank string, but that's okay. be lenient like human.
         proxies += [2.5]
     else:
         proxies += [0.0]
@@ -183,17 +198,22 @@ def compute_proxy_grades_m12_21sc(data):
     # 2.3) BetterDigraph addEdge() 3 [Hint: Duplicate Edges.] (1)
 
     c1_1 = was_test_passed_by_name(data, "addEdge() 1 [Hint: Basic Behavior.]")
-    c1_2 = was_test_passed_by_name(data,
-                                         "addEdge() 2 [Hint: New Vertices.]")  # RA: does t1_2 only pass if t1_1 passes? # MB: this is correct, 1_2 cannot pass without 1_1
-    c1_3 = was_test_passed_by_name(data, "addEdge() 3 [Hint: Duplicate Edges.]")  # RA: parallel edges, not used in SC21.
-    #c1_4 = was_test_cased_passed_by_name(data, "addEdge() 4 [Hint: Keeps Accurate Edge Count.]") #RA: this appears to give the same result as c1_3.
+    c1_2 = was_test_passed_by_name(
+        data, "addEdge() 2 [Hint: New Vertices.]"
+    )  # RA: does t1_2 only pass if t1_1 passes? # MB: this is correct, 1_2 cannot pass without 1_1
+    c1_3 = was_test_passed_by_name(
+        data, "addEdge() 3 [Hint: Duplicate Edges.]"
+    )  # RA: parallel edges, not used in SC21.
+    # c1_4 = was_test_cased_passed_by_name(data, "addEdge() 4 [Hint: Keeps Accurate Edge Count.]") #RA: this appears to give the same result as c1_3.
     c1_weight = 5.0
 
     # compute the rubric level from the test case results.
-    if c1_1 and c1_2:  # Proficient. skipping c1_3 since duplicate edges not mentioned in original rubric.
+    if (
+        c1_1 and c1_2
+    ):  # Proficient. skipping c1_3 since duplicate edges not mentioned in original rubric.
         proxy_criteria_grades += [c1_weight]
     elif c1_1 or c1_2:  # Competent
-        proxy_criteria_grades += [c1_weight * .5]
+        proxy_criteria_grades += [c1_weight * 0.5]
     else:  # Novice
         proxy_criteria_grades += [0.0]
 
@@ -206,16 +226,19 @@ def compute_proxy_grades_m12_21sc(data):
     # 3.1) BetterDigraph addVertex() 1 [Hint: Basic behavior.] (2)
     # 3.2) BetterDigraph addVertex() 2 [Hint: Duplicates.] (1)
     # 3.3) BetterDigraph addVertex() 3 [Hint: Keeps Accurate Vertex Count.] (1)
-    c2_1 = was_test_passed_by_name(data,
-                                         "addVertex() 1 [Hint: Basic behavior.]")  # RA: does c2_2 only pass if c2_1 passes? # MB: this is correct
+    c2_1 = was_test_passed_by_name(
+        data, "addVertex() 1 [Hint: Basic behavior.]"
+    )  # RA: does c2_2 only pass if c2_1 passes? # MB: this is correct
     c2_2 = was_test_passed_by_name(data, "addVertex() 2 [Hint: Duplicates.]")
-    c2_3 = was_test_passed_by_name(data, "addVertex() 3 [Hint: Keeps Accurate Vertex Count.]")
+    c2_3 = was_test_passed_by_name(
+        data, "addVertex() 3 [Hint: Keeps Accurate Vertex Count.]"
+    )
     c2_weight = 5.0
 
     if c2_1 and c2_2 and c2_3:  # Proficient
         proxy_criteria_grades += [c2_weight]
     elif c2_1 or (c2_2 and c2_3):  # Competent
-        proxy_criteria_grades += [c2_weight * .5]
+        proxy_criteria_grades += [c2_weight * 0.5]
     else:  # Novice
         proxy_criteria_grades += [0.0]
 
@@ -231,7 +254,7 @@ def compute_proxy_grades_m12_21sc(data):
 
     if c3_1:  # Proficient
         proxy_criteria_grades += [c3_weight]
-    #TODO: how to assess Competent?
+    # TODO: how to assess Competent?
     else:  # Novice
         proxy_criteria_grades += [0.0]
 
@@ -242,7 +265,9 @@ def compute_proxy_grades_m12_21sc(data):
 
     # 5.1) getEdgeCount() 1 [Hint: Basic Behavior with adding and removing edges] (0.5/0.5)
     # 5.2) getEdgeCount() 2 [Hint: Missing/Duplicate Edges] (0/0.5)
-    c4_1 = was_test_passed_by_name(data, "getEdgeCount() [Hint: Basic Behavior with adding edges.]")
+    c4_1 = was_test_passed_by_name(
+        data, "getEdgeCount() [Hint: Basic Behavior with adding edges.]"
+    )
     c4_weight = 1.0
 
     if c4_1:  # Proficient
@@ -264,9 +289,9 @@ def compute_proxy_grades_m12_21sc(data):
 
     if c5_1 and c5_2:  # Proficient
         proxy_criteria_grades += [c5_weight]
-	# MB: I would assess competent based on first test only, the second one is very easy
+    # MB: I would assess competent based on first test only, the second one is very easy
     elif c5_1:
-        proxy_criteria_grades += [c5_weight * .5]
+        proxy_criteria_grades += [c5_weight * 0.5]
     else:  # Novice
         proxy_criteria_grades += [0.0]
 
@@ -275,8 +300,10 @@ def compute_proxy_grades_m12_21sc(data):
     #   1 pts	Proficient	Returns number of vertices.
     #   0 pts	Novice	    Did not attempt
 
-    #7.1) getVertexCount() 1 [Hint: Basic Behavior with adding and removing vertices] (0.5/0.5)
-    c6_1 = was_test_passed_by_name(data, "getVertexCount() [Hint: Basic Behavior with adding vertices]")
+    # 7.1) getVertexCount() 1 [Hint: Basic Behavior with adding and removing vertices] (0.5/0.5)
+    c6_1 = was_test_passed_by_name(
+        data, "getVertexCount() [Hint: Basic Behavior with adding vertices]"
+    )
     c6_weight = 1.0
 
     if c6_1:  # Proficient
@@ -290,19 +317,25 @@ def compute_proxy_grades_m12_21sc(data):
     #   1 pts	Competent	Does not remove edge, or does not check that vertices exist.
     #   0 pts	Novice	    Did not attempt
 
-    #8.1) BetterDigraph removeEdge() 1 [Hint: Basic Behavior.] (1)
-    #8.2) BetterDigraph removeEdge() 2 [Hint: Nonexistent Edge/Vertex.] (.5)
-    #8.3) BetterDigraph removeEdge() 3 [Hint: Keeps Accurate Edge Count.] (.5)
+    # 8.1) BetterDigraph removeEdge() 1 [Hint: Basic Behavior.] (1)
+    # 8.2) BetterDigraph removeEdge() 2 [Hint: Nonexistent Edge/Vertex.] (.5)
+    # 8.3) BetterDigraph removeEdge() 3 [Hint: Keeps Accurate Edge Count.] (.5)
 
     c7_1 = was_test_passed_by_name(data, "removeEdge() 1 [Hint: Basic Behavior.]")
-    c7_2 = was_test_passed_by_name(data, "removeEdge() 2 [Hint: Nonexistent Edge/Vertex.]")
-    c7_3 = was_test_passed_by_name(data, "removeEdge() 3 [Hint: Keeps Accurate Edge Count.]")
+    c7_2 = was_test_passed_by_name(
+        data, "removeEdge() 2 [Hint: Nonexistent Edge/Vertex.]"
+    )
+    c7_3 = was_test_passed_by_name(
+        data, "removeEdge() 3 [Hint: Keeps Accurate Edge Count.]"
+    )
     c7_weight = 2.0
 
     if c7_1 and c7_2 and c7_3:  # Proficient
         proxy_criteria_grades += [c7_weight]
-    elif c7_1 or c7_2:  # Competent. RA: it seems like c7_3 isn't really in the rubric here.
-        proxy_criteria_grades += [c7_weight * .5]
+    elif (
+        c7_1 or c7_2
+    ):  # Competent. RA: it seems like c7_3 isn't really in the rubric here.
+        proxy_criteria_grades += [c7_weight * 0.5]
     else:  # Novice
         proxy_criteria_grades += [0.0]
 
@@ -312,10 +345,10 @@ def compute_proxy_grades_m12_21sc(data):
     #   1 pts	Competent	Does not remove vertex.
     #   0 pts	Novice	    Did not attempt
 
-    #9.1) BetterDigraph removeVertex() 1 [Hint: Basic Behavior.] (1)
-    #9.2) BetterDigraph removeVertex() 2 [Hint: Nonexistent Vertex] (.5)
-    #9.3) BetterDigraph removeVertex() 3 [Hint: Removes Edges] (1)
-    #9.4) BetterDigraph removeVertex() 4 [Hint: Maintains Count.] (.5)
+    # 9.1) BetterDigraph removeVertex() 1 [Hint: Basic Behavior.] (1)
+    # 9.2) BetterDigraph removeVertex() 2 [Hint: Nonexistent Vertex] (.5)
+    # 9.3) BetterDigraph removeVertex() 3 [Hint: Removes Edges] (1)
+    # 9.4) BetterDigraph removeVertex() 4 [Hint: Maintains Count.] (.5)
     c8_1 = was_test_passed_by_name(data, "removeVertex() 1 [Hint: Basic Behavior.]")
     c8_2 = was_test_passed_by_name(data, "removeVertex() 2 [Hint: Nonexistent Vertex.]")
     c8_3 = was_test_passed_by_name(data, "removeVertex() 3 [Hint: Removes Edges.]")
@@ -324,12 +357,16 @@ def compute_proxy_grades_m12_21sc(data):
 
     if c8_1 and c8_2 and c8_3 and c8_4:  # Proficient
         proxy_criteria_grades += [c8_weight]
-    elif ((c8_1 and c8_2) or (c8_3 and c8_4) or
-          (c8_1 and c8_4) or (c8_2 and c8_3) or
-          (c8_1 and c8_3)):
-    # all 2x or 3x combos that give at least 1.5 pts
-    # all relevant 3x combos should be implicit here I think - MB
-        proxy_criteria_grades += [c8_weight * .5]
+    elif (
+        (c8_1 and c8_2)
+        or (c8_3 and c8_4)
+        or (c8_1 and c8_4)
+        or (c8_2 and c8_3)
+        or (c8_1 and c8_3)
+    ):
+        # all 2x or 3x combos that give at least 1.5 pts
+        # all relevant 3x combos should be implicit here I think - MB
+        proxy_criteria_grades += [c8_weight * 0.5]
     else:  # Novice
         proxy_criteria_grades += [0.0]
 
@@ -339,7 +376,7 @@ def compute_proxy_grades_m12_21sc(data):
     #   1 pts	Competent	Does not return iterable object or object does not contain all vertices.
     #   0 pts	Novice	    Did not attempt
 
-    #10.1) BetterDigraph vertices() [Hint: Basic Behavior.] (2/2)
+    # 10.1) BetterDigraph vertices() [Hint: Basic Behavior.] (2/2)
     c9_1 = was_test_passed_by_name(data, "vertices() [Hint: Basic Behavior.]")
     c9_weight = 2.0
 
@@ -356,14 +393,20 @@ def compute_proxy_grades_m12_21sc(data):
     #  0 pts Novice		Did not attempt or used DFS algorithm.
 
     # 15.1) TopologicalSort intuitiveTopological() [Hint: Uses intuitive topological algorithm to generate order.] (8)
-    c12_1 = was_test_passed_by_name(data, "intuitiveTopological() 1 [Hint: Uses intuitive topological algorithm to generate order on a simple graph.]")
-    c12_2 = was_test_passed_by_name(data, "intuitiveTopological() 2 [Hint: Uses intuitive topological algorithm to generate order on a complex graph.]")
+    c12_1 = was_test_passed_by_name(
+        data,
+        "intuitiveTopological() 1 [Hint: Uses intuitive topological algorithm to generate order on a simple graph.]",
+    )
+    c12_2 = was_test_passed_by_name(
+        data,
+        "intuitiveTopological() 2 [Hint: Uses intuitive topological algorithm to generate order on a complex graph.]",
+    )
     c12_weight = 8.0
 
     if c12_1 and c12_2:
         proxy_criteria_grades += [c12_weight]
     elif c12_1 or c12_2:
-        proxy_criteria_grades += [c12_weight * .5]
+        proxy_criteria_grades += [c12_weight * 0.5]
     else:
         proxy_criteria_grades += [0.0]
 
@@ -373,19 +416,29 @@ def compute_proxy_grades_m12_21sc(data):
     #  4 pts Competent 	Does not correctly check for cycles before computing sort.
     #  0 pts Novice		Did not attempt.
 
-    #13.2) order() [Hint: Cycles are correctly checked for] (8)
-    c13_3 = was_test_passed_by_name(data, "order() 3 [Hint: Cycles in small graphs are correctly identified.]")
-    c13_4 = was_test_passed_by_name(data, "order() 4 [Hint: Cycles in small graphs are correctly identified.]")
-    c13_5 = was_test_passed_by_name(data, "order() 5 [Hint: Cycles in very small graph are correctly identified.]")
-    c13_6 = was_test_passed_by_name(data, "order() 6 [Hint: Cycles in graphs are correctly identified.]") # requires c13_3 and c13_4.
-    c13_7 = was_test_passed_by_name(data, "order() 7 [Hint: Cycles in complex graphs are correctly identified.]")
+    # 13.2) order() [Hint: Cycles are correctly checked for] (8)
+    c13_3 = was_test_passed_by_name(
+        data, "order() 3 [Hint: Cycles in small graphs are correctly identified.]"
+    )
+    c13_4 = was_test_passed_by_name(
+        data, "order() 4 [Hint: Cycles in small graphs are correctly identified.]"
+    )
+    c13_5 = was_test_passed_by_name(
+        data, "order() 5 [Hint: Cycles in very small graph are correctly identified.]"
+    )
+    c13_6 = was_test_passed_by_name(
+        data, "order() 6 [Hint: Cycles in graphs are correctly identified.]"
+    )  # requires c13_3 and c13_4.
+    c13_7 = was_test_passed_by_name(
+        data, "order() 7 [Hint: Cycles in complex graphs are correctly identified.]"
+    )
     # 4-8
     c13_weight = 8.0
 
     if c13_3 and c13_4 and c13_5 and c13_6 and c13_7:  # Proficient
         proxy_criteria_grades += [c13_weight]
     elif (c13_3 and c13_4) or c13_6 or c13_7:
-        proxy_criteria_grades += [c13_weight * .5]
+        proxy_criteria_grades += [c13_weight * 0.5]
     else:  # Novice
         proxy_criteria_grades += [0.0]
 
@@ -404,13 +457,15 @@ def compute_proxy_grades_m12_21sc(data):
     # 13.1) TopologicalSort order() 1 [Hint: Generating a result.] (.5)
     # 13.2) TopologicalSort order() 2 [Hint: Generating valid topological sort.] (1.5)
     c14_1 = was_test_passed_by_name(data, "order() 1 [Hint: Generating a result.]")
-    c14_2 = was_test_passed_by_name(data, "order() 2 [Hint: Generating valid topological sort.]")
+    c14_2 = was_test_passed_by_name(
+        data, "order() 2 [Hint: Generating valid topological sort.]"
+    )
     c14_weight = 4.0
 
     if c14_1 and c14_2:  # Proficient
         proxy_criteria_grades += [c14_weight]
     elif c14_1:
-        proxy_criteria_grades += [c14_weight * .5]
+        proxy_criteria_grades += [c14_weight * 0.5]
     else:  # Novice
         proxy_criteria_grades += [0.0]
 
@@ -420,16 +475,16 @@ def compute_proxy_grades_m12_21sc(data):
     #  1 pts Competent	Does not true if the graph being sorted is a DAG, false otherwise.
     #  0 pts Novice 		Did not attempt.
 
-    #14.1) TopologicalSort isDag() 1 [Hint: Simple graph.] (.5)
-    #14.2) TopologicalSort isDag() 2 [Hint: Branching graph.] (1.5)
+    # 14.1) TopologicalSort isDag() 1 [Hint: Simple graph.] (.5)
+    # 14.2) TopologicalSort isDag() 2 [Hint: Branching graph.] (1.5)
     c15_1 = was_test_passed_by_name(data, "isDag() 1 [Hint: Simple graph.]")
     c15_2 = was_test_passed_by_name(data, "isDag() 2 [Hint: Branching graph.]")
     c15_weight = 4.0
 
     if c15_1 and c15_2:  # Proficient
         proxy_criteria_grades += [c15_weight]
-    elif c15_1 or c15_2: # Competent. Interpreting the level as working inconsistently.
-        proxy_criteria_grades += [c15_weight * .5]
+    elif c15_1 or c15_2:  # Competent. Interpreting the level as working inconsistently.
+        proxy_criteria_grades += [c15_weight * 0.5]
     else:  # Novice
         proxy_criteria_grades += [0.0]
 

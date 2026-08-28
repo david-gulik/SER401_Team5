@@ -152,10 +152,10 @@ Each component is designed to be replaceable within its boundary:
 
 | Variable | Purpose | Default |
 | --- | --- | --- |
-| `CANVAS_BASE_URL` | Canvas API base URL; used by `HttpCanvasClient`. | `None` (Canvas features disabled) |
-| `CANVAS_TOKEN` | Canvas API token (Bearer). | `None` |
+| `CANVAS_BASE_URL` | Canvas API base URL; used by `HttpCanvasClient`. | `https://canvas.asu.edu` |
+| `CANVAS_TOKEN` | Canvas API token (Bearer). | `None` (Canvas features disabled) |
 
-If either Canvas variable is missing, the app falls back to `UnconfiguredCanvasClient`, raising user-friendly errors while allowing the rest of the UI to function.
+If `CANVAS_TOKEN` is missing, the app falls back to `UnconfiguredCanvasClient`, raising user-friendly errors while allowing the rest of the UI to function.
 
 ---
 

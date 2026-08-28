@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
@@ -335,13 +336,13 @@ class DownloadTab(ScrollableTab):
 
         card.add_row(course_panel)
 
-        # Canvas Gradebook
-        gradebook_panel = SubPanel(self._theme, "Canvas Gradebook")
+        # Gradebook
+        gradebook_panel = SubPanel(self._theme, "Gradebook")
         gradebook_panel.add_widget(self._download_gradebook_btn)
         card.add_row(gradebook_panel)
 
-        # Canvas Consent Form
-        consent_panel = SubPanel(self._theme, "Canvas Consent Form")
+        # Consent Form
+        consent_panel = SubPanel(self._theme, "Consent Form")
         consent_host = QWidget()
         consent_form = QFormLayout(consent_host)
         consent_form.setContentsMargins(0, 0, 0, 0)
@@ -434,6 +435,7 @@ class DownloadTab(ScrollableTab):
         start = self._output_path.text().strip() or str(Path.home())
         chosen = QFileDialog.getExistingDirectory(self, "Select output folder", start)
         if chosen:
+            chosen = os.path.normpath(chosen)
             self._output_path.setText(chosen)
             self._vm.set_output_dir(chosen)
 
@@ -465,10 +467,8 @@ class DownloadTab(ScrollableTab):
         assignment_id = self._assignment_combo.itemData(index) or ""
         self._vm.set_assignment_id(str(assignment_id))
 
-    # ---------- Stub handlers ----------
-
     def _on_download_all(self) -> None:
-        pass
+        self._vm.download_all()
 
     # ---------- View model rendering ----------
 

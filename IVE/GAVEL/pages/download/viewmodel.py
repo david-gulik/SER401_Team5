@@ -28,6 +28,7 @@ from GAVEL.app.usecases.download_rubric_assessment import (
 )
 from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
+from GAVEL.pages.download.sorting import course_sort_key
 from GAVEL.services.logger import AppLogger
 
 
@@ -100,6 +101,13 @@ class ShowError:
 @dataclass(frozen=True)
 class ShowInfo:
     message: str
+
+
+@dataclass(frozen=True)
+class _DownloadAllResult:
+    successes: tuple[str, ...]
+    failures: tuple[str, ...]
+    last_saved_path: Path | None
 
 
 class _WorkerSignals(QObject):
@@ -439,6 +447,7 @@ class DownloadViewModel(QObject):
             self._logger.error(f"Failed to load courses: {exc}")
             self._set_idle(Status.CRITICAL, str(exc))
             return
+        courses = sorted(courses, key=course_sort_key)
         self._state = replace(
             self._state,
             courses=courses,
@@ -603,6 +612,157 @@ class DownloadViewModel(QObject):
         )
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(result.message))
+
+    def download_all(self) -> None:
+        if self._state.is_busy:
+            return
+        if not self._roster_configured:
+            self._emit_error("Roster not configured.")
+            return
+        if not self._state.can_download_all:
+            self._emit_error(
+                "Configure term, section, course, and consent quiz before downloading all."
+            )
+            return
+
+        term = self._state.selected_term
+        class_number = self._state.class_number.strip()
+        if not class_number and self._state.sections and self._state.selected_section_idx >= 0:
+            class_number = self._state.sections[self._state.selected_section_idx].class_number
+        if not class_number:
+            self._emit_error("Provide a class number directly, or search for sections first.")
+            return
+
+        try:
+            course_id = int(self._state.selected_course_id.strip())
+            consent_quiz_id = int(self._state.selected_consent_quiz_id.strip())
+        except ValueError:
+            self._emit_error("Invalid course or consent quiz ID.")
+            return
+
+        assignment_id: int | None = None
+        assignment_id_str = self._state.assignment_id.strip()
+        if assignment_id_str:
+            try:
+                assignment_id = int(assignment_id_str)
+            except ValueError:
+                self._emit_error("Invalid assignment ID.")
+                return
+
+        self._set_busy("Downloading all data...")
+        output_dir = self._resolve_output_dir()
+        roster_client = self._client
+        canvas_client = self._canvas_client
+
+        def work() -> _DownloadAllResult:
+            successes: list[str] = []
+            failures: list[str] = []
+            last_path: Path | None = None
+
+            try:
+                roster_client.authenticate()
+                try:
+                    roster_path = output_dir / f"roster_{term}_{class_number}.csv"
+                    download_roster_to_file(
+                        roster_client,
+                        RosterRequest(term=term, class_number=class_number),
+                        roster_path,
+                    )
+                    successes.append("Roster")
+                    last_path = roster_path
+                finally:
+                    roster_client.close()
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"Roster: {exc}")
+
+            try:
+                gb_result = DownloadGradebookUseCase(canvas_client).execute(
+                    DownloadGradebookRequest(course_id=course_id, output_dir=output_dir)
+                )
+                successes.append("Gradebook")
+                last_path = gb_result.saved_path
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"Gradebook: {exc}")
+
+            try:
+                gs_result = DownloadGradescopeSubmissionsUseCase().execute(
+                    DownloadGradescopeSubmissionsRequest(course_id=course_id, output_dir=output_dir)
+                )
+                successes.append("Gradescope Submissions")
+                last_path = gs_result.saved_path
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"Gradescope Submissions: {exc}")
+
+            try:
+                consent_result = DownloadConsentFormUseCase(canvas_client).execute(
+                    DownloadConsentFormRequest(
+                        course_id=course_id, quiz_id=consent_quiz_id, output_dir=output_dir
+                    )
+                )
+                successes.append("Consent Form")
+                last_path = consent_result.saved_path
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"Consent Form: {exc}")
+
+            if assignment_id is not None:
+                try:
+                    rubric_result = DownloadRubricAssessmentUseCase(canvas_client).execute(
+                        DownloadRubricAssessmentRequest(
+                            course_id=course_id,
+                            assignment_id=assignment_id,
+                            output_dir=output_dir,
+                        )
+                    )
+                    successes.append("Rubric Assessment")
+                    last_path = rubric_result.saved_path
+                except Exception as exc:  # noqa: BLE001
+                    failures.append(f"Rubric Assessment: {exc}")
+
+            return _DownloadAllResult(
+                successes=tuple(successes),
+                failures=tuple(failures),
+                last_saved_path=last_path,
+            )
+
+        self._run_async(work, self._on_download_all_complete, self._on_download_all_error)
+
+    def _on_download_all_complete(self, result: object) -> None:
+        res: _DownloadAllResult = result  # type: ignore[assignment]
+
+        if res.failures and not res.successes:
+            status = Status.CRITICAL
+            message = f"All downloads failed: {'; '.join(res.failures)}"
+        elif res.failures:
+            status = Status.WARNING
+            message = (
+                f"Completed with errors. Succeeded: {', '.join(res.successes)}. "
+                f"Failed: {'; '.join(res.failures)}"
+            )
+        else:
+            status = Status.NOMINAL
+            message = f"All downloads complete: {', '.join(res.successes)}."
+
+        last_saved = (
+            str(res.last_saved_path) if res.last_saved_path else self._state.last_saved_path
+        )
+        self._state = replace(
+            self._state,
+            is_busy=False,
+            status=status,
+            message=message,
+            last_saved_path=last_saved,
+        )
+        self.state_changed.emit(self._state)
+
+        if res.failures:
+            self.event_raised.emit(ShowError(message))
+        else:
+            self.event_raised.emit(ShowInfo(message))
+
+    def _on_download_all_error(self, exc: object) -> None:
+        self._logger.error(f"Download all failed: {exc}")
+        self._set_idle(Status.CRITICAL, str(exc))
+        self.event_raised.emit(ShowError(str(exc)))
 
     def recheck(self) -> None:
         load_dotenv(find_dotenv(usecwd=True), override=True)
