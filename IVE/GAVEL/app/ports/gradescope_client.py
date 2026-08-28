@@ -88,7 +88,7 @@ class GradescopeClient:
                 empty_env_variables.append(e[-1])
         if empty_env_variables:
             log.error(f"Certain required environment variables are empty: {empty_env_variables}")
-                        raise ValueError(f"Certain required environment variables are empty: {empty_env_variables}")
+            raise ValueError(f"Certain required environment variables are empty: {empty_env_variables}")
         if not self.submissions_folder:
             raise ValueError(
                 "SUBMISSIONS_FOLDER is required. Set it in .env or pass an output "
