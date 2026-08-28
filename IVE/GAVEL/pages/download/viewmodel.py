@@ -102,6 +102,17 @@ class ShowInfo:
     message: str
 
 
+def course_sort_key(course: CanvasCourse) -> tuple[str, str, int]:
+    """Ordering rule for Canvas course selection entries.
+
+    Sorts on the text the dropdown actually shows - the course code when Canvas
+    supplies one, the course name otherwise - then on name and id so the order is
+    total and comes out identical on every reload.
+    """
+    primary = (course.course_code or course.name or "").strip().casefold()
+    return (primary, (course.name or "").strip().casefold(), course.id)
+
+
 @dataclass(frozen=True)
 class _DownloadAllResult:
     successes: tuple[str, ...]
@@ -446,6 +457,7 @@ class DownloadViewModel(QObject):
             self._logger.error(f"Failed to load courses: {exc}")
             self._set_idle(Status.CRITICAL, str(exc))
             return
+        courses = sorted(courses, key=course_sort_key)
         self._state = replace(
             self._state,
             courses=courses,
