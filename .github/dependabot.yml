@@ -1,9 +1,20 @@
 version: 2
 updates:
   # Keep GitHub Actions (checkout, setup-python, etc.) patched.
-  # Python deps are intentionally excluded until the requirements
-  # files are restructured (see IVE requirements split work).
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: pip
+    directory: /IVE
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+      python-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

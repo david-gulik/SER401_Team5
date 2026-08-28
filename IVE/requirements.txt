@@ -1,0 +1,16 @@
+# Runtime dependencies for the GAVEL desktop app (IVE/).
+# Deliberately separate from the repo-root requirements.txt, which belongs to
+# the sponsor's shoggoth-validation research scripts and is left unmodified.
+
+# GUI
+PyQt6==6.10.2
+
+# Canvas / Gradescope / ASU catalog integrations
+requests==2.34.2
+beautifulsoup4==4.15.0
+selenium==4.48.0
+
+# Config and data handling
+python-dotenv==1.2.2
+PyYAML==6.0.3
+pandas==2.2.3

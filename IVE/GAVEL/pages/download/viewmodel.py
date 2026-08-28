@@ -28,6 +28,7 @@ from GAVEL.app.usecases.download_rubric_assessment import (
 )
 from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
+from GAVEL.pages.download.sorting import course_sort_key
 from GAVEL.services.logger import AppLogger
 
 
@@ -446,6 +447,7 @@ class DownloadViewModel(QObject):
             self._logger.error(f"Failed to load courses: {exc}")
             self._set_idle(Status.CRITICAL, str(exc))
             return
+        courses = sorted(courses, key=course_sort_key)
         self._state = replace(
             self._state,
             courses=courses,

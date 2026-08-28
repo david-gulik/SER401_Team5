@@ -1,6 +1,7 @@
--r ../requirements.txt
+-r requirements.txt
+
 # Keep this pin in sync with .github/workflows/ci.yml
 ruff==0.16.4
-pytest
-pytest-cov
-coverage
+pytest==9.0.3
+pytest-cov==7.1.0
+coverage==7.15.4
