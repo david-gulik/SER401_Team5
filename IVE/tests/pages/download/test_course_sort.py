@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse
-from GAVEL.pages.download.viewmodel import course_sort_key
+from GAVEL.pages.download.sorting import course_sort_key
 
 UPSTREAM_ORDER = [
     CanvasCourse(id=301, name="Software Enterprise: Personal Process", course_code="SER401"),
