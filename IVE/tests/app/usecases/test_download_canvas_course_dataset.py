@@ -12,6 +12,11 @@ import pytest
 from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
+from GAVEL.app.dtos.rubric_definition import (
+    RubricCriterionDefinition,
+    RubricDefinition,
+    RubricRating,
+)
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.usecases.download_course_dataset import (
     DownloadCourseDatasetRequest,
@@ -72,6 +77,22 @@ RUBRIC_ASSESSMENTS = [
     ),
 ]
 
+RUBRIC_DEFINITION = RubricDefinition(
+    rubric_id="rub_1",
+    title="Problem Set Rubric",
+    points_possible=4.0,
+    free_form_criterion_comments=False,
+    criteria=(
+        RubricCriterionDefinition(
+            id="crit_1",
+            description="Correctness",
+            long_description="",
+            points=4.0,
+            ratings=(RubricRating(id="r1", description="Full", long_description="", points=4.0),),
+        ),
+    ),
+)
+
 
 # ---------------------------------------------------------------------------
 # Reusable MockCanvasClient
@@ -91,12 +112,14 @@ class MockCanvasClient(CanvasClient):
         self.gradebook_csv: bytes = GRADEBOOK_CSV_BYTES
         self.consent_csv: bytes | None = CONSENT_CSV_BYTES
         self.rubric_assessments: list[RubricAssessment] = RUBRIC_ASSESSMENTS
+        self.rubric_definition: RubricDefinition | None = RUBRIC_DEFINITION
 
         # Error injection
         self.fetch_course_data_error: Exception | None = None
         self.fetch_gradebook_csv_error: Exception | None = None
         self.fetch_quiz_error: Exception | None = None
         self.fetch_rubric_error: Exception | None = None
+        self.fetch_rubric_definition_error: Exception | None = None
 
         # Call tracking
         self.fetch_course_data_calls: list[int] = []
@@ -104,6 +127,7 @@ class MockCanvasClient(CanvasClient):
         self.fetch_gradebook_csv_calls: list[int] = []
         self.fetch_quiz_calls: list[tuple[int, int]] = []
         self.fetch_rubric_calls: list[tuple[int, int]] = []
+        self.fetch_rubric_definition_calls: list[tuple[int, int]] = []
 
     def list_courses(self) -> list:
         return []
@@ -145,6 +169,14 @@ class MockCanvasClient(CanvasClient):
         if self.fetch_rubric_error:
             raise self.fetch_rubric_error
         return self.rubric_assessments
+
+    def fetch_rubric_definition(
+        self, course_id: int, assignment_id: int
+    ) -> RubricDefinition | None:
+        self.fetch_rubric_definition_calls.append((course_id, assignment_id))
+        if self.fetch_rubric_definition_error:
+            raise self.fetch_rubric_definition_error
+        return self.rubric_definition
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +440,94 @@ class TestRubricApiErrors:
 
 
 # ---------------------------------------------------------------------------
+# Rubric definitions happy path + missing rubric + API errors
+# ---------------------------------------------------------------------------
+
+
+class TestRubricDefinitionHappyPath:
+    def test_definition_json_written_per_assignment(self, use_case, request_):
+        result = use_case.execute(request_)
+        for assignment_id in ASSIGNMENT_IDS:
+            assert (
+                result.dataset_path
+                / "rubric_assessments"
+                / f"assignment_{assignment_id}_definition.json"
+            ).exists()
+
+    def test_definition_fetched_for_each_assignment(self, use_case, request_, client):
+        use_case.execute(request_)
+        fetched_assignment_ids = [aid for _, aid in client.fetch_rubric_definition_calls]
+        for assignment_id in ASSIGNMENT_IDS:
+            assert assignment_id in fetched_assignment_ids
+
+    def test_definition_json_matches_schema_required_fields(self, use_case, request_):
+        result = use_case.execute(request_)
+        path = (
+            result.dataset_path
+            / "rubric_assessments"
+            / f"assignment_{ASSIGNMENT_IDS[0]}_definition.json"
+        )
+        data = json.loads(path.read_text())
+        for field in (
+            "rubric_id",
+            "title",
+            "points_possible",
+            "free_form_criterion_comments",
+            "criteria",
+        ):
+            assert field in data
+
+    def test_manifest_references_rubric_definitions(self, use_case, request_):
+        result = use_case.execute(request_)
+        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
+        assert len(data["rubric_definitions"]) == len(ASSIGNMENT_IDS)
+
+    def test_manifest_rubric_definition_paths_use_subdirectory(self, use_case, request_):
+        result = use_case.execute(request_)
+        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
+        for path in data["rubric_definitions"]:
+            assert path.startswith("rubric_assessments/")
+
+
+class TestAssignmentWithoutRubric:
+    def test_no_definition_file_when_assignment_has_no_rubric(self, use_case, request_, client):
+        client.rubric_definition = None
+        result = use_case.execute(request_)
+        for assignment_id in ASSIGNMENT_IDS:
+            assert not (
+                result.dataset_path
+                / "rubric_assessments"
+                / f"assignment_{assignment_id}_definition.json"
+            ).exists()
+
+    def test_manifest_rubric_definitions_empty(self, use_case, request_, client):
+        client.rubric_definition = None
+        result = use_case.execute(request_)
+        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
+        assert data["rubric_definitions"] == []
+
+    def test_assessment_files_still_written(self, use_case, request_, client):
+        client.rubric_definition = None
+        result = use_case.execute(request_)
+        for assignment_id in ASSIGNMENT_IDS:
+            assert (
+                result.dataset_path / "rubric_assessments" / f"assignment_{assignment_id}.json"
+            ).exists()
+
+
+class TestRubricDefinitionApiErrors:
+    def test_timeout_on_definition_fetch_propagates(self, use_case, request_, client):
+        client.fetch_rubric_definition_error = TimeoutError("network timeout")
+        with pytest.raises(TimeoutError, match="network timeout"):
+            use_case.execute(request_)
+
+    def test_unauthorized_on_definition_fetch_propagates(self, use_case, request_, client):
+        client.fetch_rubric_definition_error = PermissionError("401 Unauthorized")
+        with pytest.raises(PermissionError, match="401"):
+            use_case.execute(request_)
+
+
+# ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
 
@@ -445,6 +565,7 @@ class TestValidation:
         assert client.fetch_gradebook_csv_calls == []
         assert client.fetch_quiz_calls == []
         assert client.fetch_rubric_calls == []
+        assert client.fetch_rubric_definition_calls == []
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +590,11 @@ class TestMockCanvasClientReusability:
         result = client.fetch_rubric_assessments(COURSE_ID, ASSIGNMENT_IDS[0])
         assert isinstance(result, list)
         assert all(isinstance(r, RubricAssessment) for r in result)
+
+    def test_returns_rubric_definition(self):
+        client = MockCanvasClient()
+        result = client.fetch_rubric_definition(COURSE_ID, ASSIGNMENT_IDS[0])
+        assert isinstance(result, RubricDefinition)
 
     def test_tracks_quiz_calls(self):
         client = MockCanvasClient()

@@ -48,6 +48,7 @@ class DownloadCourseDatasetUseCase:
         rubric_dir.mkdir(exist_ok=True)
 
         rubric_files = []
+        rubric_definition_files = []
 
         for assignment_id in request.assignment_ids or []:
             assessments = self._canvas_client.fetch_rubric_assessments(
@@ -62,12 +63,22 @@ class DownloadCourseDatasetUseCase:
 
             rubric_files.append(file_path)
 
+            definition = self._canvas_client.fetch_rubric_definition(
+                request.course_id, assignment_id
+            )
+            if definition is not None:
+                definition_path = rubric_dir / f"assignment_{assignment_id}_definition.json"
+                with definition_path.open("w", encoding="utf-8") as fh:
+                    json.dump(asdict(definition), fh, indent=2)
+                rubric_definition_files.append(definition_path)
+
         manifest = {
             "course_id": request.course_id,
             "generated_at": datetime.now(UTC).isoformat(),
             "gradebook_csv": gradebook_path.name,
             "consent_form_csv": consent_path.name,
             "rubric_assessments": [f"rubric_assessments/{p.name}" for p in rubric_files],
+            "rubric_definitions": [f"rubric_assessments/{p.name}" for p in rubric_definition_files],
         }
 
         manifest_path = dataset_dir / "dataset_manifest.json"

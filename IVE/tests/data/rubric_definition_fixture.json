@@ -1,0 +1,61 @@
+{
+  "id": 7216983,
+  "name": "Mod 4: ADJ Problem Set",
+  "rubric_settings": {
+    "id": 340525,
+    "title": "ADJ Problem Set Rubric",
+    "points_possible": 6.0,
+    "free_form_criterion_comments": false,
+    "hide_score_total": false
+  },
+  "rubric": [
+    {
+      "id": "340525_8699",
+      "description": "Correctness",
+      "long_description": "Solution reaches the correct final answer.",
+      "points": 4.0,
+      "criterion_use_range": false,
+      "ratings": [
+        {
+          "id": "340525_8699_r1",
+          "description": "Full Marks",
+          "long_description": "",
+          "points": 4.0
+        },
+        {
+          "id": "340525_8699_r2",
+          "description": "No Marks",
+          "long_description": "",
+          "points": 0.0
+        }
+      ]
+    },
+    {
+      "id": "340525_5682",
+      "description": "Justification",
+      "long_description": "",
+      "points": 2.0,
+      "criterion_use_range": false,
+      "ratings": [
+        {
+          "id": "340525_5682_r1",
+          "description": "Complete",
+          "long_description": "",
+          "points": 2.0
+        },
+        {
+          "id": "340525_5682_r2",
+          "description": "Partial",
+          "long_description": "",
+          "points": 1.0
+        },
+        {
+          "id": "340525_5682_r3",
+          "description": "Missing",
+          "long_description": "",
+          "points": 0.0
+        }
+      ]
+    }
+  ]
+}
