@@ -24,6 +24,7 @@ import pytest
 from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
+from GAVEL.app.dtos.rubric_definition import RubricDefinition
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.usecases.download_all_rubric_assessments import (
     DownloadAllRubricAssessmentsRequest,
@@ -96,6 +97,11 @@ class MockCanvasClient(CanvasClient):
         if assignment_id in self.fetch_rubric_error_for:
             raise RuntimeError(f"Canvas error for assignment {assignment_id}")
         return self.rubric_assessments_for.get(assignment_id, self.rubric_assessments)
+
+    def fetch_rubric_definition(
+        self, course_id: int, assignment_id: int
+    ) -> RubricDefinition | None:
+        return None
 
 
 # ---------------------------------------------------------------------------
