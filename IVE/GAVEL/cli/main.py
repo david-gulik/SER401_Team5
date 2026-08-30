@@ -17,7 +17,10 @@ from GAVEL.cli.commands.consent_form import handle_consent_form_download
 from GAVEL.cli.commands.gradescope_download import handle_gradescope_download
 from GAVEL.cli.commands.quiz_analysis import handle_quiz_analysis_download
 from GAVEL.cli.commands.roster import handle_roster_download, handle_roster_list_terms
-from GAVEL.cli.commands.rubric_assessment import handle_rubric_assessment_download
+from GAVEL.cli.commands.rubric_assessment import (
+    handle_rubric_assessment_download,
+    handle_rubric_assessment_download_all,
+)
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger
 from GAVEL.theme.context import ThemeContext
@@ -137,6 +140,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output", "-o", required=True, help="Directory where the JSON file will be written"
     )
     rubric_dl.set_defaults(handler=handle_rubric_assessment_download)
+
+    # rubric download-all
+    rubric_dl_all = rubric_subparsers.add_parser(
+        "download-all", help="Download rubric assessments for every assignment in a course"
+    )
+    rubric_dl_all.add_argument(
+        "--course-id", required=True, help="Canvas course numeric identifier"
+    )
+    rubric_dl_all.add_argument(
+        "--output", "-o", required=True, help="Directory where the JSON files will be written"
+    )
+    rubric_dl_all.set_defaults(handler=handle_rubric_assessment_download_all)
 
     # consent form commands
     consent_parser = subparsers.add_parser("consent_form", help="Canvas consent form operations")

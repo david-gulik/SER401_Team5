@@ -152,6 +152,11 @@ class DownloadTab(ScrollableTab):
         self._download_rubric_btn.setToolTip(
             "Requires a valid course and assignment to be selected above."
         )
+        self._download_all_rubric_btn = QPushButton("Download All Rubric Assessments")
+        self._download_all_rubric_btn.setProperty("role", "secondary")
+        self._download_all_rubric_btn.setToolTip(
+            "Downloads a rubric assessment for every assignment in the selected course."
+        )
 
         # Gradescope submissions
         self._gradescope_credentials_warning = QLabel(
@@ -197,6 +202,7 @@ class DownloadTab(ScrollableTab):
         self._consent_quiz_combo.currentIndexChanged.connect(self._on_consent_quiz_changed)
         self._assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
+        self._download_all_rubric_btn.clicked.connect(self._vm.download_all_rubric_assessments)
 
         self._output_path.textEdited.connect(self._vm.set_output_dir)
         self._browse_path_btn.clicked.connect(self._on_browse_output_path)
@@ -361,6 +367,7 @@ class DownloadTab(ScrollableTab):
         rubric_form.addRow("Assignment", self._assignment_combo)
         rubric_panel.add_widget(rubric_host)
         rubric_panel.add_widget(self._download_rubric_btn)
+        rubric_panel.add_widget(self._download_all_rubric_btn)
         card.add_row(rubric_panel)
 
         # Gradescope Submissions
@@ -500,6 +507,9 @@ class DownloadTab(ScrollableTab):
         self._download_gradescope_btn.setEnabled(not busy and state.can_download_submissions)
         self._download_consent_btn.setEnabled(not busy and state.can_download_consent)
         self._download_rubric_btn.setEnabled(not busy and state.can_download_rubric)
+        self._download_all_rubric_btn.setEnabled(
+            not busy and state.can_download_all_rubric_assessments
+        )
         self._download_all_btn.setEnabled(not busy and state.can_download_all)
 
         if state.terms and self._term_combo.count() != len(state.terms):
