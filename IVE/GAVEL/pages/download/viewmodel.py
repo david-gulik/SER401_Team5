@@ -13,6 +13,10 @@ from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQ
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
+from GAVEL.app.usecases.download_all_rubric_assessments import (
+    DownloadAllRubricAssessmentsRequest,
+    DownloadAllRubricAssessmentsUseCase,
+)
 from GAVEL.app.usecases.download_consent_form import (
     DownloadConsentFormRequest,
     DownloadConsentFormUseCase,
@@ -640,15 +644,6 @@ class DownloadViewModel(QObject):
             self._emit_error("Invalid course or consent quiz ID.")
             return
 
-        assignment_id: int | None = None
-        assignment_id_str = self._state.assignment_id.strip()
-        if assignment_id_str:
-            try:
-                assignment_id = int(assignment_id_str)
-            except ValueError:
-                self._emit_error("Invalid assignment ID.")
-                return
-
         self._set_busy("Downloading all data...")
         output_dir = self._resolve_output_dir()
         roster_client = self._client
@@ -704,19 +699,19 @@ class DownloadViewModel(QObject):
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"Consent Form: {exc}")
 
-            if assignment_id is not None:
-                try:
-                    rubric_result = DownloadRubricAssessmentUseCase(canvas_client).execute(
-                        DownloadRubricAssessmentRequest(
-                            course_id=course_id,
-                            assignment_id=assignment_id,
-                            output_dir=output_dir,
-                        )
+            try:
+                rubric_result = DownloadAllRubricAssessmentsUseCase(canvas_client).execute(
+                    DownloadAllRubricAssessmentsRequest(course_id=course_id, output_dir=output_dir)
+                )
+                for outcome in rubric_result.successes:
+                    successes.append(f"Rubric Assessment ({outcome.assignment_name})")
+                    last_path = outcome.saved_path
+                for outcome in rubric_result.failures:
+                    failures.append(
+                        f"Rubric Assessment ({outcome.assignment_name}): {outcome.error}"
                     )
-                    successes.append("Rubric Assessment")
-                    last_path = rubric_result.saved_path
-                except Exception as exc:  # noqa: BLE001
-                    failures.append(f"Rubric Assessment: {exc}")
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"Rubric Assessment: {exc}")
 
             return _DownloadAllResult(
                 successes=tuple(successes),
