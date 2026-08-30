@@ -11,6 +11,7 @@ import pytest
 from GAVEL.app.dtos.canvas_course import CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
+from GAVEL.app.dtos.rubric_definition import RubricDefinition
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.usecases.download_consent_form import (
     DownloadConsentFormRequest,
@@ -75,6 +76,11 @@ class MockCanvasClient(CanvasClient):
     def fetch_rubric_assessments(
         self, course_id: int, assignment_id: int
     ) -> list[RubricAssessment]:
+        raise NotImplementedError
+
+    def fetch_rubric_definition(
+        self, course_id: int, assignment_id: int
+    ) -> RubricDefinition | None:
         raise NotImplementedError
 
 

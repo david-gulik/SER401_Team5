@@ -17,6 +17,7 @@ class DownloadRubricAssessmentRequest:
 @dataclass(frozen=True)
 class DownloadRubricAssessmentResult:
     saved_path: Path
+    definition_saved_path: Path | None
     message: str
 
 
@@ -58,5 +59,50 @@ class DownloadRubricAssessmentUseCase:
         )
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+        definition_path = self._save_rubric_definition(request)
+
         message = f"Rubric assessment for course {request.course_id}, assignment {request.assignment_id} saved to {path}"
-        return DownloadRubricAssessmentResult(saved_path=path, message=message)
+        return DownloadRubricAssessmentResult(
+            saved_path=path,
+            definition_saved_path=definition_path,
+            message=message,
+        )
+
+    def _save_rubric_definition(self, request: DownloadRubricAssessmentRequest) -> Path | None:
+        definition = self._canvas_client.fetch_rubric_definition(
+            request.course_id, request.assignment_id
+        )
+        if definition is None:
+            return None
+
+        payload = {
+            "rubric_id": definition.rubric_id,
+            "title": definition.title,
+            "points_possible": definition.points_possible,
+            "free_form_criterion_comments": definition.free_form_criterion_comments,
+            "criteria": [
+                {
+                    "id": c.id,
+                    "description": c.description,
+                    "long_description": c.long_description,
+                    "points": c.points,
+                    "ratings": [
+                        {
+                            "id": r.id,
+                            "description": r.description,
+                            "long_description": r.long_description,
+                            "points": r.points,
+                        }
+                        for r in c.ratings
+                    ],
+                }
+                for c in definition.criteria
+            ],
+        }
+
+        path = (
+            request.output_dir
+            / f"rubric_definition_{request.course_id}_{request.assignment_id}.json"
+        )
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return path

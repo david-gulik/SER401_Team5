@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from GAVEL.infra.canvas.http_canvas_client import CanvasApiConfig, HttpCanvasClient
+
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+DOCS_DIR = Path(__file__).resolve().parents[3] / "docs"
 
 TEST_COURSE_ID = 101
 TEST_QUIZ_ID = 5
@@ -467,3 +472,100 @@ class TestFetchRubricAssessments:
                 f"/api/v1/courses/{TEST_COURSE_ID}/assignments/{TEST_ASSIGNMENT_ID}/submissions",
                 params={"include[]": "rubric_assessment", "per_page": 100},
             )
+
+
+class TestFetchRubricDefinition:
+    RUBRIC_ASSIGNMENT_FIXTURE = json.loads(
+        (DATA_DIR / "rubric_definition_fixture.json").read_text()
+    )
+    SCHEMA = json.loads((DOCS_DIR / "rubric_level_assessment_schema.json").read_text())
+
+    def test_requests_assignment_with_rubric_included(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_json") as mock_get_json:
+            mock_get_json.return_value = self.RUBRIC_ASSIGNMENT_FIXTURE
+            client.fetch_rubric_definition(TEST_COURSE_ID, TEST_ASSIGNMENT_ID)
+            mock_get_json.assert_called_once_with(
+                f"/api/v1/courses/{TEST_COURSE_ID}/assignments/{TEST_ASSIGNMENT_ID}?include[]=rubric"
+            )
+
+    def test_returns_none_when_rubric_key_absent(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_json") as mock_get_json:
+            mock_get_json.return_value = {"id": TEST_ASSIGNMENT_ID, "name": "No Rubric"}
+            result = client.fetch_rubric_definition(TEST_COURSE_ID, TEST_ASSIGNMENT_ID)
+            assert result is None
+
+    def test_returns_none_when_rubric_empty(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_json") as mock_get_json:
+            mock_get_json.return_value = {"id": TEST_ASSIGNMENT_ID, "rubric": []}
+            result = client.fetch_rubric_definition(TEST_COURSE_ID, TEST_ASSIGNMENT_ID)
+            assert result is None
+
+    def test_parses_rubric_settings_and_criteria_from_fixture(
+        self, client: HttpCanvasClient
+    ) -> None:
+        with patch.object(client, "_get_json") as mock_get_json:
+            mock_get_json.return_value = self.RUBRIC_ASSIGNMENT_FIXTURE
+            result = client.fetch_rubric_definition(TEST_COURSE_ID, TEST_ASSIGNMENT_ID)
+
+        assert result is not None
+        assert result.rubric_id == "340525"
+        assert result.title == "ADJ Problem Set Rubric"
+        assert result.points_possible == 6.0
+        assert result.free_form_criterion_comments is False
+        assert len(result.criteria) == 2
+
+        first = result.criteria[0]
+        assert first.id == "340525_8699"
+        assert first.description == "Correctness"
+        assert first.points == 4.0
+        assert len(first.ratings) == 2
+        assert first.ratings[0].id == "340525_8699_r1"
+        assert first.ratings[0].points == 4.0
+
+    def test_recorded_fixture_output_conforms_to_schema(self, client: HttpCanvasClient) -> None:
+        """Downloaded rubric definitions must satisfy every field the base
+        rubric JSON schema requires (docs/rubric_definition_schema.json)."""
+        with patch.object(client, "_get_json") as mock_get_json:
+            mock_get_json.return_value = self.RUBRIC_ASSIGNMENT_FIXTURE
+            result = client.fetch_rubric_definition(TEST_COURSE_ID, TEST_ASSIGNMENT_ID)
+
+        assert result is not None
+
+        payload = {
+            "rubric_id": result.rubric_id,
+            "title": result.title,
+            "points_possible": result.points_possible,
+            "free_form_criterion_comments": result.free_form_criterion_comments,
+            "criteria": [
+                {
+                    "id": c.id,
+                    "description": c.description,
+                    "long_description": c.long_description,
+                    "points": c.points,
+                    "ratings": [
+                        {
+                            "id": r.id,
+                            "description": r.description,
+                            "long_description": r.long_description,
+                            "points": r.points,
+                        }
+                        for r in c.ratings
+                    ],
+                }
+                for c in result.criteria
+            ],
+        }
+
+        for field in self.SCHEMA["required"]:
+            assert field in payload
+
+        criterion_schema = self.SCHEMA["definitions"]["RubricCriterionDefinition"]
+        rating_schema = self.SCHEMA["definitions"]["RubricRating"]
+
+        assert payload["criteria"], "fixture must exercise at least one criterion"
+        for criterion in payload["criteria"]:
+            for field in criterion_schema["required"]:
+                assert field in criterion
+            for rating in criterion["ratings"]:
+                for field in rating_schema["required"]:
+                    assert field in rating

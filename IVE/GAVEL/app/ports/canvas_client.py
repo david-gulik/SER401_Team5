@@ -10,6 +10,7 @@ from GAVEL.app.dtos.canvas_course import (
 )
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
+from GAVEL.app.dtos.rubric_definition import RubricDefinition
 
 
 class CanvasClient(ABC):
@@ -54,4 +55,13 @@ class CanvasClient(ABC):
         self, course_id: int, assignment_id: int
     ) -> list[RubricAssessment]:
         """Retrieve rubric assessments for a Canvas assignment."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def fetch_rubric_definition(
+        self, course_id: int, assignment_id: int
+    ) -> RubricDefinition | None:
+        """Retrieve the rubric definition (criteria, rating tiers, and point values)
+        associated with a Canvas assignment. Returns None if the assignment has no
+        associated rubric."""
         raise NotImplementedError

@@ -8,6 +8,11 @@ import pytest
 from GAVEL.app.dtos.canvas_course import CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
+from GAVEL.app.dtos.rubric_definition import (
+    RubricCriterionDefinition,
+    RubricDefinition,
+    RubricRating,
+)
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentRequest,
@@ -40,6 +45,32 @@ RUBRIC_ASSESSMENTS = [
     ),
 ]
 
+RUBRIC_DEFINITION = RubricDefinition(
+    rubric_id="rub_1",
+    title="Problem Set Rubric",
+    points_possible=6.0,
+    free_form_criterion_comments=False,
+    criteria=(
+        RubricCriterionDefinition(
+            id="crit_1",
+            description="Correctness",
+            long_description="",
+            points=4.0,
+            ratings=(
+                RubricRating(id="r1", description="Full", long_description="", points=4.0),
+                RubricRating(id="r2", description="None", long_description="", points=0.0),
+            ),
+        ),
+        RubricCriterionDefinition(
+            id="crit_2",
+            description="Clarity",
+            long_description="",
+            points=2.0,
+            ratings=(),
+        ),
+    ),
+)
+
 
 # ---------------------------------------------------------------------------
 # Mock
@@ -49,8 +80,11 @@ RUBRIC_ASSESSMENTS = [
 class MockCanvasClient(CanvasClient):
     def __init__(self) -> None:
         self.rubric_assessments: list[RubricAssessment] = RUBRIC_ASSESSMENTS
+        self.rubric_definition: RubricDefinition | None = RUBRIC_DEFINITION
         self.fetch_rubric_error: Exception | None = None
+        self.fetch_rubric_definition_error: Exception | None = None
         self.fetch_rubric_calls: list[tuple[int, int]] = []
+        self.fetch_rubric_definition_calls: list[tuple[int, int]] = []
 
     def list_courses(self) -> list:
         return []
@@ -80,6 +114,14 @@ class MockCanvasClient(CanvasClient):
         if self.fetch_rubric_error:
             raise self.fetch_rubric_error
         return self.rubric_assessments
+
+    def fetch_rubric_definition(
+        self, course_id: int, assignment_id: int
+    ) -> RubricDefinition | None:
+        self.fetch_rubric_definition_calls.append((course_id, assignment_id))
+        if self.fetch_rubric_definition_error:
+            raise self.fetch_rubric_definition_error
+        return self.rubric_definition
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +208,77 @@ class TestHappyPath:
         result = use_case.execute(request_)
         expected = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
         assert result.saved_path == expected
+
+
+# ---------------------------------------------------------------------------
+# Rubric definition
+# ---------------------------------------------------------------------------
+
+
+class TestRubricDefinitionHappyPath:
+    def test_definition_file_is_created(self, use_case, request_, tmp_path):
+        use_case.execute(request_)
+        expected = tmp_path / f"rubric_definition_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        assert expected.exists()
+
+    def test_definition_fetched_with_correct_ids(self, use_case, request_, client):
+        use_case.execute(request_)
+        assert (COURSE_ID, ASSIGNMENT_ID) in client.fetch_rubric_definition_calls
+
+    def test_definition_json_matches_schema_required_fields(self, use_case, request_, tmp_path):
+        use_case.execute(request_)
+        path = tmp_path / f"rubric_definition_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        data = json.loads(path.read_text())
+        for field in (
+            "rubric_id",
+            "title",
+            "points_possible",
+            "free_form_criterion_comments",
+            "criteria",
+        ):
+            assert field in data
+        for criterion in data["criteria"]:
+            for field in ("id", "description", "long_description", "points", "ratings"):
+                assert field in criterion
+            for rating in criterion["ratings"]:
+                for field in ("id", "description", "long_description", "points"):
+                    assert field in rating
+
+    def test_result_includes_definition_saved_path(self, use_case, request_, tmp_path):
+        result = use_case.execute(request_)
+        expected = tmp_path / f"rubric_definition_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        assert result.definition_saved_path == expected
+
+
+class TestNoAssociatedRubric:
+    def test_no_definition_file_when_assignment_has_no_rubric(
+        self, use_case, request_, client, tmp_path
+    ):
+        client.rubric_definition = None
+        use_case.execute(request_)
+        assert not (tmp_path / f"rubric_definition_{COURSE_ID}_{ASSIGNMENT_ID}.json").exists()
+
+    def test_result_definition_saved_path_is_none(self, use_case, request_, client):
+        client.rubric_definition = None
+        result = use_case.execute(request_)
+        assert result.definition_saved_path is None
+
+    def test_assessment_file_still_written(self, use_case, request_, client, tmp_path):
+        client.rubric_definition = None
+        use_case.execute(request_)
+        assert (tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json").exists()
+
+
+class TestRubricDefinitionApiErrors:
+    def test_timeout_on_definition_fetch_propagates(self, use_case, request_, client):
+        client.fetch_rubric_definition_error = TimeoutError("network timeout")
+        with pytest.raises(TimeoutError, match="network timeout"):
+            use_case.execute(request_)
+
+    def test_unauthorized_on_definition_fetch_propagates(self, use_case, request_, client):
+        client.fetch_rubric_definition_error = PermissionError("401 Unauthorized")
+        with pytest.raises(PermissionError, match="401"):
+            use_case.execute(request_)
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,11 @@ from GAVEL.app.dtos.canvas_course import (
 )
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
+from GAVEL.app.dtos.rubric_definition import (
+    RubricCriterionDefinition,
+    RubricDefinition,
+    RubricRating,
+)
 from GAVEL.app.ports.canvas_client import CanvasClient
 
 
@@ -547,3 +552,48 @@ class HttpCanvasClient(CanvasClient):
             )
 
         return results
+
+    def fetch_rubric_definition(
+        self, course_id: int, assignment_id: int
+    ) -> RubricDefinition | None:
+        """Retrieve the rubric definition for a Canvas assignment, or None
+        if the assignment has no associated rubric."""
+
+        assignment_json = self._get_json(
+            f"/api/v1/courses/{course_id}/assignments/{assignment_id}?include[]=rubric"
+        )
+
+        rubric_json = assignment_json.get("rubric")
+        if not rubric_json:
+            return None
+
+        settings_json = assignment_json.get("rubric_settings") or {}
+
+        criteria = tuple(
+            RubricCriterionDefinition(
+                id=str(criterion["id"]),
+                description=criterion.get("description") or "",
+                long_description=criterion.get("long_description") or "",
+                points=criterion.get("points"),
+                ratings=tuple(
+                    RubricRating(
+                        id=str(rating["id"]),
+                        description=rating.get("description") or "",
+                        long_description=rating.get("long_description") or "",
+                        points=rating.get("points"),
+                    )
+                    for rating in criterion.get("ratings") or []
+                ),
+            )
+            for criterion in rubric_json
+        )
+
+        return RubricDefinition(
+            rubric_id=str(settings_json.get("id", "")),
+            title=settings_json.get("title") or "",
+            points_possible=settings_json.get("points_possible"),
+            free_form_criterion_comments=bool(
+                settings_json.get("free_form_criterion_comments", False)
+            ),
+            criteria=criteria,
+        )
