@@ -6,6 +6,12 @@ rubric assessment for at most one hard-coded assignment regardless of how
 many assignments the course actually had. This use case is what the
 Download All workflow now delegates to for rubric assessments, so an
 N-assignment course must always produce N distinct output files.
+
+Also covers SCRUM-221: the batch use case categorizes each outcome as
+succeeded / skipped / failed. "Skipped" currently just means the
+downloaded file had zero assessment entries — it is not yet a verified
+"this assignment has no rubric attached" check (see
+RubricAssessmentDownloadOutcome.status).
 """
 
 from __future__ import annotations
@@ -54,6 +60,8 @@ class MockCanvasClient(CanvasClient):
     def __init__(self) -> None:
         self.assignments: list[CanvasAssignment] = ASSIGNMENTS
         self.rubric_assessments: list[RubricAssessment] = RUBRIC_ASSESSMENTS
+        # Per-assignment override, e.g. {102: []} to simulate a skip.
+        self.rubric_assessments_for: dict[int, list[RubricAssessment]] = {}
         self.fetch_rubric_error_for: set[int] = set()
         self.list_assignments_error: Exception | None = None
         self.fetch_rubric_calls: list[tuple[int, int]] = []
@@ -87,7 +95,7 @@ class MockCanvasClient(CanvasClient):
         self.fetch_rubric_calls.append((course_id, assignment_id))
         if assignment_id in self.fetch_rubric_error_for:
             raise RuntimeError(f"Canvas error for assignment {assignment_id}")
-        return self.rubric_assessments
+        return self.rubric_assessments_for.get(assignment_id, self.rubric_assessments)
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +135,7 @@ class TestHappyPath:
 
     def test_writes_one_distinct_file_per_assignment(self, use_case, request_, tmp_path):
         result = use_case.execute(request_)
-        saved_paths = [o.saved_path for o in result.successes]
+        saved_paths = [o.saved_path for o in result.succeeded]
 
         assert len(saved_paths) == len(ASSIGNMENTS)
         assert len(set(saved_paths)) == len(ASSIGNMENTS), "output paths must be distinct"
@@ -136,19 +144,66 @@ class TestHappyPath:
 
     def test_filenames_include_assignment_identifier(self, use_case, request_):
         result = use_case.execute(request_)
-        for assignment, outcome in zip(ASSIGNMENTS, result.successes, strict=True):
+        for assignment, outcome in zip(ASSIGNMENTS, result.succeeded, strict=True):
             assert str(assignment.id) in outcome.saved_path.name
 
-    def test_all_outcomes_are_successes(self, use_case, request_):
+    def test_all_outcomes_succeeded(self, use_case, request_):
         result = use_case.execute(request_)
-        assert len(result.successes) == len(ASSIGNMENTS)
-        assert result.failures == ()
+        assert len(result.succeeded) == len(ASSIGNMENTS)
+        assert result.skipped == ()
+        assert result.failed == ()
 
     def test_outcome_content_matches_assessments(self, use_case, request_):
         result = use_case.execute(request_)
-        for outcome in result.successes:
+        for outcome in result.succeeded:
             data = json.loads(outcome.saved_path.read_text())
             assert len(data) == len(RUBRIC_ASSESSMENTS)
+
+    def test_outcome_assessment_count_matches(self, use_case, request_):
+        result = use_case.execute(request_)
+        for outcome in result.succeeded:
+            assert outcome.assessment_count == len(RUBRIC_ASSESSMENTS)
+
+
+# ---------------------------------------------------------------------------
+# Skipped: zero assessment entries in the downloaded file
+# ---------------------------------------------------------------------------
+
+
+class TestSkipped:
+    def test_zero_assessments_is_skipped_not_succeeded(self, use_case, request_, client):
+        client.rubric_assessments_for = {102: []}
+        result = use_case.execute(request_)
+
+        assert len(result.succeeded) == 2
+        assert len(result.skipped) == 1
+        assert result.skipped[0].assignment_id == 102
+
+    def test_skipped_outcome_still_has_saved_path(self, use_case, request_, client):
+        client.rubric_assessments_for = {102: []}
+        result = use_case.execute(request_)
+        skipped = result.skipped[0]
+        assert skipped.saved_path is not None
+        assert skipped.saved_path.exists()
+        assert skipped.error is None
+
+    def test_skipped_outcome_assessment_count_is_zero(self, use_case, request_, client):
+        client.rubric_assessments_for = {102: []}
+        result = use_case.execute(request_)
+        assert result.skipped[0].assessment_count == 0
+
+    def test_status_property_reports_skipped(self, use_case, request_, client):
+        client.rubric_assessments_for = {102: []}
+        result = use_case.execute(request_)
+        outcome = next(o for o in result.outcomes if o.assignment_id == 102)
+        assert outcome.status == "skipped"
+
+    def test_all_empty_produces_all_skipped(self, use_case, request_, client):
+        client.rubric_assessments = []
+        result = use_case.execute(request_)
+        assert len(result.skipped) == len(ASSIGNMENTS)
+        assert result.succeeded == ()
+        assert result.failed == ()
 
 
 # ---------------------------------------------------------------------------
@@ -161,9 +216,9 @@ class TestPartialFailure:
         client.fetch_rubric_error_for = {102}
         result = use_case.execute(request_)
 
-        assert len(result.successes) == 2
-        assert len(result.failures) == 1
-        assert result.failures[0].assignment_id == 102
+        assert len(result.succeeded) == 2
+        assert len(result.failed) == 1
+        assert result.failed[0].assignment_id == 102
 
     def test_all_assignments_still_attempted_after_failure(self, use_case, request_, client):
         client.fetch_rubric_error_for = {101}
@@ -176,12 +231,14 @@ class TestPartialFailure:
         result = use_case.execute(request_)
         failing = next(o for o in result.outcomes if o.assignment_id == 103)
         assert failing.saved_path is None
+        assert failing.assessment_count is None
         assert failing.error is not None
+        assert failing.status == "failed"
 
     def test_successful_outcomes_still_written_when_another_fails(self, use_case, request_, client):
         client.fetch_rubric_error_for = {101}
         result = use_case.execute(request_)
-        for outcome in result.successes:
+        for outcome in result.succeeded:
             assert outcome.saved_path.exists()
 
 

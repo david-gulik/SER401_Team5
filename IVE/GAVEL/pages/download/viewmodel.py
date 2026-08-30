@@ -80,6 +80,10 @@ class DownloadUiState:
         return bool(self.selected_course_id) and bool(self.assignment_id.strip())
 
     @property
+    def can_download_all_rubric_assessments(self) -> bool:
+        return bool(self.selected_course_id)
+
+    @property
     def can_download_all(self) -> bool:
         return (
             self.can_download_roster
@@ -617,6 +621,59 @@ class DownloadViewModel(QObject):
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(result.message))
 
+    def download_all_rubric_assessments(self) -> None:
+        if self._state.is_busy:
+            return
+        course_id_str = self._state.selected_course_id.strip()
+        if not course_id_str:
+            self._emit_error("Select a course first.")
+            return
+        try:
+            course_id = int(course_id_str)
+        except ValueError:
+            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+            return
+
+        self._set_busy(f"Downloading all rubric assessments for course {course_id}...")
+        try:
+            result = DownloadAllRubricAssessmentsUseCase(self._canvas_client).execute(
+                DownloadAllRubricAssessmentsRequest(
+                    course_id=course_id, output_dir=self._resolve_output_dir()
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Rubric assessment batch download failed: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            self.event_raised.emit(ShowError(str(exc)))
+            return
+
+        succeeded, skipped, failed = result.succeeded, result.skipped, result.failed
+        last_path = (succeeded + skipped)[-1].saved_path if succeeded or skipped else None
+
+        message = (
+            f"Rubric assessments for course {course_id}: "
+            f"{len(succeeded)} succeeded, {len(skipped)} skipped, {len(failed)} failed."
+        )
+        if failed:
+            message += " Failed: " + "; ".join(f"{o.assignment_name}: {o.error}" for o in failed)
+
+        status = Status.CRITICAL if failed and not (succeeded or skipped) else Status.NOMINAL
+        if failed and (succeeded or skipped):
+            status = Status.WARNING
+
+        self._state = replace(
+            self._state,
+            is_busy=False,
+            status=status,
+            message=message,
+            last_saved_path=str(last_path) if last_path else self._state.last_saved_path,
+        )
+        self.state_changed.emit(self._state)
+        if failed:
+            self.event_raised.emit(ShowError(message))
+        else:
+            self.event_raised.emit(ShowInfo(message))
+
     def download_all(self) -> None:
         if self._state.is_busy:
             return
@@ -703,10 +760,10 @@ class DownloadViewModel(QObject):
                 rubric_result = DownloadAllRubricAssessmentsUseCase(canvas_client).execute(
                     DownloadAllRubricAssessmentsRequest(course_id=course_id, output_dir=output_dir)
                 )
-                for outcome in rubric_result.successes:
+                for outcome in rubric_result.succeeded + rubric_result.skipped:
                     successes.append(f"Rubric Assessment ({outcome.assignment_name})")
                     last_path = outcome.saved_path
-                for outcome in rubric_result.failures:
+                for outcome in rubric_result.failed:
                     failures.append(
                         f"Rubric Assessment ({outcome.assignment_name}): {outcome.error}"
                     )
