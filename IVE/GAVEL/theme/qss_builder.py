@@ -50,6 +50,7 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_surface_card(t),
         _qss_status_pill(t),
         _qss_status_banner(t),
+        _qss_input_mode_toggle(t),
     ]
     return "\n\n".join(sections)
 
@@ -746,5 +747,85 @@ def _qss_status_banner(t: ThemeTokens) -> str:
         border: 1px solid {c["status_critical"]};
         border-radius: {_px(r_sm)};
         padding: {_px(sp_sm)} {_px(sp_md)};
+    }}
+    """
+
+
+def _qss_input_mode_toggle(t: ThemeTokens) -> str:
+    """Roles used by ui_components.input_mode_toggle.
+
+    The segment rules are repeated under each surface frame so they outrank
+    the ``QFrame[role=...] QPushButton`` overrides in ``_qss_surface_card``.
+    """
+    c = t.color
+    ty = t.typography
+    r_sm = int(t.shape["radius_sm"])
+    sp_xs = t.sp(4)
+    sp_md = t.sp(16)
+    small = _pt(int(ty["font_size_small"]))
+
+    frames = (
+        'QFrame[role="app_bg"]',
+        'QFrame[role="panel_bg"]',
+        'QFrame[role="surface"]',
+        'QFrame[role="card_header"]',
+    )
+
+    def seg(state: str = "") -> str:
+        base = f'QPushButton[role="segment"]{state}'
+        return ",\n    ".join([base, *(f"{frame} {base}" for frame in frames)])
+
+    return f"""
+    /* Segmented mode control */
+    {seg()} {{
+        background-color: {c["input_bg"]};
+        color: {c["text_secondary"]};
+        border: 1px solid {c["border"]};
+        border-radius: 0;
+        padding: {_px(sp_xs)} {_px(sp_md)};
+        min-width: 0;
+    }}
+    QPushButton[role="segment"][segment_pos="first"] {{
+        border-top-left-radius: {_px(r_sm)};
+        border-bottom-left-radius: {_px(r_sm)};
+    }}
+    QPushButton[role="segment"][segment_pos="last"] {{
+        border-top-right-radius: {_px(r_sm)};
+        border-bottom-right-radius: {_px(r_sm)};
+        border-left: none;
+    }}
+    {seg(":hover")},
+    {seg(":pressed")} {{
+        background-color: {c["input_bg"]};
+        color: {c["text"]};
+        border-color: {c["interactive"]};
+    }}
+    {seg(":checked")} {{
+        background-color: {c["interactive"]};
+        color: {c["interactive_text"]};
+        border-color: {c["interactive"]};
+    }}
+    {seg(":disabled")} {{
+        background-color: {c["input_bg"]};
+        color: {c["input_placeholder"]};
+        border-color: {c["border"]};
+    }}
+    {seg(":checked:disabled")} {{
+        background-color: {c["interactive_disabled"]};
+        color: {c["text_disabled"]};
+        border-color: {c["interactive_disabled"]};
+    }}
+
+    /* Inline validation message and readout line */
+    QLabel[role="error_text"] {{
+        color: {c["status_critical"]};
+        font-size: {small};
+    }}
+    QLabel[role="readout_key"] {{
+        color: {c["text_secondary"]};
+        font-size: {small};
+    }}
+    QLabel[role="readout_value"] {{
+        color: {c["text"]};
     }}
     """
