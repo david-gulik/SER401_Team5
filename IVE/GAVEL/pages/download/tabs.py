@@ -38,7 +38,9 @@ from GAVEL.ui_components.sub_panel import SubPanel
 
 
 def _course_label(course: CanvasCourse) -> str:
-    return f"{course.course_code}  {course.name}" if course.course_code else course.name
+    """Dropdown text: code, name, and the Canvas ID so it can be matched to a URL."""
+    head = f"{course.course_code}  {course.name}" if course.course_code else course.name
+    return f"{head}  ({course.id})"
 
 
 class DownloadTab(ScrollableTab):
