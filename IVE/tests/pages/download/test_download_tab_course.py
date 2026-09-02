@@ -61,7 +61,8 @@ def test_courses_load_on_open_and_first_is_selected(env):
     assert env.course.mode() is InputMode.PICKER
     assert env.course.picker().combo.count() == 2
     assert selected(env) == str(FIRST.id)
-    assert env.course.readout_text() == "SER334  Operating Systems"
+    assert env.course.readout_text() == "SER334  Operating Systems  (209555)"
+    assert env.course.picker().combo.itemText(1) == "SER401  Capstone I  (213877)"
     assert env.canvas.quiz_calls == [FIRST.id]
     assert env.canvas.assignment_calls == [FIRST.id]
     assert env.vm.get_state().can_download_gradebook
