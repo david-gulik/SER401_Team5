@@ -23,13 +23,14 @@ class RubricAssessmentDownloadOutcome:
     assignment_name: str
     saved_path: Path | None
     assessment_count: int | None
+    has_rubric: bool | None
     error: str | None
 
     @property
     def status(self) -> str:
         if self.error is not None:
             return "failed"
-        if self.assessment_count == 0:
+        if self.has_rubric is False:
             return "skipped"
         return "succeeded"
 
@@ -60,10 +61,15 @@ class DownloadAllRubricAssessmentsUseCase:
     assignment is attempted independently: one assignment failing does not
     stop the others from being downloaded.
 
-    An assignment whose downloaded file has zero assessment entries is
-    reported as "skipped" rather than "succeeded" — see the note on
-    RubricAssessmentDownloadOutcome.status about what that does and doesn't
-    mean yet.
+    An assignment with no rubric attached is reported as "skipped" rather
+    than "succeeded" — determined upfront from CanvasAssignment.has_rubric
+    (SCRUM-220), which list_assignments sets from the assignment DTO
+    itself, not from attempting a download and interpreting the result.
+    A skipped assignment is never fetched or written: no rubric_assessment
+    file is produced for it at all. An assignment that has a rubric but
+    hasn't been graded yet still counts as succeeded (verified via
+    DownloadRubricAssessmentResult.definition_saved_path as a safety net,
+    in case rubric presence changed between the list call and this one).
     """
 
     def __init__(self, canvas_client: CanvasClient) -> None:
@@ -80,6 +86,19 @@ class DownloadAllRubricAssessmentsUseCase:
 
         outcomes = []
         for assignment in assignments:
+            if not assignment.has_rubric:
+                outcomes.append(
+                    RubricAssessmentDownloadOutcome(
+                        assignment_id=assignment.id,
+                        assignment_name=assignment.name,
+                        saved_path=None,
+                        assessment_count=None,
+                        has_rubric=False,
+                        error=None,
+                    )
+                )
+                continue
+
             try:
                 result = rubric_use_case.execute(
                     DownloadRubricAssessmentRequest(
@@ -95,6 +114,7 @@ class DownloadAllRubricAssessmentsUseCase:
                         assignment_name=assignment.name,
                         saved_path=result.saved_path,
                         assessment_count=len(assessments),
+                        has_rubric=result.definition_saved_path is not None,
                         error=None,
                     )
                 )
@@ -105,6 +125,7 @@ class DownloadAllRubricAssessmentsUseCase:
                         assignment_name=assignment.name,
                         saved_path=None,
                         assessment_count=None,
+                        has_rubric=None,
                         error=str(exc),
                     )
                 )
