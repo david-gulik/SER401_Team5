@@ -7,13 +7,13 @@ many assignments the course actually had. This use case is what the
 Download All workflow now delegates to for rubric assessments, so an
 N-assignment course must always produce N distinct output files.
 
-Also covers SCRUM-221's follow-up: the batch use case categorizes each
-outcome as succeeded / skipped / failed, where "skipped" means the
-assignment genuinely has no rubric attached (via
-DownloadRubricAssessmentResult.definition_saved_path, backed by
-fetch_rubric_definition from SCRUM-222) — not just an empty assessment
-list. An assignment with a rubric that nobody has graded yet still counts
-as succeeded.
+Also covers SCRUM-221's follow-up and SCRUM-220: the batch use case
+categorizes each outcome as succeeded / skipped / failed. "Skipped" means
+the assignment genuinely has no rubric attached, determined upfront from
+CanvasAssignment.has_rubric (SCRUM-220) — a skipped assignment is never
+fetched or written at all, not even an empty file. An assignment that
+has a rubric but hasn't been graded yet still counts as succeeded, not
+skipped.
 """
 
 from __future__ import annotations
@@ -194,49 +194,72 @@ class TestHappyPath:
 
 
 # ---------------------------------------------------------------------------
-# Skipped: no rubric attached to the assignment
+# Skipped: no rubric attached to the assignment (SCRUM-220)
 # ---------------------------------------------------------------------------
 
 
 class TestSkipped:
+    """CanvasAssignment.has_rubric (set from list_assignments, not from
+    attempting a download) is what drives skipping. A skipped assignment
+    is never fetched and never gets a file written."""
+
     def test_no_rubric_is_skipped_not_succeeded(self, use_case, request_, client):
-        client.rubric_definition_for = {102: None}
+        client.assignments = [
+            CanvasAssignment(id=101, name="Homework 1", has_rubric=True),
+            CanvasAssignment(id=102, name="Homework 2", has_rubric=False),
+            CanvasAssignment(id=103, name="Homework 3", has_rubric=True),
+        ]
         result = use_case.execute(request_)
 
         assert len(result.succeeded) == 2
         assert len(result.skipped) == 1
         assert result.skipped[0].assignment_id == 102
 
-    def test_skipped_outcome_still_has_saved_path(self, use_case, request_, client):
-        client.rubric_definition_for = {102: None}
+    def test_skipped_assignment_writes_no_file(self, use_case, request_, client, tmp_path):
+        client.assignments = [CanvasAssignment(id=102, name="Homework 2", has_rubric=False)]
         result = use_case.execute(request_)
+
         skipped = result.skipped[0]
-        assert skipped.saved_path is not None
-        assert skipped.saved_path.exists()
+        assert skipped.saved_path is None
         assert skipped.error is None
+        assert not any(tmp_path.rglob("*.json"))
+
+    def test_skipped_assignment_is_never_fetched(self, use_case, request_, client):
+        """Rubric presence must come from the assignment DTO, not from
+        attempting a download and interpreting the failure."""
+        client.assignments = [CanvasAssignment(id=102, name="Homework 2", has_rubric=False)]
+        use_case.execute(request_)
+
+        assert client.fetch_rubric_calls == []
+        assert client.fetch_rubric_definition_calls == []
 
     def test_skipped_outcome_has_rubric_false(self, use_case, request_, client):
-        client.rubric_definition_for = {102: None}
+        client.assignments = [CanvasAssignment(id=102, name="Homework 2", has_rubric=False)]
         result = use_case.execute(request_)
         assert result.skipped[0].has_rubric is False
 
     def test_status_property_reports_skipped(self, use_case, request_, client):
-        client.rubric_definition_for = {102: None}
+        client.assignments = [CanvasAssignment(id=102, name="Homework 2", has_rubric=False)]
         result = use_case.execute(request_)
-        outcome = next(o for o in result.outcomes if o.assignment_id == 102)
+        outcome = result.outcomes[0]
         assert outcome.status == "skipped"
 
-    def test_all_no_rubric_produces_all_skipped(self, use_case, request_, client):
-        client.rubric_definition = None
+    def test_all_no_rubric_produces_all_skipped_and_no_files(
+        self, use_case, request_, client, tmp_path
+    ):
+        client.assignments = [
+            CanvasAssignment(id=a.id, name=a.name, has_rubric=False) for a in ASSIGNMENTS
+        ]
         result = use_case.execute(request_)
         assert len(result.skipped) == len(ASSIGNMENTS)
         assert result.succeeded == ()
         assert result.failed == ()
+        assert not any(tmp_path.rglob("*.json"))
 
     def test_rubric_present_but_ungraded_is_succeeded_not_skipped(self, use_case, request_, client):
-        """The fix this covers: a rubric-bearing assignment with zero
-        assessments (nobody graded yet) must NOT be treated the same as
-        an assignment with no rubric at all."""
+        """A rubric-bearing assignment with zero assessments (nobody
+        graded yet) must NOT be treated the same as an assignment with no
+        rubric at all."""
         client.rubric_assessments_for = {102: []}
         result = use_case.execute(request_)
 
@@ -245,6 +268,22 @@ class TestSkipped:
         assert outcome.has_rubric is True
         assert outcome.assessment_count == 0
         assert result.skipped == ()
+
+    def test_safety_net_when_definition_fetch_disagrees_with_list(self, use_case, request_, client):
+        """Rare divergence case: the assignment DTO says has_rubric=True
+        (so it isn't skipped upfront), but fetch_rubric_definition
+        disagrees when actually asked. The outcome should still end up
+        categorized as skipped rather than a false "succeeded" — but
+        unlike the upfront-skip path, a (likely empty) file is written,
+        since the download was genuinely attempted before the mismatch
+        was discovered."""
+        client.rubric_definition_for = {102: None}
+        result = use_case.execute(request_)
+
+        outcome = next(o for o in result.outcomes if o.assignment_id == 102)
+        assert outcome.status == "skipped"
+        assert outcome.saved_path is not None
+        assert outcome.saved_path.exists()
 
 
 # ---------------------------------------------------------------------------

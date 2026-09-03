@@ -62,11 +62,14 @@ class DownloadAllRubricAssessmentsUseCase:
     stop the others from being downloaded.
 
     An assignment with no rubric attached is reported as "skipped" rather
-    than "succeeded", determined from whether fetch_rubric_definition
-    actually found a rubric (via DownloadRubricAssessmentResult's
-    definition_saved_path) rather than from an empty assessment list —
-    an assignment that has a rubric but hasn't been graded yet still
-    counts as succeeded.
+    than "succeeded" — determined upfront from CanvasAssignment.has_rubric
+    (SCRUM-220), which list_assignments sets from the assignment DTO
+    itself, not from attempting a download and interpreting the result.
+    A skipped assignment is never fetched or written: no rubric_assessment
+    file is produced for it at all. An assignment that has a rubric but
+    hasn't been graded yet still counts as succeeded (verified via
+    DownloadRubricAssessmentResult.definition_saved_path as a safety net,
+    in case rubric presence changed between the list call and this one).
     """
 
     def __init__(self, canvas_client: CanvasClient) -> None:
@@ -83,6 +86,19 @@ class DownloadAllRubricAssessmentsUseCase:
 
         outcomes = []
         for assignment in assignments:
+            if not assignment.has_rubric:
+                outcomes.append(
+                    RubricAssessmentDownloadOutcome(
+                        assignment_id=assignment.id,
+                        assignment_name=assignment.name,
+                        saved_path=None,
+                        assessment_count=None,
+                        has_rubric=False,
+                        error=None,
+                    )
+                )
+                continue
+
             try:
                 result = rubric_use_case.execute(
                     DownloadRubricAssessmentRequest(

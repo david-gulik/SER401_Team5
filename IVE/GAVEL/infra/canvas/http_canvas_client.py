@@ -504,10 +504,14 @@ class HttpCanvasClient(CanvasClient):
     def list_assignments(self, course_id: int) -> list[CanvasAssignment]:
         pages = self._get_all_pages(
             f"/api/v1/courses/{course_id}/assignments",
-            params={"per_page": 100},
+            params={"per_page": 100, "include[]": "rubric"},
         )
         return [
-            CanvasAssignment(id=int(a["id"]), name=str(a.get("name") or ""))
+            CanvasAssignment(
+                id=int(a["id"]),
+                name=str(a.get("name") or ""),
+                has_rubric=bool(a.get("rubric")),
+            )
             for a in pages
             if a.get("id")
         ]
