@@ -36,6 +36,15 @@ from GAVEL.pages.download.sorting import course_sort_key
 from GAVEL.services.logger import AppLogger
 
 
+def course_id_error(text: str) -> str | None:
+    """Validation message for a Canvas course ID typed by hand, or None when usable.
+
+    Shared by the Download tab's manual course field (inline feedback) and by
+    the view model's final check before any download starts.
+    """
+    return None if text.isdigit() else "Course IDs are numbers only, like 213877."
+
+
 @dataclass(frozen=True)
 class DownloadUiState:
     terms: Sequence[TermInfo] = ()
@@ -468,14 +477,8 @@ class DownloadViewModel(QObject):
     def download_gradebook(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
-            return
-        try:
-            course_id = int(course_id_str)
-        except ValueError:
-            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
 
         self._set_busy(f"Downloading gradebook for course {course_id}...")
@@ -502,14 +505,8 @@ class DownloadViewModel(QObject):
     def download_gradescope_submissions(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
-            return
-        try:
-            course_id = int(course_id_str)
-        except ValueError:
-            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
 
         self._set_busy(f"Downloading Gradescope submissions for course {course_id}...")
@@ -538,19 +535,17 @@ class DownloadViewModel(QObject):
     def download_consent(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        quiz_id_str = self._state.selected_consent_quiz_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
+        quiz_id_str = self._state.selected_consent_quiz_id.strip()
         if not quiz_id_str:
             self._emit_error("Select a consent quiz first.")
             return
         try:
-            course_id = int(course_id_str)
             quiz_id = int(quiz_id_str)
         except ValueError:
-            self._emit_error("Invalid course or quiz ID.")
+            self._emit_error(f"Invalid consent quiz ID: {quiz_id_str!r}")
             return
 
         self._set_busy(f"Downloading consent form for course {course_id}...")
@@ -579,19 +574,17 @@ class DownloadViewModel(QObject):
     def download_rubric_assessment(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        assignment_id_str = self._state.assignment_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
+        assignment_id_str = self._state.assignment_id.strip()
         if not assignment_id_str:
             self._emit_error("Enter an assignment ID first.")
             return
         try:
-            course_id = int(course_id_str)
             assignment_id = int(assignment_id_str)
         except ValueError:
-            self._emit_error("Course ID and Assignment ID must be numeric.")
+            self._emit_error(f"Invalid assignment ID: {assignment_id_str!r}")
             return
 
         self._set_busy(
@@ -624,14 +617,8 @@ class DownloadViewModel(QObject):
     def download_all_rubric_assessments(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
-            return
-        try:
-            course_id = int(course_id_str)
-        except ValueError:
-            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
 
         self._set_busy(f"Downloading all rubric assessments for course {course_id}...")
@@ -694,11 +681,13 @@ class DownloadViewModel(QObject):
             self._emit_error("Provide a class number directly, or search for sections first.")
             return
 
+        course_id = self._resolved_course_id()
+        if course_id is None:
+            return
         try:
-            course_id = int(self._state.selected_course_id.strip())
             consent_quiz_id = int(self._state.selected_consent_quiz_id.strip())
         except ValueError:
-            self._emit_error("Invalid course or consent quiz ID.")
+            self._emit_error("Invalid consent quiz ID.")
             return
 
         self._set_busy("Downloading all data...")
@@ -836,3 +825,21 @@ class DownloadViewModel(QObject):
     def _emit_error(self, message: str) -> None:
         self._set_idle(Status.CRITICAL, message)
         self.event_raised.emit(ShowError(message))
+
+    def _resolved_course_id(self) -> int | None:
+        """The one course id every Canvas download reads.
+
+        The Download tab feeds ``set_course_id`` from a single InputModeToggle,
+        so the stored value is normally already validated. This is the last
+        line of defence: it reports a clear error and returns None rather than
+        letting a download start with nothing usable.
+        """
+        text = self._state.selected_course_id.strip()
+        if not text:
+            self._emit_error("Select a course first.")
+            return None
+        error = course_id_error(text)
+        if error:
+            self._emit_error(f"Invalid course ID {text!r}. {error}")
+            return None
+        return int(text)

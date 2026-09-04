@@ -174,7 +174,9 @@ class InputModeToggle(QFrame):
     Signals:
         value_changed(str): the resolved value changed. Emitted on picker
             selection, manual edit, or mode switch. "" means nothing usable.
-        mode_changed(InputMode): the active mode changed.
+        mode_changed(InputMode): the active mode changed. Emitted after the
+            value_changed for that switch, so handlers can rely on value()
+            and on whatever a value_changed handler already applied.
     """
 
     value_changed = pyqtSignal(str)
@@ -383,10 +385,10 @@ class InputModeToggle(QFrame):
             finally:
                 button.blockSignals(False)
         self._stack.setCurrentIndex(0 if mode is InputMode.PICKER else 1)
-        if changed and emit:
-            self.mode_changed.emit(mode)
         if emit:
             self._refresh()
+        if changed and emit:
+            self.mode_changed.emit(mode)
 
     def _refresh(self, *_args: object) -> None:
         value = self.value()
