@@ -250,6 +250,15 @@ def test_busy_disables_inputs_but_keeps_value(loaded: InputModeToggle):
     assert loaded.picker().combo.isEnabled()
 
 
+def test_mode_changed_is_emitted_after_value_changed(loaded: InputModeToggle):
+    order: list[str] = []
+    loaded.value_changed.connect(lambda v: order.append(f"value:{v}"))
+    loaded.mode_changed.connect(lambda m: order.append(f"mode:{m.name}"))
+    loaded.manual_field().setText("2251")
+    loaded.set_mode(InputMode.MANUAL)
+    assert order == ["value:2251", "mode:MANUAL"]
+
+
 def test_busy_does_not_reenable_unavailable_picker(loaded: InputModeToggle):
     loaded.set_picker_available(False, "no token")
     loaded.set_busy(True)

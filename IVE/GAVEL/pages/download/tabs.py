@@ -20,18 +20,25 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from GAVEL.app.dtos.canvas_course import CanvasCourse
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.download.viewmodel import (
     DownloadUiState,
     DownloadViewModel,
     ShowError,
     ShowInfo,
+    course_id_error,
 )
 from GAVEL.theme.context import ThemeContext
+from GAVEL.ui_components.input_mode_toggle import ComboPicker, InputMode, InputModeToggle
 from GAVEL.ui_components.layout import set_h_margins, set_spacing
 from GAVEL.ui_components.section_card import SectionCard
 from GAVEL.ui_components.status_pill import StatusPill
 from GAVEL.ui_components.sub_panel import SubPanel
+
+
+def _course_label(course: CanvasCourse) -> str:
+    return f"{course.course_code}  {course.name}" if course.course_code else course.name
 
 
 class DownloadTab(ScrollableTab):
@@ -59,6 +66,11 @@ class DownloadTab(ScrollableTab):
 
         if self._vm.get_state().canvas_token_available:
             QTimer.singleShot(0, self._vm.load_courses)
+
+    @property
+    def course_input(self) -> InputModeToggle:
+        """The single Canvas course input (picker or manual). Exposed for tests."""
+        return self._course_input
 
     # ---------- Widget construction ----------
 
@@ -123,12 +135,22 @@ class DownloadTab(ScrollableTab):
         self._canvas_recheck_btn = QPushButton("Recheck")
         self._canvas_recheck_btn.hide()
 
-        # Canvas - course selection
-        self._load_courses_btn = QPushButton("Reload Courses")
-        self._course_combo = QComboBox()
-        self._course_combo.setEnabled(False)
-        self._course_id_override = QLineEdit()
-        self._course_id_override.setPlaceholderText("Enter course ID directly")
+        # Canvas - course selection: one input, picker or manual, never both
+        self._course_picker = ComboPicker(
+            self._theme, load_text="Reload Courses", empty_text="No courses loaded"
+        )
+        self._course_input = InputModeToggle(
+            self._theme,
+            "Course",
+            picker=self._course_picker,
+            manual_field_label="Course ID",
+            picker_label="Choose from list",
+            manual_label="Enter ID",
+            picker_hint="Courses load from Canvas when this page opens.",
+            manual_hint="Press Enter after typing the ID to load its quizzes and assignments.",
+            manual_placeholder="e.g. 213877",
+            validator=course_id_error,
+        )
 
         # Canvas - gradebook
         self._download_gradebook_btn = QPushButton("Download Gradebook")
@@ -197,8 +219,10 @@ class DownloadTab(ScrollableTab):
         self._class_number.textChanged.connect(self._vm.set_class_number)
         self._download_roster_btn.clicked.connect(self._vm.download_roster)
 
-        self._course_combo.currentIndexChanged.connect(self._on_course_changed)
-        self._course_id_override.textChanged.connect(self._vm.set_course_id)
+        self._course_input.value_changed.connect(self._on_course_changed)
+        self._course_input.mode_changed.connect(self._on_course_mode_changed)
+        self._course_input.manual_field().editingFinished.connect(self._on_course_id_committed)
+        self._course_picker.load_requested.connect(self._vm.load_courses)
         self._consent_quiz_combo.currentIndexChanged.connect(self._on_consent_quiz_changed)
         self._assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
@@ -216,7 +240,6 @@ class DownloadTab(ScrollableTab):
 
         self._canvas_recheck_btn.clicked.connect(self._vm.recheck)
         self._gradescope_credentials_recheck_btn.clicked.connect(self._vm.recheck)
-        self._load_courses_btn.clicked.connect(self._vm.load_courses)
         self._vm.state_changed.connect(self.render)
         self._vm.event_raised.connect(self._handle_event)
 
@@ -319,28 +342,7 @@ class DownloadTab(ScrollableTab):
         card.add_row(warning_row)
 
         # Course Selection
-        course_panel = SubPanel(self._theme, "Course Selection")
-        course_panel.add_widget(self._option_label("Option 1: Select from Course List"))
-
-        course_host = QWidget()
-        course_form = QFormLayout(course_host)
-        course_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(course_form, self._theme, 8)
-        course_form.addRow("Course", self._course_combo)
-        course_panel.add_widget(course_host)
-        course_panel.add_widget(self._load_courses_btn)
-
-        course_panel.add_widget(self._or_divider())
-
-        course_panel.add_widget(self._option_label("Option 2: Enter Course ID Directly"))
-        course_id_host = QWidget()
-        course_id_form = QFormLayout(course_id_host)
-        course_id_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(course_id_form, self._theme, 8)
-        course_id_form.addRow("Course ID", self._course_id_override)
-        course_panel.add_widget(course_id_host)
-
-        card.add_row(course_panel)
+        card.add_row(self._course_input)
 
         # Gradebook
         gradebook_panel = SubPanel(self._theme, "Gradebook")
@@ -459,12 +461,37 @@ class DownloadTab(ScrollableTab):
         code = text.split("  ")[0].strip() if text else ""
         self._vm.set_term(code)
 
-    def _on_course_changed(self, index: int) -> None:
-        course_id = self._course_combo.itemData(index) or ""
+    def _on_course_changed(self, course_id: str) -> None:
+        """Single writer of the view model's course id, for both input modes.
+
+        A picker change is a commit, so dependents load at once. Manual text
+        is only stored here; it commits on Enter or focus-out so partial IDs
+        never hit the Canvas API while the user is still typing.
+        """
         self._vm.set_course_id(course_id)
-        if course_id:
-            self._vm.load_quizzes(course_id)
-            self._vm.load_assignments(course_id)
+        if self._course_input.mode() is InputMode.PICKER:
+            self._load_course_dependents(course_id)
+
+    def _on_course_mode_changed(self, mode: InputMode) -> None:
+        # Text already sitting in the manual field counts as committed.
+        if mode is InputMode.MANUAL:
+            self._load_course_dependents(self._course_input.value())
+
+    def _on_course_id_committed(self) -> None:
+        if self._course_input.mode() is InputMode.MANUAL:
+            self._load_course_dependents(self._course_input.value())
+
+    def _load_course_dependents(self, course_id: str) -> None:
+        if not course_id:
+            return
+        state = self._vm.get_state()
+        already_loaded = state.selected_course_id == course_id and bool(
+            state.quizzes or state.assignments
+        )
+        if already_loaded:
+            return
+        self._vm.load_quizzes(course_id)
+        self._vm.load_assignments(course_id)
 
     def _on_consent_quiz_changed(self, index: int) -> None:
         quiz_id = self._consent_quiz_combo.itemData(index) or ""
@@ -492,6 +519,11 @@ class DownloadTab(ScrollableTab):
         token_missing = not state.canvas_token_available
         self._canvas_warning.setVisible(token_missing)
         self._canvas_recheck_btn.setVisible(token_missing)
+        self._course_input.set_picker_available(
+            not token_missing,
+            "The course list needs CANVAS_TOKEN. Enter the course ID directly, "
+            "or set the token and press Recheck.",
+        )
         credentials_missing = not state.canvas_credentials_available
         self._gradescope_credentials_warning.setVisible(credentials_missing)
         self._gradescope_credentials_recheck_btn.setVisible(credentials_missing)
@@ -500,7 +532,7 @@ class DownloadTab(ScrollableTab):
 
         busy = state.is_busy
         self._load_terms_btn.setEnabled(not busy)
-        self._load_courses_btn.setEnabled(not busy)
+        self._course_input.set_busy(busy)
         self._find_sections_btn.setEnabled(not busy)
         self._download_roster_btn.setEnabled(not busy and state.can_download_roster)
         self._download_gradebook_btn.setEnabled(not busy and state.can_download_gradebook)
@@ -541,22 +573,11 @@ class DownloadTab(ScrollableTab):
             if self._section_combo.count():
                 self._section_combo.clear()
 
-        if state.courses:
-            self._course_combo.setEnabled(True)
-            if self._course_combo.count() != len(state.courses):
-                self._course_combo.blockSignals(True)
-                try:
-                    self._course_combo.clear()
-                    for c in state.courses:
-                        label = f"{c.course_code}  {c.name}" if c.course_code else c.name
-                        self._course_combo.addItem(label, str(c.id))
-                finally:
-                    self._course_combo.blockSignals(False)
-                self._on_course_changed(0)
-        else:
-            self._course_combo.setEnabled(False)
-            if self._course_combo.count():
-                self._course_combo.clear()
+        if self._course_picker.combo.count() != len(state.courses):
+            self._course_picker.set_items(
+                [(str(c.id), _course_label(c)) for c in state.courses],
+                select=state.selected_course_id,
+            )
 
         if state.quizzes:
             self._consent_quiz_combo.setEnabled(True)
