@@ -259,6 +259,32 @@ def test_mode_changed_is_emitted_after_value_changed(loaded: InputModeToggle):
     assert order == ["value:2251", "mode:MANUAL"]
 
 
+def test_busy_parks_focus_instead_of_letting_it_escape(qapp, loaded: InputModeToggle):
+    from PyQt6.QtWidgets import QPushButton, QVBoxLayout, QWidget
+
+    window = QWidget()
+    layout = QVBoxLayout(window)
+    layout.addWidget(loaded)
+    outsider = QPushButton("elsewhere on the page", window)
+    layout.addWidget(outsider)
+    window.show()
+    window.activateWindow()
+    qapp.processEvents()
+
+    load_button = loaded.picker().load_button
+    load_button.setFocus()
+    qapp.processEvents()
+    assert qapp.focusWidget() is load_button
+
+    loaded.set_busy(True)
+    qapp.processEvents()
+    assert qapp.focusWidget() is not outsider  # focus must not jump elsewhere
+
+    loaded.set_busy(False)
+    qapp.processEvents()
+    assert qapp.focusWidget() is load_button  # and comes back when busy ends
+
+
 def test_busy_does_not_reenable_unavailable_picker(loaded: InputModeToggle):
     loaded.set_picker_available(False, "no token")
     loaded.set_busy(True)
