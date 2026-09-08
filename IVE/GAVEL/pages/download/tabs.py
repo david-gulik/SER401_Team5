@@ -3,12 +3,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -29,6 +28,7 @@ from GAVEL.pages.download.viewmodel import (
     ShowInfo,
     class_number_error,
     course_id_error,
+    term_code_error,
 )
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.input_mode_toggle import ComboPicker, InputMode, InputModeToggle
@@ -80,6 +80,11 @@ class DownloadTab(ScrollableTab):
         """The single myASU section input (search or class number). Exposed for tests."""
         return self._section_input
 
+    @property
+    def term_input(self) -> InputModeToggle:
+        """The single myASU term input (list or code). Exposed for tests."""
+        return self._term_input
+
     # ---------- Widget construction ----------
 
     def _build_widgets(self) -> None:
@@ -104,16 +109,22 @@ class DownloadTab(ScrollableTab):
         self._output_path_hint.setProperty("role", "text_muted")
         self._output_path_hint.setWordWrap(True)
 
-        # myASU - Step 1: Select Term
-        self._term_combo = QComboBox()
-        self._load_terms_btn = QPushButton("Load Terms")
-        self._term_code_override = QLineEdit()
-        self._term_code_override.setPlaceholderText("e.g. 2267 (Format: 2[YY][T])")
-        self._term_code_hint = QLabel(
-            "Format: 2[YY][T] where T = 1:Spring, 4:Summer, 7:Fall, 9:Winter"
+        # myASU - Step 1: one input, term list or term code, never both
+        self._term_picker = ComboPicker(
+            self._theme, load_text="Load Terms", empty_text="No terms loaded"
         )
-        self._term_code_hint.setProperty("role", "text_muted")
-        self._term_code_hint.setWordWrap(True)
+        self._term_input = InputModeToggle(
+            self._theme,
+            "Step 1: Select Term",
+            picker=self._term_picker,
+            manual_field_label="Term code",
+            picker_label="Choose from list",
+            manual_label="Enter code",
+            picker_hint="Press Load Terms to fetch the term list from myASU.",
+            manual_hint="Format 2[YY][T]. T is 1 Spring, 4 Summer, 7 Fall, 9 Winter.",
+            manual_placeholder="e.g. 2267",
+            validator=term_code_error,
+        )
 
         # myASU - warning banner
         self._roster_warning = QLabel(
@@ -230,9 +241,9 @@ class DownloadTab(ScrollableTab):
 
     def _connect_signals(self) -> None:
         # Wired to existing view model behavior
-        self._load_terms_btn.clicked.connect(self._vm.load_terms)
-        self._term_combo.currentTextChanged.connect(self._on_term_changed)
-        self._term_code_override.textChanged.connect(self._vm.set_term)
+        self._term_picker.load_requested.connect(self._vm.load_terms)
+        # Single writer of the term, whichever mode produced it.
+        self._term_input.value_changed.connect(self._vm.set_term)
         self._section_picker.subject_field.textChanged.connect(self._vm.set_subject)
         self._section_picker.catalog_field.textChanged.connect(self._vm.set_catalog_number)
         self._section_picker.load_requested.connect(self._vm.find_sections)
@@ -290,29 +301,7 @@ class DownloadTab(ScrollableTab):
         card.add_row(self._roster_warning)
 
         # Step 1: Select Term
-        step1 = SubPanel(self._theme, "Step 1: Select Term")
-        step1.add_widget(self._option_label("Option A: Select from Term List"))
-
-        host_a = QWidget()
-        form_a = QFormLayout(host_a)
-        form_a.setContentsMargins(0, 0, 0, 0)
-        set_spacing(form_a, self._theme, 8)
-        form_a.addRow("Term", self._term_combo)
-        form_a.addRow("", self._load_terms_btn)
-        step1.add_widget(host_a)
-
-        step1.add_widget(self._or_divider())
-
-        step1.add_widget(self._option_label("Option B: Enter Term Code Directly"))
-        host_b = QWidget()
-        form_b = QFormLayout(host_b)
-        form_b.setContentsMargins(0, 0, 0, 0)
-        set_spacing(form_b, self._theme, 8)
-        form_b.addRow("Term Code", self._term_code_override)
-        step1.add_widget(host_b)
-        step1.add_widget(self._term_code_hint)
-
-        card.add_row(step1)
+        card.add_row(self._term_input)
 
         # Step 2: Identify Class
         card.add_row(self._section_input)
@@ -399,36 +388,7 @@ class DownloadTab(ScrollableTab):
         layout.addWidget(self._download_all_btn)
         return host
 
-    # ---------- Small layout helpers ----------
-
-    def _option_label(self, text: str) -> QLabel:
-        label = QLabel(text)
-        label.setProperty("role", "text_muted")
-        label.setWordWrap(True)
-        return label
-
-    def _or_divider(self) -> QWidget:
-        host = QWidget()
-        layout = QHBoxLayout(host)
-        layout.setContentsMargins(0, 0, 0, 0)
-        set_spacing(layout, self._theme, 8)
-
-        left = QFrame()
-        left.setFrameShape(QFrame.Shape.HLine)
-        left.setFrameShadow(QFrame.Shadow.Sunken)
-
-        right = QFrame()
-        right.setFrameShape(QFrame.Shape.HLine)
-        right.setFrameShadow(QFrame.Shadow.Sunken)
-
-        label = QLabel("OR")
-        label.setProperty("role", "text_muted")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        layout.addWidget(left, 1)
-        layout.addWidget(label)
-        layout.addWidget(right, 1)
-        return host
+    # ---------- Handlers ----------
 
     def _on_browse_output_path(self) -> None:
         start = self._output_path.text().strip() or str(Path.home())
@@ -446,10 +406,6 @@ class DownloadTab(ScrollableTab):
 
     def _on_download_gradescope(self) -> None:
         self._vm.download_gradescope_submissions()
-
-    def _on_term_changed(self, text: str) -> None:
-        code = text.split("  ")[0].strip() if text else ""
-        self._vm.set_term(code)
 
     def _on_course_changed(self, course_id: str) -> None:
         """Single writer of the view model's course id, for both input modes.
@@ -507,6 +463,10 @@ class DownloadTab(ScrollableTab):
                 self._output_path.blockSignals(False)
 
         self._roster_warning.setVisible(not state.roster_configured)
+        self._term_input.set_picker_available(
+            state.roster_configured,
+            "The term list needs the myASU roster client. Set ROSTER_AUTH_METHOD in .env.",
+        )
         self._section_input.set_picker_available(
             state.roster_configured,
             "Section search needs the myASU roster client. Set ROSTER_AUTH_METHOD in .env.",
@@ -527,7 +487,7 @@ class DownloadTab(ScrollableTab):
         self._message_label.setText(state.message)
 
         busy = state.is_busy
-        self._load_terms_btn.setEnabled(not busy and state.roster_configured)
+        self._term_input.set_busy(busy)
         self._section_input.set_busy(busy)
         self._course_input.set_busy(busy)
         self._download_roster_btn.setEnabled(not busy and state.can_download_roster)
@@ -540,19 +500,11 @@ class DownloadTab(ScrollableTab):
         )
         self._download_all_btn.setEnabled(not busy and state.can_download_all)
 
-        if state.terms and self._term_combo.count() != len(state.terms):
-            self._term_combo.blockSignals(True)
-            try:
-                self._term_combo.clear()
-                for t in state.terms:
-                    self._term_combo.addItem(f"{t.code}  {t.name}", t.code)
-                if state.selected_term:
-                    for i in range(self._term_combo.count()):
-                        if self._term_combo.itemData(i) == state.selected_term:
-                            self._term_combo.setCurrentIndex(i)
-                            break
-            finally:
-                self._term_combo.blockSignals(False)
+        if self._term_picker.combo.count() != len(state.terms):
+            self._term_picker.set_items(
+                [(t.code, f"{t.code}  {t.name}") for t in state.terms],
+                select=state.selected_term,
+            )
 
         if self._section_picker.combo.count() != len(state.sections):
             self._section_picker.set_items(

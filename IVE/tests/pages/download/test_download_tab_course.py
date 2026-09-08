@@ -1,4 +1,4 @@
-"""DownloadTab wiring for the Canvas course InputModeToggle (SCRUM-237).
+"""DownloadTab wiring for the Canvas course InputModeToggle.
 
 Drives the real tab and view model against in-memory clients, offscreen.
 """
