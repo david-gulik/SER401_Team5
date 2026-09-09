@@ -7,11 +7,13 @@ many assignments the course actually had. This use case is what the
 Download All workflow now delegates to for rubric assessments, so an
 N-assignment course must always produce N distinct output files.
 
-Also covers SCRUM-221: the batch use case categorizes each outcome as
-succeeded / skipped / failed. "Skipped" currently just means the
-downloaded file had zero assessment entries — it is not yet a verified
-"this assignment has no rubric attached" check (see
-RubricAssessmentDownloadOutcome.status).
+Also covers SCRUM-221's follow-up: the batch use case categorizes each
+outcome as succeeded / skipped / failed, where "skipped" means the
+assignment genuinely has no rubric attached (via
+DownloadRubricAssessmentResult.definition_saved_path, backed by
+fetch_rubric_definition from SCRUM-222) — not just an empty assessment
+list. An assignment with a rubric that nobody has graded yet still counts
+as succeeded.
 """
 
 from __future__ import annotations
@@ -51,6 +53,14 @@ RUBRIC_ASSESSMENTS = [
     ),
 ]
 
+RUBRIC_DEFINITION = RubricDefinition(
+    rubric_id="rub_1",
+    title="Homework Rubric",
+    points_possible=4.0,
+    free_form_criterion_comments=False,
+    criteria=(),
+)
+
 
 # ---------------------------------------------------------------------------
 # Mock
@@ -61,11 +71,15 @@ class MockCanvasClient(CanvasClient):
     def __init__(self) -> None:
         self.assignments: list[CanvasAssignment] = ASSIGNMENTS
         self.rubric_assessments: list[RubricAssessment] = RUBRIC_ASSESSMENTS
-        # Per-assignment override, e.g. {102: []} to simulate a skip.
+        # Per-assignment overrides, e.g. {102: []} or {102: None}.
         self.rubric_assessments_for: dict[int, list[RubricAssessment]] = {}
+        # Default: every assignment has a rubric attached.
+        self.rubric_definition: RubricDefinition | None = RUBRIC_DEFINITION
+        self.rubric_definition_for: dict[int, RubricDefinition | None] = {}
         self.fetch_rubric_error_for: set[int] = set()
         self.list_assignments_error: Exception | None = None
         self.fetch_rubric_calls: list[tuple[int, int]] = []
+        self.fetch_rubric_definition_calls: list[tuple[int, int]] = []
 
     def list_courses(self) -> list:
         return []
@@ -101,7 +115,10 @@ class MockCanvasClient(CanvasClient):
     def fetch_rubric_definition(
         self, course_id: int, assignment_id: int
     ) -> RubricDefinition | None:
-        return None
+        self.fetch_rubric_definition_calls.append((course_id, assignment_id))
+        if assignment_id in self.rubric_definition_for:
+            return self.rubric_definition_for[assignment_id]
+        return self.rubric_definition
 
 
 # ---------------------------------------------------------------------------
@@ -170,15 +187,20 @@ class TestHappyPath:
         for outcome in result.succeeded:
             assert outcome.assessment_count == len(RUBRIC_ASSESSMENTS)
 
+    def test_outcome_has_rubric_true(self, use_case, request_):
+        result = use_case.execute(request_)
+        for outcome in result.succeeded:
+            assert outcome.has_rubric is True
+
 
 # ---------------------------------------------------------------------------
-# Skipped: zero assessment entries in the downloaded file
+# Skipped: no rubric attached to the assignment
 # ---------------------------------------------------------------------------
 
 
 class TestSkipped:
-    def test_zero_assessments_is_skipped_not_succeeded(self, use_case, request_, client):
-        client.rubric_assessments_for = {102: []}
+    def test_no_rubric_is_skipped_not_succeeded(self, use_case, request_, client):
+        client.rubric_definition_for = {102: None}
         result = use_case.execute(request_)
 
         assert len(result.succeeded) == 2
@@ -186,30 +208,43 @@ class TestSkipped:
         assert result.skipped[0].assignment_id == 102
 
     def test_skipped_outcome_still_has_saved_path(self, use_case, request_, client):
-        client.rubric_assessments_for = {102: []}
+        client.rubric_definition_for = {102: None}
         result = use_case.execute(request_)
         skipped = result.skipped[0]
         assert skipped.saved_path is not None
         assert skipped.saved_path.exists()
         assert skipped.error is None
 
-    def test_skipped_outcome_assessment_count_is_zero(self, use_case, request_, client):
-        client.rubric_assessments_for = {102: []}
+    def test_skipped_outcome_has_rubric_false(self, use_case, request_, client):
+        client.rubric_definition_for = {102: None}
         result = use_case.execute(request_)
-        assert result.skipped[0].assessment_count == 0
+        assert result.skipped[0].has_rubric is False
 
     def test_status_property_reports_skipped(self, use_case, request_, client):
-        client.rubric_assessments_for = {102: []}
+        client.rubric_definition_for = {102: None}
         result = use_case.execute(request_)
         outcome = next(o for o in result.outcomes if o.assignment_id == 102)
         assert outcome.status == "skipped"
 
-    def test_all_empty_produces_all_skipped(self, use_case, request_, client):
-        client.rubric_assessments = []
+    def test_all_no_rubric_produces_all_skipped(self, use_case, request_, client):
+        client.rubric_definition = None
         result = use_case.execute(request_)
         assert len(result.skipped) == len(ASSIGNMENTS)
         assert result.succeeded == ()
         assert result.failed == ()
+
+    def test_rubric_present_but_ungraded_is_succeeded_not_skipped(self, use_case, request_, client):
+        """The fix this covers: a rubric-bearing assignment with zero
+        assessments (nobody graded yet) must NOT be treated the same as
+        an assignment with no rubric at all."""
+        client.rubric_assessments_for = {102: []}
+        result = use_case.execute(request_)
+
+        outcome = next(o for o in result.outcomes if o.assignment_id == 102)
+        assert outcome.status == "succeeded"
+        assert outcome.has_rubric is True
+        assert outcome.assessment_count == 0
+        assert result.skipped == ()
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +273,7 @@ class TestPartialFailure:
         failing = next(o for o in result.outcomes if o.assignment_id == 103)
         assert failing.saved_path is None
         assert failing.assessment_count is None
+        assert failing.has_rubric is None
         assert failing.error is not None
         assert failing.status == "failed"
 

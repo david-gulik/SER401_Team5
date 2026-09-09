@@ -23,13 +23,14 @@ class RubricAssessmentDownloadOutcome:
     assignment_name: str
     saved_path: Path | None
     assessment_count: int | None
+    has_rubric: bool | None
     error: str | None
 
     @property
     def status(self) -> str:
         if self.error is not None:
             return "failed"
-        if self.assessment_count == 0:
+        if self.has_rubric is False:
             return "skipped"
         return "succeeded"
 
@@ -60,10 +61,12 @@ class DownloadAllRubricAssessmentsUseCase:
     assignment is attempted independently: one assignment failing does not
     stop the others from being downloaded.
 
-    An assignment whose downloaded file has zero assessment entries is
-    reported as "skipped" rather than "succeeded" — see the note on
-    RubricAssessmentDownloadOutcome.status about what that does and doesn't
-    mean yet.
+    An assignment with no rubric attached is reported as "skipped" rather
+    than "succeeded", determined from whether fetch_rubric_definition
+    actually found a rubric (via DownloadRubricAssessmentResult's
+    definition_saved_path) rather than from an empty assessment list —
+    an assignment that has a rubric but hasn't been graded yet still
+    counts as succeeded.
     """
 
     def __init__(self, canvas_client: CanvasClient) -> None:
@@ -95,6 +98,7 @@ class DownloadAllRubricAssessmentsUseCase:
                         assignment_name=assignment.name,
                         saved_path=result.saved_path,
                         assessment_count=len(assessments),
+                        has_rubric=result.definition_saved_path is not None,
                         error=None,
                     )
                 )
@@ -105,6 +109,7 @@ class DownloadAllRubricAssessmentsUseCase:
                         assignment_name=assignment.name,
                         saved_path=None,
                         assessment_count=None,
+                        has_rubric=None,
                         error=str(exc),
                     )
                 )
