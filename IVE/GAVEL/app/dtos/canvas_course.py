@@ -32,3 +32,4 @@ class CanvasQuiz:
 class CanvasAssignment:
     id: int
     name: str
+    has_rubric: bool = True

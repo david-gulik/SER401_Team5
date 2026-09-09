@@ -594,6 +594,20 @@ class DownloadViewModel(QObject):
             self._emit_error("Course ID and Assignment ID must be numeric.")
             return
 
+        selected = next((a for a in self._state.assignments if a.id == assignment_id), None)
+        if selected is not None and not selected.has_rubric:
+            message = (
+                f"Skipped: '{selected.name}' has no rubric attached. "
+                "No rubric-level data will be produced for this assignment."
+            )
+            self._logger.warning(message)
+            self._state = replace(
+                self._state, is_busy=False, status=Status.WARNING, message=message
+            )
+            self.state_changed.emit(self._state)
+            self.event_raised.emit(ShowInfo(message))
+            return
+
         self._set_busy(
             f"Downloading rubric assessment for course {course_id}, assignment {assignment_id}..."
         )
@@ -648,7 +662,13 @@ class DownloadViewModel(QObject):
             return
 
         succeeded, skipped, failed = result.succeeded, result.skipped, result.failed
-        last_path = (succeeded + skipped)[-1].saved_path if succeeded or skipped else None
+        last_path = succeeded[-1].saved_path if succeeded else None
+
+        for outcome in skipped:
+            self._logger.warning(
+                f"Skipped rubric download for '{outcome.assignment_name}' "
+                f"(course {course_id}): no rubric attached."
+            )
 
         message = (
             f"Rubric assessments for course {course_id}: "
@@ -760,9 +780,13 @@ class DownloadViewModel(QObject):
                 rubric_result = DownloadAllRubricAssessmentsUseCase(canvas_client).execute(
                     DownloadAllRubricAssessmentsRequest(course_id=course_id, output_dir=output_dir)
                 )
-                for outcome in rubric_result.succeeded + rubric_result.skipped:
+                for outcome in rubric_result.succeeded:
                     successes.append(f"Rubric Assessment ({outcome.assignment_name})")
                     last_path = outcome.saved_path
+                for outcome in rubric_result.skipped:
+                    successes.append(
+                        f"Rubric Assessment ({outcome.assignment_name}) [skipped: no rubric]"
+                    )
                 for outcome in rubric_result.failed:
                     failures.append(
                         f"Rubric Assessment ({outcome.assignment_name}): {outcome.error}"

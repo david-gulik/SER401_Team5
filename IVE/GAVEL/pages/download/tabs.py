@@ -586,7 +586,16 @@ class DownloadTab(ScrollableTab):
                 try:
                     self._assignment_combo.clear()
                     for a in state.assignments:
-                        self._assignment_combo.addItem(a.name, a.id)
+                        label = a.name if a.has_rubric else f"⚠ {a.name}"
+                        self._assignment_combo.addItem(label, a.id)
+                        if not a.has_rubric:
+                            index = self._assignment_combo.count() - 1
+                            self._assignment_combo.setItemData(
+                                index,
+                                "No rubric attached — no rubric-level data will be "
+                                "produced for this assignment.",
+                                Qt.ItemDataRole.ToolTipRole,
+                            )
                 finally:
                     self._assignment_combo.blockSignals(False)
                 self._on_assignment_changed(self._assignment_combo.currentIndex())

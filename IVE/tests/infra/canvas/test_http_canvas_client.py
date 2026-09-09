@@ -569,3 +569,41 @@ class TestFetchRubricDefinition:
             for rating in criterion["ratings"]:
                 for field in rating_schema["required"]:
                     assert field in rating
+
+
+class TestListAssignments:
+    def test_requests_assignments_with_rubric_included(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = []
+            client.list_assignments(TEST_COURSE_ID)
+            mock_pages.assert_called_once_with(
+                f"/api/v1/courses/{TEST_COURSE_ID}/assignments",
+                params={"per_page": 100, "include[]": "rubric"},
+            )
+
+    def test_has_rubric_true_when_rubric_array_present(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [
+                {"id": 1, "name": "Has Rubric", "rubric": [{"id": "1", "description": "crit"}]},
+            ]
+            result = client.list_assignments(TEST_COURSE_ID)
+            assert result[0].has_rubric is True
+
+    def test_has_rubric_false_when_rubric_key_absent(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [{"id": 1, "name": "No Rubric"}]
+            result = client.list_assignments(TEST_COURSE_ID)
+            assert result[0].has_rubric is False
+
+    def test_has_rubric_false_when_rubric_empty(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [{"id": 1, "name": "Empty Rubric", "rubric": []}]
+            result = client.list_assignments(TEST_COURSE_ID)
+            assert result[0].has_rubric is False
+
+    def test_skips_entries_with_no_id(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [{"name": "No ID"}, {"id": 2, "name": "Valid"}]
+            result = client.list_assignments(TEST_COURSE_ID)
+            assert len(result) == 1
+            assert result[0].id == 2
