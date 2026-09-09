@@ -45,6 +45,16 @@ def course_id_error(text: str) -> str | None:
     return None if text.isdigit() else "Course IDs are numbers only, like 213877."
 
 
+def class_number_error(text: str) -> str | None:
+    """Validation message for a myASU class number typed by hand, or None when usable."""
+    return None if text.isdigit() else "Class numbers are numbers only, like 12345."
+
+
+_ROSTER_NOT_CONFIGURED = (
+    "Roster not configured. Set ROSTER_AUTH_METHOD in .env to enable myASU downloads."
+)
+
+
 @dataclass(frozen=True)
 class DownloadUiState:
     terms: Sequence[TermInfo] = ()
@@ -57,7 +67,6 @@ class DownloadUiState:
     quizzes: Sequence[CanvasQuiz] = ()
     assignments: Sequence[CanvasAssignment] = ()
     sections: Sequence[ClassSection] = ()
-    selected_section_idx: int = -1
     selected_course_id: str = ""
     selected_consent_quiz_id: str = ""
     is_busy: bool = False
@@ -65,12 +74,11 @@ class DownloadUiState:
     message: str = "Enter search criteria or a class number."
     last_saved_path: str | None = None
     output_dir: str = ""
+    roster_configured: bool = True
 
     @property
     def can_download_roster(self) -> bool:
-        has_term = bool(self.selected_term)
-        has_section = self.selected_section_idx >= 0 or bool(self.class_number)
-        return has_term and has_section
+        return self.roster_configured and bool(self.selected_term) and bool(self.class_number)
 
     @property
     def can_download_gradebook(self) -> bool:
@@ -178,6 +186,7 @@ class DownloadViewModel(QObject):
             status=initial_status,
             message=initial_msg,
             output_dir=str(default_output_dir),
+            roster_configured=roster_configured,
         )
 
     def get_state(self) -> DownloadUiState:
@@ -210,12 +219,6 @@ class DownloadViewModel(QObject):
         if text == self._state.class_number:
             return
         self._state = replace(self._state, class_number=text)
-        self.state_changed.emit(self._state)
-
-    def set_selected_section(self, index: int) -> None:
-        if index == self._state.selected_section_idx:
-            return
-        self._state = replace(self._state, selected_section_idx=index)
         self.state_changed.emit(self._state)
 
     def set_course_id(self, value: str) -> None:
@@ -282,7 +285,10 @@ class DownloadViewModel(QObject):
     # Actions
 
     def load_terms(self) -> None:
-        if self._state.is_busy or not self._roster_configured:
+        if self._state.is_busy:
+            return
+        if not self._roster_configured:
+            self._emit_error(_ROSTER_NOT_CONFIGURED)
             return
         self._set_busy("Loading terms...")
         self._run_async(
@@ -313,7 +319,10 @@ class DownloadViewModel(QObject):
         self._set_idle(Status.CRITICAL, str(exc))
 
     def find_sections(self) -> None:
-        if self._state.is_busy or not self._roster_configured:
+        if self._state.is_busy:
+            return
+        if not self._roster_configured:
+            self._emit_error(_ROSTER_NOT_CONFIGURED)
             return
         if not self._state.selected_term:
             self._emit_error("Select a term first.")
@@ -341,7 +350,6 @@ class DownloadViewModel(QObject):
         self._state = replace(
             self._state,
             sections=sorted_sections,
-            selected_section_idx=0,
             is_busy=False,
             status=Status.NOMINAL,
             message=f"Found {len(sorted_sections)} section(s).",
@@ -354,18 +362,16 @@ class DownloadViewModel(QObject):
         self.event_raised.emit(ShowError(str(exc)))
 
     def download_roster(self) -> None:
-        if self._state.is_busy or not self._roster_configured:
+        if self._state.is_busy:
             return
-
-        class_number = self._state.class_number.strip()
-        if not class_number and self._state.sections and self._state.selected_section_idx >= 0:
-            class_number = self._state.sections[self._state.selected_section_idx].class_number
-
-        if not class_number:
-            self._emit_error("Provide a class number directly, or search for sections first.")
+        if not self._roster_configured:
+            self._emit_error(_ROSTER_NOT_CONFIGURED)
             return
         if not self._state.selected_term:
             self._emit_error("Select a term first.")
+            return
+        class_number = self._resolved_class_number()
+        if class_number is None:
             return
 
         self._set_busy("Authenticating and downloading roster...")
@@ -674,11 +680,8 @@ class DownloadViewModel(QObject):
             return
 
         term = self._state.selected_term
-        class_number = self._state.class_number.strip()
-        if not class_number and self._state.sections and self._state.selected_section_idx >= 0:
-            class_number = self._state.sections[self._state.selected_section_idx].class_number
-        if not class_number:
-            self._emit_error("Provide a class number directly, or search for sections first.")
+        class_number = self._resolved_class_number()
+        if class_number is None:
             return
 
         course_id = self._resolved_course_id()
@@ -843,3 +846,20 @@ class DownloadViewModel(QObject):
             self._emit_error(f"Invalid course ID {text!r}. {error}")
             return None
         return int(text)
+
+    def _resolved_class_number(self) -> str | None:
+        """The one class number the roster download and Download All read.
+
+        Fed by the Download tab's Section InputModeToggle, which already
+        resolves "searched section" versus "typed class number" to a single
+        value. No fallback between the two happens here any more.
+        """
+        text = self._state.class_number.strip()
+        if not text:
+            self._emit_error("Search for a section or enter a class number first.")
+            return None
+        error = class_number_error(text)
+        if error:
+            self._emit_error(f"Invalid class number {text!r}. {error}")
+            return None
+        return text

@@ -18,6 +18,10 @@ class UnconfiguredRosterClient(RosterClient):
     ) -> None:
         self._message = message
 
+    @property
+    def is_configured(self) -> bool:
+        return False
+
     def list_terms(self) -> Sequence[TermInfo]:
         raise RuntimeError(self._message)
 

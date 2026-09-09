@@ -24,7 +24,7 @@ class DownloadPage(BasePage):
 
         env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
         output_dir = Path(env_dir).expanduser() if env_dir else Path.home() / "Downloads" / "GAVEL"
-        roster_configured = ctx.services.roster_client is not None
+        roster_configured = ctx.services.roster_client.is_configured
 
         vm = DownloadViewModel(
             roster_client=ctx.services.roster_client,

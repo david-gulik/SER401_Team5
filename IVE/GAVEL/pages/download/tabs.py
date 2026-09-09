@@ -9,7 +9,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -22,11 +21,13 @@ from PyQt6.QtWidgets import (
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.download.section_picker import SectionSearchPicker
 from GAVEL.pages.download.viewmodel import (
     DownloadUiState,
     DownloadViewModel,
     ShowError,
     ShowInfo,
+    class_number_error,
     course_id_error,
 )
 from GAVEL.theme.context import ThemeContext
@@ -74,6 +75,11 @@ class DownloadTab(ScrollableTab):
         """The single Canvas course input (picker or manual). Exposed for tests."""
         return self._course_input
 
+    @property
+    def section_input(self) -> InputModeToggle:
+        """The single myASU section input (search or class number). Exposed for tests."""
+        return self._section_input
+
     # ---------- Widget construction ----------
 
     def _build_widgets(self) -> None:
@@ -109,16 +115,29 @@ class DownloadTab(ScrollableTab):
         self._term_code_hint.setProperty("role", "text_muted")
         self._term_code_hint.setWordWrap(True)
 
-        # myASU - Step 2: Identify Class
-        self._subject = QLineEdit()
-        self._subject.setPlaceholderText("e.g. SER")
-        self._catalog_number = QLineEdit()
-        self._catalog_number.setPlaceholderText("e.g. 401")
-        self._find_sections_btn = QPushButton("Find Sections")
-        self._section_combo = QComboBox()
-        self._section_combo.setEnabled(False)
-        self._class_number = QLineEdit()
-        self._class_number.setPlaceholderText("Enter section number directly")
+        # myASU - warning banner
+        self._roster_warning = QLabel(
+            "Warning: ROSTER_AUTH_METHOD not set in .env file. "
+            "Set it to 'selenium' or 'cookies' to use myASU roster features."
+        )
+        self._roster_warning.setProperty("role", "warning")
+        self._roster_warning.setWordWrap(True)
+        self._roster_warning.hide()
+
+        # myASU - Step 2: one input, section search or class number, never both
+        self._section_picker = SectionSearchPicker(self._theme)
+        self._section_input = InputModeToggle(
+            self._theme,
+            "Step 2: Identify Class",
+            picker=self._section_picker,
+            manual_field_label="Class number",
+            picker_label="Search by class",
+            manual_label="Enter class number",
+            picker_hint="Pick a term in Step 1, then search by subject and catalog number.",
+            manual_hint="The 5-digit class number from ASU class search.",
+            manual_placeholder="e.g. 12345",
+            validator=class_number_error,
+        )
 
         # myASU - Download
         self._download_roster_btn = QPushButton("Download Roster")
@@ -214,11 +233,11 @@ class DownloadTab(ScrollableTab):
         self._load_terms_btn.clicked.connect(self._vm.load_terms)
         self._term_combo.currentTextChanged.connect(self._on_term_changed)
         self._term_code_override.textChanged.connect(self._vm.set_term)
-        self._subject.textChanged.connect(self._vm.set_subject)
-        self._catalog_number.textChanged.connect(self._vm.set_catalog_number)
-        self._find_sections_btn.clicked.connect(self._vm.find_sections)
-        self._section_combo.currentIndexChanged.connect(self._vm.set_selected_section)
-        self._class_number.textChanged.connect(self._vm.set_class_number)
+        self._section_picker.subject_field.textChanged.connect(self._vm.set_subject)
+        self._section_picker.catalog_field.textChanged.connect(self._vm.set_catalog_number)
+        self._section_picker.load_requested.connect(self._vm.find_sections)
+        # Single writer of the class number, whichever mode produced it.
+        self._section_input.value_changed.connect(self._vm.set_class_number)
         self._download_roster_btn.clicked.connect(self._vm.download_roster)
 
         self._course_input.value_changed.connect(self._on_course_changed)
@@ -268,6 +287,7 @@ class DownloadTab(ScrollableTab):
 
     def _build_myasu_card(self) -> QWidget:
         card = SectionCard(self._theme, "myASU Class Roster")
+        card.add_row(self._roster_warning)
 
         # Step 1: Select Term
         step1 = SubPanel(self._theme, "Step 1: Select Term")
@@ -295,39 +315,7 @@ class DownloadTab(ScrollableTab):
         card.add_row(step1)
 
         # Step 2: Identify Class
-        step2 = SubPanel(self._theme, "Step 2: Identify Class")
-        step2.add_widget(self._option_label("Option A: Search by Subject and Catalog Number"))
-
-        grid_host = QWidget()
-        grid = QGridLayout(grid_host)
-        grid.setContentsMargins(0, 0, 0, 0)
-        set_spacing(grid, self._theme, 8)
-        grid.addWidget(QLabel("Subject"), 0, 0)
-        grid.addWidget(QLabel("Catalog #"), 0, 1)
-        grid.addWidget(self._subject, 1, 0)
-        grid.addWidget(self._catalog_number, 1, 1)
-        step2.add_widget(grid_host)
-
-        step2.add_widget(self._find_sections_btn)
-
-        section_host = QWidget()
-        section_form = QFormLayout(section_host)
-        section_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(section_form, self._theme, 8)
-        section_form.addRow("Section", self._section_combo)
-        step2.add_widget(section_host)
-
-        step2.add_widget(self._or_divider())
-
-        step2.add_widget(self._option_label("Option B: Enter Section Number Directly"))
-        direct_host = QWidget()
-        direct_form = QFormLayout(direct_host)
-        direct_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(direct_form, self._theme, 8)
-        direct_form.addRow("Section Number", self._class_number)
-        step2.add_widget(direct_host)
-
-        card.add_row(step2)
+        card.add_row(self._section_input)
 
         card.add_row(self._download_roster_btn)
         return card
@@ -518,6 +506,12 @@ class DownloadTab(ScrollableTab):
             finally:
                 self._output_path.blockSignals(False)
 
+        self._roster_warning.setVisible(not state.roster_configured)
+        self._section_input.set_picker_available(
+            state.roster_configured,
+            "Section search needs the myASU roster client. Set ROSTER_AUTH_METHOD in .env.",
+        )
+
         token_missing = not state.canvas_token_available
         self._canvas_warning.setVisible(token_missing)
         self._canvas_recheck_btn.setVisible(token_missing)
@@ -533,9 +527,9 @@ class DownloadTab(ScrollableTab):
         self._message_label.setText(state.message)
 
         busy = state.is_busy
-        self._load_terms_btn.setEnabled(not busy)
+        self._load_terms_btn.setEnabled(not busy and state.roster_configured)
+        self._section_input.set_busy(busy)
         self._course_input.set_busy(busy)
-        self._find_sections_btn.setEnabled(not busy)
         self._download_roster_btn.setEnabled(not busy and state.can_download_roster)
         self._download_gradebook_btn.setEnabled(not busy and state.can_download_gradebook)
         self._download_gradescope_btn.setEnabled(not busy and state.can_download_submissions)
@@ -560,20 +554,11 @@ class DownloadTab(ScrollableTab):
             finally:
                 self._term_combo.blockSignals(False)
 
-        if state.sections:
-            self._section_combo.setEnabled(True)
-            if self._section_combo.count() != len(state.sections):
-                self._section_combo.blockSignals(True)
-                try:
-                    self._section_combo.clear()
-                    for s in state.sections:
-                        self._section_combo.addItem(s.display_label, s.class_number)
-                finally:
-                    self._section_combo.blockSignals(False)
-        else:
-            self._section_combo.setEnabled(False)
-            if self._section_combo.count():
-                self._section_combo.clear()
+        if self._section_picker.combo.count() != len(state.sections):
+            self._section_picker.set_items(
+                [(s.class_number, s.display_label) for s in state.sections],
+                select=state.class_number,
+            )
 
         if self._course_picker.combo.count() != len(state.courses):
             self._course_picker.set_items(

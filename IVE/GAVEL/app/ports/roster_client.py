@@ -9,6 +9,15 @@ from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 class RosterClient(ABC):
     """Port for ASU roster operations: class lookup and roster download."""
 
+    @property
+    def is_configured(self) -> bool:
+        """False only for the placeholder client used when roster auth is not set up.
+
+        Bootstrap always returns *some* client, so callers must ask this
+        rather than compare against None.
+        """
+        return True
+
     @abstractmethod
     def list_terms(self) -> Sequence[TermInfo]:
         """Return available academic terms."""
