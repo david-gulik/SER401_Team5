@@ -50,6 +50,19 @@ def class_number_error(text: str) -> str | None:
     return None if text.isdigit() else "Class numbers are numbers only, like 12345."
 
 
+def term_code_error(text: str) -> str | None:
+    """Validation message for a myASU term code typed by hand, or None when usable.
+
+    Term codes are 2[YY][T]: a literal 2, the two-digit year, then the
+    semester digit (1 Spring, 4 Summer, 7 Fall, 9 Winter). 2267 is Fall 2026.
+    """
+    if len(text) == 4 and text.isdigit() and text[0] == "2" and text[3] in "1479":
+        return None
+    return (
+        "Term codes look like 2267: a 2, the two-digit year, then 1, 4, 7, or 9 for the semester."
+    )
+
+
 _ROSTER_NOT_CONFIGURED = (
     "Roster not configured. Set ROSTER_AUTH_METHOD in .env to enable myASU downloads."
 )
@@ -324,15 +337,14 @@ class DownloadViewModel(QObject):
         if not self._roster_configured:
             self._emit_error(_ROSTER_NOT_CONFIGURED)
             return
-        if not self._state.selected_term:
-            self._emit_error("Select a term first.")
+        term = self._resolved_term()
+        if term is None:
             return
         if not self._state.subject or not self._state.catalog_number:
             self._emit_error("Subject and catalog number are required.")
             return
 
         self._set_busy("Searching sections...")
-        term = self._state.selected_term
         subject = self._state.subject
         catalog = self._state.catalog_number
         self._run_async(
@@ -367,18 +379,15 @@ class DownloadViewModel(QObject):
         if not self._roster_configured:
             self._emit_error(_ROSTER_NOT_CONFIGURED)
             return
-        if not self._state.selected_term:
-            self._emit_error("Select a term first.")
+        term = self._resolved_term()
+        if term is None:
             return
         class_number = self._resolved_class_number()
         if class_number is None:
             return
 
         self._set_busy("Authenticating and downloading roster...")
-        request = RosterRequest(
-            term=self._state.selected_term,
-            class_number=class_number,
-        )
+        request = RosterRequest(term=term, class_number=class_number)
         out_path = self._resolve_output_dir() / f"roster_{request.term}_{class_number}.csv"
 
         def work() -> Path:
@@ -679,7 +688,9 @@ class DownloadViewModel(QObject):
             )
             return
 
-        term = self._state.selected_term
+        term = self._resolved_term()
+        if term is None:
+            return
         class_number = self._resolved_class_number()
         if class_number is None:
             return
@@ -852,7 +863,7 @@ class DownloadViewModel(QObject):
 
         Fed by the Download tab's Section InputModeToggle, which already
         resolves "searched section" versus "typed class number" to a single
-        value. No fallback between the two happens here any more.
+        value, so there is nothing to fall back to here.
         """
         text = self._state.class_number.strip()
         if not text:
@@ -861,5 +872,17 @@ class DownloadViewModel(QObject):
         error = class_number_error(text)
         if error:
             self._emit_error(f"Invalid class number {text!r}. {error}")
+            return None
+        return text
+
+    def _resolved_term(self) -> str | None:
+        """The one term code the section search, roster download, and Download All read."""
+        text = self._state.selected_term.strip()
+        if not text:
+            self._emit_error("Select a term first.")
+            return None
+        error = term_code_error(text)
+        if error:
+            self._emit_error(f"Invalid term code {text!r}. {error}")
             return None
         return text

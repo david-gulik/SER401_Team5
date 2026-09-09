@@ -13,8 +13,9 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from enum import Enum
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QComboBox,
     QFormLayout,
@@ -210,6 +211,7 @@ class InputModeToggle(QFrame):
         self._validator = validator
         self._picker_available = True
         self._busy = False
+        self._focus_return: QWidget | None = None
         self._mode = default_mode
         self._last_value: str | None = None
 
@@ -321,11 +323,33 @@ class InputModeToggle(QFrame):
             self.set_mode(InputMode.MANUAL)
 
     def set_busy(self, busy: bool) -> None:
+        if busy:
+            self._park_focus()
         self._busy = busy
         self._picker_btn.setEnabled(not busy and self._picker_available)
         self._manual_btn.setEnabled(not busy)
         self._picker.set_busy(busy)
         self._manual_field.setEnabled(not busy)
+        if not busy:
+            self._restore_focus()
+
+    def _park_focus(self) -> None:
+        """Take focus off a child before disabling it.
+
+        Disabling the focused widget makes Qt hand focus to the next enabled
+        widget anywhere in the window, and an enclosing scroll area then
+        scrolls to keep that widget visible. Clearing focus first keeps the
+        page where it is; ``_restore_focus`` hands it back once busy ends.
+        """
+        focused = QApplication.focusWidget()
+        if focused is not None and self.isAncestorOf(focused):
+            self._focus_return = focused
+            focused.clearFocus()
+
+    def _restore_focus(self) -> None:
+        widget, self._focus_return = self._focus_return, None
+        if widget is not None and widget.isEnabled() and widget.isVisibleTo(self):
+            widget.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def value(self) -> str:
         """Resolved value from the active mode only. "" when empty or invalid."""
