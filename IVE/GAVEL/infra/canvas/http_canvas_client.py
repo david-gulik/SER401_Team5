@@ -21,6 +21,7 @@ from GAVEL.app.dtos.rubric_definition import (
     RubricRating,
 )
 from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.services.logger import AppLogger
 
 
 @dataclass(frozen=True)
@@ -34,9 +35,15 @@ class CanvasApiConfig:
 
 
 class HttpCanvasClient(CanvasClient):
-    def __init__(self, config: CanvasApiConfig, session: requests.Session | None = None) -> None:
+    def __init__(
+        self,
+        config: CanvasApiConfig,
+        session: requests.Session | None = None,
+        logger: AppLogger | None = None,
+    ) -> None:
         self._config = config
         self._session = session or requests.Session()
+        self._logger = logger
 
     def list_courses(self) -> list[CanvasCourse]:
         pages = self._get_all_pages(
@@ -77,6 +84,9 @@ class HttpCanvasClient(CanvasClient):
         import csv
         from io import StringIO
 
+        if self._logger:
+            self._logger.info(f"Starting gradebook download for course {course_id}")
+
         enrollments = self._get_all_pages(
             f"/api/v1/courses/{course_id}/enrollments",
             params={
@@ -106,6 +116,9 @@ class HttpCanvasClient(CanvasClient):
                 "enrollment_state": "active",
             },
         )
+
+        if self._logger:
+            self._logger.info(f"Grouped submission bundles returned: {len(grouped_submissions)}")
 
         assignment_columns, assignment_group_columns = self._build_gradebook_columns(
             assignment_groups
@@ -239,6 +252,10 @@ class HttpCanvasClient(CanvasClient):
 
         lookup: dict[int, dict[str, Any]] = {}
 
+        total_submissions = 0
+        submissions_with_scores = 0
+        matched_assignment_ids = 0
+
         assignment_to_group = {
             col["assignment_id"]: col["group_name"] for col in assignment_columns
         }
@@ -254,13 +271,23 @@ class HttpCanvasClient(CanvasClient):
             group_totals: dict[str, float] = {}
 
             for submission in submissions:
+                total_submissions += 1
+
                 assignment_id = submission.get("assignment_id")
                 if assignment_id is None:
                     continue
 
                 score = submission.get("score")
+
+                if score is not None:
+                    submissions_with_scores += 1
+
+                if assignment_id in assignment_to_group:
+                    matched_assignment_ids += 1
+
                 assignment_scores[assignment_id] = score if score is not None else ""
                 group_name = assignment_to_group.get(assignment_id)
+
                 if group_name and score is not None:
                     group_totals[group_name] = group_totals.get(group_name, 0.0) + float(score)
 
@@ -269,6 +296,27 @@ class HttpCanvasClient(CanvasClient):
                 "group_totals": group_totals,
                 "computed_final_score": student_bundle.get("computed_final_score", ""),
             }
+
+        students_with_scores = sum(
+            1
+            for bundle in lookup.values()
+            if any(score != "" for score in bundle["assignment_scores"].values())
+        )
+
+        if self._logger:
+            self._logger.info(f"Total individual submissions returned: {total_submissions}")
+            self._logger.info(f"Submissions with non-null scores: {submissions_with_scores}")
+            self._logger.info(
+                f"Submissions matching gradebook assignment IDs: {matched_assignment_ids}"
+            )
+            self._logger.info(
+                f"Students with at least one assignment score: {students_with_scores}"
+            )
+
+        if self._logger and total_submissions > 0 and students_with_scores == 0:
+            self._logger.warning(
+                "Submissions were returned, but no students had any assignment scores"
+            )
 
         return lookup
 
