@@ -285,6 +285,16 @@ def test_busy_parks_focus_instead_of_letting_it_escape(qapp, loaded: InputModeTo
     assert qapp.focusWidget() is load_button  # and comes back when busy ends
 
 
+def test_add_footer_places_the_widget_last_inside_the_panel(qapp, loaded: InputModeToggle):
+    from PyQt6.QtWidgets import QPushButton
+
+    action = QPushButton("Download")
+    loaded.add_footer(action)
+    layout = loaded.layout()
+    assert loaded.isAncestorOf(action)
+    assert layout.itemAt(layout.count() - 1).widget() is action
+
+
 def test_busy_does_not_reenable_unavailable_picker(loaded: InputModeToggle):
     loaded.set_picker_available(False, "no token")
     loaded.set_busy(True)

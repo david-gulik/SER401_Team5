@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
@@ -18,7 +19,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse
+from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasQuiz
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.download.section_picker import SectionSearchPicker
 from GAVEL.pages.download.viewmodel import (
@@ -28,6 +29,7 @@ from GAVEL.pages.download.viewmodel import (
     ShowInfo,
     class_number_error,
     course_id_error,
+    quiz_id_error,
     term_code_error,
 )
 from GAVEL.theme.context import ThemeContext
@@ -36,6 +38,16 @@ from GAVEL.ui_components.layout import set_h_margins, set_spacing
 from GAVEL.ui_components.section_card import SectionCard
 from GAVEL.ui_components.status_pill import StatusPill
 from GAVEL.ui_components.sub_panel import SubPanel
+
+
+def _likely_consent_quiz(quizzes: Sequence[CanvasQuiz]) -> str:
+    """Id of the first quiz whose name mentions consent, or "" if none does."""
+    return next((str(q.id) for q in quizzes if "consent" in q.name.lower()), "")
+
+
+def _quiz_label(quiz: CanvasQuiz) -> str:
+    """Dropdown text: name and the Canvas quiz ID so it can be matched to a URL."""
+    return f"{quiz.name}  ({quiz.id})"
 
 
 def _course_label(course: CanvasCourse) -> str:
@@ -84,6 +96,11 @@ class DownloadTab(ScrollableTab):
     def term_input(self) -> InputModeToggle:
         """The single myASU term input (list or code). Exposed for tests."""
         return self._term_input
+
+    @property
+    def quiz_input(self) -> InputModeToggle:
+        """The single consent quiz input (list or ID). Exposed for tests."""
+        return self._quiz_input
 
     # ---------- Widget construction ----------
 
@@ -189,9 +206,22 @@ class DownloadTab(ScrollableTab):
         self._download_gradebook_btn.setToolTip("Requires a valid course to be selected above.")
         self._download_gradebook_btn.setProperty("role", "primary")
 
-        # Canvas - consent form
-        self._consent_quiz_combo = QComboBox()
-        self._consent_quiz_combo.setEnabled(False)
+        # Canvas - consent form: one quiz input, list or ID
+        self._quiz_picker = ComboPicker(
+            self._theme, load_text="Reload Quizzes", empty_text="No quizzes loaded"
+        )
+        self._quiz_input = InputModeToggle(
+            self._theme,
+            "Consent Form",
+            picker=self._quiz_picker,
+            manual_field_label="Quiz ID",
+            picker_label="Choose from list",
+            manual_label="Enter ID",
+            picker_hint="Quizzes load for the selected course. The consent quiz is preselected "
+            "when its name says so.",
+            manual_placeholder="e.g. 1234567",
+            validator=quiz_id_error,
+        )
         self._download_consent_btn = QPushButton("Download Consent Form")
         self._download_consent_btn.setToolTip(
             "Requires a valid course and consent quiz to be selected above."
@@ -255,7 +285,9 @@ class DownloadTab(ScrollableTab):
         self._course_input.mode_changed.connect(self._on_course_mode_changed)
         self._course_input.manual_field().editingFinished.connect(self._on_course_id_committed)
         self._course_picker.load_requested.connect(self._vm.load_courses)
-        self._consent_quiz_combo.currentIndexChanged.connect(self._on_consent_quiz_changed)
+        # Single writer of the consent quiz id, whichever mode produced it.
+        self._quiz_input.value_changed.connect(self._vm.set_consent_quiz_id)
+        self._quiz_picker.load_requested.connect(self._on_reload_quizzes)
         self._assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
         self._download_all_rubric_btn.clicked.connect(self._vm.download_all_rubric_assessments)
@@ -329,15 +361,8 @@ class DownloadTab(ScrollableTab):
         card.add_row(gradebook_panel)
 
         # Consent Form
-        consent_panel = SubPanel(self._theme, "Consent Form")
-        consent_host = QWidget()
-        consent_form = QFormLayout(consent_host)
-        consent_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(consent_form, self._theme, 8)
-        consent_form.addRow("Consent Quiz", self._consent_quiz_combo)
-        consent_panel.add_widget(consent_host)
-        consent_panel.add_widget(self._download_consent_btn)
-        card.add_row(consent_panel)
+        self._quiz_input.add_footer(self._download_consent_btn)
+        card.add_row(self._quiz_input)
 
         # Rubric Assessment
         rubric_panel = SubPanel(self._theme, "Rubric Assessment")
@@ -439,9 +464,10 @@ class DownloadTab(ScrollableTab):
         self._vm.load_quizzes(course_id)
         self._vm.load_assignments(course_id)
 
-    def _on_consent_quiz_changed(self, index: int) -> None:
-        quiz_id = self._consent_quiz_combo.itemData(index) or ""
-        self._vm.set_consent_quiz_id(str(quiz_id))
+    def _on_reload_quizzes(self) -> None:
+        course_id = self._vm.get_state().selected_course_id
+        if course_id:
+            self._vm.load_quizzes(course_id)
 
     def _on_assignment_changed(self, index: int) -> None:
         assignment_id = self._assignment_combo.itemData(index) or ""
@@ -480,6 +506,11 @@ class DownloadTab(ScrollableTab):
             "The course list needs CANVAS_TOKEN. Enter the course ID directly, "
             "or set the token and press Recheck.",
         )
+        self._quiz_input.set_picker_available(
+            not token_missing,
+            "The quiz list needs CANVAS_TOKEN. Enter the quiz ID directly, "
+            "or set the token and press Recheck.",
+        )
         credentials_missing = not state.canvas_credentials_available
         self._gradescope_credentials_warning.setVisible(credentials_missing)
         self._gradescope_credentials_recheck_btn.setVisible(credentials_missing)
@@ -490,6 +521,7 @@ class DownloadTab(ScrollableTab):
         self._term_input.set_busy(busy)
         self._section_input.set_busy(busy)
         self._course_input.set_busy(busy)
+        self._quiz_input.set_busy(busy)
         self._download_roster_btn.setEnabled(not busy and state.can_download_roster)
         self._download_gradebook_btn.setEnabled(not busy and state.can_download_gradebook)
         self._download_gradescope_btn.setEnabled(not busy and state.can_download_submissions)
@@ -518,26 +550,11 @@ class DownloadTab(ScrollableTab):
                 select=state.selected_course_id,
             )
 
-        if state.quizzes:
-            self._consent_quiz_combo.setEnabled(True)
-            if self._consent_quiz_combo.count() != len(state.quizzes):
-                self._consent_quiz_combo.blockSignals(True)
-                try:
-                    self._consent_quiz_combo.clear()
-                    for q in state.quizzes:
-                        self._consent_quiz_combo.addItem(q.name, q.id)
-                    consent_idx = next(
-                        (i for i, q in enumerate(state.quizzes) if "consent" in q.name.lower()),
-                        0,
-                    )
-                    self._consent_quiz_combo.setCurrentIndex(consent_idx)
-                finally:
-                    self._consent_quiz_combo.blockSignals(False)
-                self._on_consent_quiz_changed(self._consent_quiz_combo.currentIndex())
-        else:
-            self._consent_quiz_combo.setEnabled(False)
-            if self._consent_quiz_combo.count():
-                self._consent_quiz_combo.clear()
+        if self._quiz_picker.combo.count() != len(state.quizzes):
+            self._quiz_picker.set_items(
+                [(str(q.id), _quiz_label(q)) for q in state.quizzes],
+                select=state.selected_consent_quiz_id or _likely_consent_quiz(state.quizzes),
+            )
 
         if state.assignments:
             self._assignment_combo.setEnabled(True)

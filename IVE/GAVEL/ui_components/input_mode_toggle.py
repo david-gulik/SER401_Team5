@@ -219,6 +219,7 @@ class InputModeToggle(QFrame):
         root = QVBoxLayout(self)
         set_margins(root, theme, 12)
         set_spacing(root, theme, 8)
+        self._root = root
 
         # 1. Title
         self._title = QLabel(title, self)
@@ -373,6 +374,14 @@ class InputModeToggle(QFrame):
     def readout_text(self) -> str:
         """What the readout line currently shows (for tests and logging)."""
         return self._readout_value.text()
+
+    def add_footer(self, widget: QWidget) -> None:
+        """Place a widget below the readout, inside the panel.
+
+        Meant for the action that consumes the value, such as a download
+        button, so a panel reads as "choose this, then do that".
+        """
+        self._root.addWidget(widget)
 
     def picker(self) -> PickerWidget:
         return self._picker

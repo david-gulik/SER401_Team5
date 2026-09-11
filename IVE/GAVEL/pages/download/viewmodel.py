@@ -50,6 +50,11 @@ def class_number_error(text: str) -> str | None:
     return None if text.isdigit() else "Class numbers are numbers only, like 12345."
 
 
+def quiz_id_error(text: str) -> str | None:
+    """Validation message for a Canvas quiz ID typed by hand, or None when usable."""
+    return None if text.isdigit() else "Quiz IDs are numbers only, like 1234567."
+
+
 def term_code_error(text: str) -> str | None:
     """Validation message for a myASU term code typed by hand, or None when usable.
 
@@ -553,14 +558,8 @@ class DownloadViewModel(QObject):
         course_id = self._resolved_course_id()
         if course_id is None:
             return
-        quiz_id_str = self._state.selected_consent_quiz_id.strip()
-        if not quiz_id_str:
-            self._emit_error("Select a consent quiz first.")
-            return
-        try:
-            quiz_id = int(quiz_id_str)
-        except ValueError:
-            self._emit_error(f"Invalid consent quiz ID: {quiz_id_str!r}")
+        quiz_id = self._resolved_quiz_id()
+        if quiz_id is None:
             return
 
         self._set_busy(f"Downloading consent form for course {course_id}...")
@@ -718,10 +717,8 @@ class DownloadViewModel(QObject):
         course_id = self._resolved_course_id()
         if course_id is None:
             return
-        try:
-            consent_quiz_id = int(self._state.selected_consent_quiz_id.strip())
-        except ValueError:
-            self._emit_error("Invalid consent quiz ID.")
+        consent_quiz_id = self._resolved_quiz_id()
+        if consent_quiz_id is None:
             return
 
         self._set_busy("Downloading all data...")
@@ -898,6 +895,18 @@ class DownloadViewModel(QObject):
             self._emit_error(f"Invalid class number {text!r}. {error}")
             return None
         return text
+
+    def _resolved_quiz_id(self) -> int | None:
+        """The one consent quiz id the consent download and Download All read."""
+        text = self._state.selected_consent_quiz_id.strip()
+        if not text:
+            self._emit_error("Select a consent quiz first.")
+            return None
+        error = quiz_id_error(text)
+        if error:
+            self._emit_error(f"Invalid consent quiz ID {text!r}. {error}")
+            return None
+        return int(text)
 
     def _resolved_term(self) -> str | None:
         """The one term code the section search, roster download, and Download All read."""
