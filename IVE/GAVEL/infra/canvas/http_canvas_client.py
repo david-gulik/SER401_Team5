@@ -36,10 +36,10 @@ class CanvasApiConfig:
 
 class HttpCanvasClient(CanvasClient):
     def __init__(
-            self,
-            config: CanvasApiConfig,
-            session: requests.Session | None = None,
-            logger: AppLogger | None = None,
+        self,
+        config: CanvasApiConfig,
+        session: requests.Session | None = None,
+        logger: AppLogger | None = None,
     ) -> None:
         self._config = config
         self._session = session or requests.Session()
@@ -118,9 +118,7 @@ class HttpCanvasClient(CanvasClient):
         )
 
         if self._logger:
-            self._logger.info(
-                f"Grouped submission bundles returned: {len(grouped_submissions)}"
-            )
+            self._logger.info(f"Grouped submission bundles returned: {len(grouped_submissions)}")
 
         assignment_columns, assignment_group_columns = self._build_gradebook_columns(
             assignment_groups
@@ -306,12 +304,8 @@ class HttpCanvasClient(CanvasClient):
         )
 
         if self._logger:
-            self._logger.info(
-                f"Total individual submissions returned: {total_submissions}"
-            )
-            self._logger.info(
-                f"Submissions with non-null scores: {submissions_with_scores}"
-            )
+            self._logger.info(f"Total individual submissions returned: {total_submissions}")
+            self._logger.info(f"Submissions with non-null scores: {submissions_with_scores}")
             self._logger.info(
                 f"Submissions matching gradebook assignment IDs: {matched_assignment_ids}"
             )
