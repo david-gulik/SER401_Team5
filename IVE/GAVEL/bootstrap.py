@@ -18,7 +18,8 @@ def build_canvas_client(cfg: AppConfig, logger: AppLogger) -> CanvasClient:
                 base_url=canvas_cfg.base_url,
                 token=canvas_cfg.token,
                 account_id=canvas_cfg.account_id,
-            )
+            ),
+            logger=AppLogger("GAVEL.gradebook", propagate=False),
         )
     logger.warning("Canvas configuration missing; Canvas features disabled")
     return UnconfiguredCanvasClient()
