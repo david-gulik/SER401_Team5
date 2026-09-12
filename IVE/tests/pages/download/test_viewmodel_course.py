@@ -80,7 +80,7 @@ def test_downloads_refuse_when_no_course_selected(vm, canvas, method):
 def test_downloads_refuse_non_numeric_course_before_starting(vm, canvas, method):
     vm.set_course_id("abc")
     vm.set_consent_quiz_id("11")
-    vm.set_assignment_id("7")
+    vm.set_assignment_ids("7")
     seen = events(vm)
     getattr(vm, method)()
     assert len(seen) == 1
@@ -116,7 +116,7 @@ def test_rubric_checks_assignment_only_after_course_is_valid(vm):
     vm.set_course_id("213877")
     seen = events(vm)
     vm.download_rubric_assessment()
-    assert seen == [ShowError("Enter an assignment ID first.")]
+    assert seen == [ShowError("Select or enter at least one assignment first.")]
 
 
 def test_set_course_id_resets_dependents_only_when_the_id_changes(vm):
@@ -124,7 +124,7 @@ def test_set_course_id_resets_dependents_only_when_the_id_changes(vm):
     vm.load_quizzes("213877")
     vm.load_assignments("213877")
     vm.set_consent_quiz_id("11")
-    vm.set_assignment_id("7")
+    vm.set_assignment_ids("7")
 
     vm.set_course_id(" 213877 ")  # same id, only whitespace differs
     state = vm.get_state()
@@ -136,4 +136,4 @@ def test_set_course_id_resets_dependents_only_when_the_id_changes(vm):
     state = vm.get_state()
     assert state.selected_course_id == "209555"
     assert state.quizzes == () and state.assignments == ()
-    assert state.selected_consent_quiz_id == "" and state.assignment_id == ""
+    assert state.selected_consent_quiz_id == "" and state.assignment_ids == ""

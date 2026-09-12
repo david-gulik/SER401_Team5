@@ -28,6 +28,7 @@ from GAVEL.app.usecases.download_gradescope_submissions import (
 )
 from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentRequest,
+    DownloadRubricAssessmentResult,
     DownloadRubricAssessmentUseCase,
 )
 from GAVEL.app.usecases.roster import download_roster_to_file
@@ -55,6 +56,36 @@ def quiz_id_error(text: str) -> str | None:
     return None if text.isdigit() else "Quiz IDs are numbers only, like 1234567."
 
 
+ASSIGNMENT_ID_SEPARATOR = ","
+
+
+def assignment_ids_error(text: str) -> str | None:
+    """Validation message for one or more comma-separated Canvas assignment IDs.
+
+    Shared by the Download tab's manual assignment field (inline feedback)
+    and by the view model's final check before a rubric download starts.
+    """
+    parts = [p.strip() for p in text.split(ASSIGNMENT_ID_SEPARATOR)]
+    if any(not p for p in parts):
+        return "Separate assignment IDs with commas, like 7216983, 7216990."
+    if not all(p.isdigit() for p in parts):
+        return "Assignment IDs are numbers only, like 7216983. Separate several with commas."
+    return None
+
+
+def parse_assignment_ids(text: str) -> list[int]:
+    """Comma-separated assignment IDs as ints, first occurrence wins on duplicates.
+
+    Callers validate with ``assignment_ids_error`` first; this only splits.
+    """
+    seen: dict[int, None] = {}
+    for part in text.split(ASSIGNMENT_ID_SEPARATOR):
+        part = part.strip()
+        if part:
+            seen.setdefault(int(part), None)
+    return list(seen)
+
+
 def term_code_error(text: str) -> str | None:
     """Validation message for a myASU term code typed by hand, or None when usable.
 
@@ -80,7 +111,7 @@ class DownloadUiState:
     subject: str = ""
     catalog_number: str = ""
     class_number: str = ""
-    assignment_id: str = ""
+    assignment_ids: str = ""
     courses: Sequence[CanvasCourse] = ()
     quizzes: Sequence[CanvasQuiz] = ()
     assignments: Sequence[CanvasAssignment] = ()
@@ -112,7 +143,7 @@ class DownloadUiState:
 
     @property
     def can_download_rubric(self) -> bool:
-        return bool(self.selected_course_id) and bool(self.assignment_id.strip())
+        return bool(self.selected_course_id) and bool(self.assignment_ids.strip())
 
     @property
     def can_download_all_rubric_assessments(self) -> bool:
@@ -249,7 +280,7 @@ class DownloadViewModel(QObject):
             quizzes=(),
             selected_consent_quiz_id="",
             assignments=(),
-            assignment_id="",
+            assignment_ids="",
         )
         self.state_changed.emit(self._state)
         self._logger.info(f"Selected course ID set to {text}")
@@ -262,12 +293,14 @@ class DownloadViewModel(QObject):
         self.state_changed.emit(self._state)
         self._logger.info(f"Selected consent quiz ID set to {text}")
 
-    def set_assignment_id(self, value: str) -> None:
+    def set_assignment_ids(self, value: str) -> None:
+        """Store the comma-separated assignment IDs the rubric download reads."""
         text = value.strip()
-        if text == self._state.assignment_id:
+        if text == self._state.assignment_ids:
             return
-        self._state = replace(self._state, assignment_id=text)
+        self._state = replace(self._state, assignment_ids=text)
         self.state_changed.emit(self._state)
+        self._logger.info(f"Selected assignment IDs set to {text}")
 
     def set_output_dir(self, value: str) -> None:
         text = value.strip()
@@ -591,23 +624,63 @@ class DownloadViewModel(QObject):
         course_id = self._resolved_course_id()
         if course_id is None:
             return
-        assignment_id_str = self._state.assignment_id.strip()
-        if not assignment_id_str:
-            self._emit_error("Enter an assignment ID first.")
-            return
-        try:
-            assignment_id = int(assignment_id_str)
-        except ValueError:
-            self._emit_error(f"Invalid assignment ID: {assignment_id_str!r}")
+        assignment_ids = self._resolved_assignment_ids()
+        if assignment_ids is None:
             return
 
-        selected = next((a for a in self._state.assignments if a.id == assignment_id), None)
-        if selected is not None and not selected.has_rubric:
+        ids_text = ", ".join(str(a) for a in assignment_ids)
+        self._set_busy(
+            f"Downloading rubric assessment(s) for course {course_id}, assignment(s) {ids_text}..."
+        )
+        # Each assignment is attempted on its own so one bad ID does not
+        # block the rest, mirroring the Download All batch.
+        use_case = DownloadRubricAssessmentUseCase(self._canvas_client)
+        output_dir = self._resolve_output_dir()
+        # Only assignments loaded from Canvas carry has_rubric; a typed ID that
+        # was never loaded is attempted and left to fail on its own.
+        known = {a.id: a for a in self._state.assignments}
+        saved: list[DownloadRubricAssessmentResult] = []
+        skipped: list[str] = []
+        failed: list[str] = []
+        for assignment_id in assignment_ids:
+            assignment = known.get(assignment_id)
+            if assignment is not None and not assignment.has_rubric:
+                self._logger.warning(
+                    f"Skipped rubric download for '{assignment.name}' "
+                    f"(course {course_id}): no rubric attached."
+                )
+                skipped.append(f"'{assignment.name}' has no rubric attached")
+                continue
+            try:
+                result = use_case.execute(
+                    DownloadRubricAssessmentRequest(
+                        course_id=course_id,
+                        assignment_id=assignment_id,
+                        output_dir=output_dir,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._logger.error(
+                    f"Rubric assessment download failed for assignment {assignment_id}: {exc}"
+                )
+                failed.append(f"{assignment_id}: {exc}")
+                continue
+            saved.append(result)
+
+        if not saved and failed:
+            message = "; ".join(failed)
+            if skipped:
+                message += ". Skipped: " + "; ".join(skipped)
+            self._set_idle(Status.CRITICAL, message)
+            self.event_raised.emit(ShowError(message))
+            return
+
+        if not saved:
+            # Everything was skipped: nothing fetched, nothing written.
             message = (
-                f"Skipped: '{selected.name}' has no rubric attached. "
-                "No rubric-level data will be produced for this assignment."
+                "Skipped: " + "; ".join(skipped) + ". "
+                "No rubric-level data will be produced for these assignments."
             )
-            self._logger.warning(message)
             self._state = replace(
                 self._state, is_busy=False, status=Status.WARNING, message=message
             )
@@ -615,32 +688,31 @@ class DownloadViewModel(QObject):
             self.event_raised.emit(ShowInfo(message))
             return
 
-        self._set_busy(
-            f"Downloading rubric assessment for course {course_id}, assignment {assignment_id}..."
-        )
-        try:
-            result = DownloadRubricAssessmentUseCase(self._canvas_client).execute(
-                DownloadRubricAssessmentRequest(
-                    course_id=course_id,
-                    assignment_id=assignment_id,
-                    output_dir=self._resolve_output_dir(),
-                )
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._logger.error(f"Rubric assessment download failed: {exc}")
-            self._set_idle(Status.CRITICAL, str(exc))
-            self.event_raised.emit(ShowError(str(exc)))
-            return
+        if len(saved) == 1 and not failed and not skipped:
+            message = saved[0].message
+        else:
+            counts = [f"{len(saved)} saved"]
+            if skipped:
+                counts.append(f"{len(skipped)} skipped")
+            counts.append(f"{len(failed)} failed")
+            message = f"Rubric assessments for course {course_id}: " + ", ".join(counts) + "."
+            if skipped:
+                message += " Skipped: " + "; ".join(skipped) + "."
+            if failed:
+                message += " Failed: " + "; ".join(failed)
 
         self._state = replace(
             self._state,
             is_busy=False,
-            status=Status.NOMINAL,
-            message=result.message,
-            last_saved_path=str(result.saved_path),
+            status=Status.WARNING if (failed or skipped) else Status.NOMINAL,
+            message=message,
+            last_saved_path=str(saved[-1].saved_path),
         )
         self.state_changed.emit(self._state)
-        self.event_raised.emit(ShowInfo(result.message))
+        if failed:
+            self.event_raised.emit(ShowError(message))
+        else:
+            self.event_raised.emit(ShowInfo(message))
 
     def download_all_rubric_assessments(self) -> None:
         if self._state.is_busy:
@@ -907,6 +979,22 @@ class DownloadViewModel(QObject):
             self._emit_error(f"Invalid consent quiz ID {text!r}. {error}")
             return None
         return int(text)
+
+    def _resolved_assignment_ids(self) -> list[int] | None:
+        """The assignment ids the rubric download reads, in the order given.
+
+        Fed by the Download tab's Rubric Assessment InputModeToggle, which
+        already joins checked assignments or typed IDs into one string.
+        """
+        text = self._state.assignment_ids.strip()
+        if not text:
+            self._emit_error("Select or enter at least one assignment first.")
+            return None
+        error = assignment_ids_error(text)
+        if error:
+            self._emit_error(f"Invalid assignment IDs {text!r}. {error}")
+            return None
+        return parse_assignment_ids(text)
 
     def _resolved_term(self) -> str | None:
         """The one term code the section search, roster download, and Download All read."""

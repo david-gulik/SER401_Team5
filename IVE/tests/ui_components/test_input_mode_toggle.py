@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from GAVEL.ui_components.input_mode_toggle import ComboPicker, InputMode, InputModeToggle
+from GAVEL.ui_components.input_mode_toggle import (
+    CheckListPicker,
+    ComboPicker,
+    InputMode,
+    InputModeToggle,
+)
 
 TERMS = [("2267", "2267  Fall 2026"), ("2271", "2271  Spring 2027")]
 
@@ -97,6 +102,114 @@ def test_combo_picker_busy_disables_controls_and_restores(qapp, theme):
     picker.set_busy(False)
     assert picker.load_button.isEnabled()
     assert picker.combo.isEnabled()
+
+
+ASSIGNMENTS = [("7", "Homework 1  (7)"), ("9", "Project  (9)"), ("12", "Quiz 3  (12)")]
+
+
+def test_check_list_picker_starts_empty_with_placeholder(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load", empty_text="No assignments loaded")
+    assert picker.value() == ""
+    assert picker.values() == []
+    assert picker.count() == 0
+    assert picker._empty_label.isVisibleTo(picker)
+    assert not picker._scroll.isVisibleTo(picker)
+    assert not picker.select_all_button.isEnabled()
+    assert not picker.clear_button.isEnabled()
+
+
+def test_check_list_picker_set_items_checks_nothing_by_default(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    seen = record(picker.value_changed)
+    picker.set_items(ASSIGNMENTS)
+    assert [b.text() for b in picker.boxes()] == [label for _, label in ASSIGNMENTS]
+    assert picker.value() == ""
+    assert seen == [""]
+    assert picker._scroll.isVisibleTo(picker)
+    assert not picker._empty_label.isVisibleTo(picker)
+    assert picker.select_all_button.isEnabled()
+
+
+def test_check_list_picker_set_items_honours_select(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    picker.set_items(ASSIGNMENTS, select="12, 7")
+    assert picker.values() == ["7", "12"]  # list order, not select order
+    assert picker.value() == "7,12"
+    assert picker.display_value() == "Homework 1  (7), Quiz 3  (12)"
+
+
+def test_check_list_picker_toggling_a_box_emits_joined_value(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    picker.set_items(ASSIGNMENTS)
+    seen = record(picker.value_changed)
+    picker.boxes()[1].setChecked(True)
+    picker.boxes()[0].setChecked(True)
+    picker.boxes()[1].setChecked(False)
+    assert seen == ["9", "7,9", "7"]
+
+
+def test_check_list_picker_select_all_and_clear_emit_once(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    picker.set_items(ASSIGNMENTS)
+    seen = record(picker.value_changed)
+    picker.select_all_button.click()
+    picker.clear_button.click()
+    assert seen == ["7,9,12", ""]
+
+
+def test_check_list_picker_clearing_items_resets_value(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    picker.set_items(ASSIGNMENTS, select="7")
+    seen = record(picker.value_changed)
+    picker.set_items([])
+    assert picker.value() == ""
+    assert picker.count() == 0
+    assert seen == [""]
+
+
+def test_check_list_picker_load_button_emits_load_requested(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    hits: list[bool] = []
+    picker.load_requested.connect(lambda: hits.append(True))
+    picker.load_button.click()
+    assert hits == [True]
+
+
+def test_check_list_picker_busy_disables_controls_and_restores(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    picker.set_items(ASSIGNMENTS, select="7")
+    picker.set_busy(True)
+    assert not picker.load_button.isEnabled()
+    assert not picker.select_all_button.isEnabled()
+    assert not picker.boxes()[0].isEnabledTo(picker)
+    assert picker.value() == "7"  # busy never changes the value
+    picker.set_busy(False)
+    assert picker.load_button.isEnabled()
+    assert picker.select_all_button.isEnabled()
+    assert picker.boxes()[0].isEnabledTo(picker)
+
+
+def test_stack_only_reserves_the_active_panel_height(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    toggle = InputModeToggle(theme, "Rubric", picker=picker, manual_field_label="IDs")
+    picker.set_items(ASSIGNMENTS * 3)  # tall enough to dwarf a single line edit
+    toggle.set_mode(InputMode.MANUAL)
+    manual_height = toggle._stack.sizeHint().height()
+    toggle.set_mode(InputMode.PICKER)
+    picker_height = toggle._stack.sizeHint().height()
+    assert manual_height < picker_height
+    assert manual_height <= toggle.manual_field().sizeHint().height() * 2
+
+
+def test_check_list_picker_works_inside_a_toggle(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    toggle = InputModeToggle(theme, "Rubric", picker=picker, manual_field_label="IDs")
+    picker.set_items(ASSIGNMENTS)
+    seen = record(toggle.value_changed)
+    picker.select_all_button.click()
+    assert toggle.value() == "7,9,12"
+    assert toggle.readout_text() == "Homework 1  (7), Project  (9), Quiz 3  (12)"
+    assert seen == ["7,9,12"]
 
 
 def test_defaults_to_picker_mode_with_empty_value(toggle: InputModeToggle):

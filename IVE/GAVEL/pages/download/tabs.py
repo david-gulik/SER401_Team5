@@ -6,7 +6,6 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -19,7 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasQuiz
+from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQuiz
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.download.section_picker import SectionSearchPicker
 from GAVEL.pages.download.viewmodel import (
@@ -27,13 +26,19 @@ from GAVEL.pages.download.viewmodel import (
     DownloadViewModel,
     ShowError,
     ShowInfo,
+    assignment_ids_error,
     class_number_error,
     course_id_error,
     quiz_id_error,
     term_code_error,
 )
 from GAVEL.theme.context import ThemeContext
-from GAVEL.ui_components.input_mode_toggle import ComboPicker, InputMode, InputModeToggle
+from GAVEL.ui_components.input_mode_toggle import (
+    CheckListPicker,
+    ComboPicker,
+    InputMode,
+    InputModeToggle,
+)
 from GAVEL.ui_components.layout import set_h_margins, set_spacing
 from GAVEL.ui_components.section_card import SectionCard
 from GAVEL.ui_components.status_pill import StatusPill
@@ -50,6 +55,19 @@ def _quiz_label(quiz: CanvasQuiz) -> str:
     return f"{quiz.name}  ({quiz.id})"
 
 
+_NO_RUBRIC_TIP = "No rubric attached — no rubric-level data will be produced for this assignment."
+
+
+def _assignment_label(assignment: CanvasAssignment) -> str:
+    """Check box text: name and the Canvas assignment ID so it can be matched to a URL.
+
+    Assignments with no rubric attached are flagged so they can be seen before
+    downloading; the view model skips them rather than fetching empty data.
+    """
+    name = assignment.name if assignment.has_rubric else f"⚠ {assignment.name}"
+    return f"{name}  ({assignment.id})"
+
+
 def _course_label(course: CanvasCourse) -> str:
     """Dropdown text: code, name, and the Canvas ID so it can be matched to a URL."""
     head = f"{course.course_code}  {course.name}" if course.course_code else course.name
@@ -61,6 +79,8 @@ class DownloadTab(ScrollableTab):
         super().__init__(theme)
         self._theme = theme
         self._vm = vm
+        self._rendering = False
+        self._render_pending = False
 
         self._build_widgets()
         self._connect_signals()
@@ -101,6 +121,11 @@ class DownloadTab(ScrollableTab):
     def quiz_input(self) -> InputModeToggle:
         """The single consent quiz input (list or ID). Exposed for tests."""
         return self._quiz_input
+
+    @property
+    def assignment_input(self) -> InputModeToggle:
+        """The single rubric assignment input (check list or IDs). Exposed for tests."""
+        return self._assignment_input
 
     # ---------- Widget construction ----------
 
@@ -228,13 +253,27 @@ class DownloadTab(ScrollableTab):
         )
         self._download_consent_btn.setProperty("role", "primary")
 
-        # Canvas - Rubric Assessment
-        self._assignment_combo = QComboBox()
-        self._assignment_combo.setEnabled(False)
+        # Canvas - Rubric Assessment: one assignment input, check list or comma-separated IDs
+        self._assignment_picker = CheckListPicker(
+            self._theme, load_text="Reload Assignments", empty_text="No assignments loaded"
+        )
+        self._assignment_input = InputModeToggle(
+            self._theme,
+            "Rubric Assessment",
+            picker=self._assignment_picker,
+            manual_field_label="Assignment IDs",
+            picker_label="Choose from list",
+            manual_label="Enter IDs",
+            picker_hint="Assignments load for the selected course. Check every assignment "
+            "whose rubric you want.",
+            manual_hint="Separate multiple assignment IDs with commas.",
+            manual_placeholder="e.g. 7216983, 7216990",
+            validator=assignment_ids_error,
+        )
         self._download_rubric_btn = QPushButton("Download Rubric Assessment")
         self._download_rubric_btn.setProperty("role", "primary")
         self._download_rubric_btn.setToolTip(
-            "Requires a valid course and assignment to be selected above."
+            "Requires a valid course and at least one assignment to be selected above."
         )
         self._download_all_rubric_btn = QPushButton("Download All Rubric Assessments")
         self._download_all_rubric_btn.setProperty("role", "secondary")
@@ -288,7 +327,9 @@ class DownloadTab(ScrollableTab):
         # Single writer of the consent quiz id, whichever mode produced it.
         self._quiz_input.value_changed.connect(self._vm.set_consent_quiz_id)
         self._quiz_picker.load_requested.connect(self._on_reload_quizzes)
-        self._assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
+        # Single writer of the assignment ids, whichever mode produced them.
+        self._assignment_input.value_changed.connect(self._vm.set_assignment_ids)
+        self._assignment_picker.load_requested.connect(self._on_reload_assignments)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
         self._download_all_rubric_btn.clicked.connect(self._vm.download_all_rubric_assessments)
 
@@ -365,16 +406,9 @@ class DownloadTab(ScrollableTab):
         card.add_row(self._quiz_input)
 
         # Rubric Assessment
-        rubric_panel = SubPanel(self._theme, "Rubric Assessment")
-        rubric_host = QWidget()
-        rubric_form = QFormLayout(rubric_host)
-        rubric_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(rubric_form, self._theme, 8)
-        rubric_form.addRow("Assignment", self._assignment_combo)
-        rubric_panel.add_widget(rubric_host)
-        rubric_panel.add_widget(self._download_rubric_btn)
-        rubric_panel.add_widget(self._download_all_rubric_btn)
-        card.add_row(rubric_panel)
+        self._assignment_input.add_footer(self._download_rubric_btn)
+        self._assignment_input.add_footer(self._download_all_rubric_btn)
+        card.add_row(self._assignment_input)
 
         # Gradescope Submissions
         gradescope_panel = SubPanel(self._theme, "Gradescope Submissions")
@@ -469,9 +503,10 @@ class DownloadTab(ScrollableTab):
         if course_id:
             self._vm.load_quizzes(course_id)
 
-    def _on_assignment_changed(self, index: int) -> None:
-        assignment_id = self._assignment_combo.itemData(index) or ""
-        self._vm.set_assignment_id(str(assignment_id))
+    def _on_reload_assignments(self) -> None:
+        course_id = self._vm.get_state().selected_course_id
+        if course_id:
+            self._vm.load_assignments(course_id)
 
     def _on_download_all(self) -> None:
         self._vm.download_all()
@@ -479,6 +514,29 @@ class DownloadTab(ScrollableTab):
     # ---------- View model rendering ----------
 
     def render(self, state: DownloadUiState) -> None:
+        """Paint ``state``; nested changes are folded into one follow-up pass.
+
+        Filling a picker can select an item, which writes to the view model
+        and emits ``state_changed`` while this render is still running. A
+        nested render would paint the newer state, only for the outer pass
+        to resume with its stale copy and undo it (for example, clearing a
+        just-loaded assignment list). So a render in progress records the
+        request instead, and the outer pass repeats with the latest state
+        until nothing changes.
+        """
+        if self._rendering:
+            self._render_pending = True
+            return
+        self._rendering = True
+        try:
+            self._render(state)
+            while self._render_pending:
+                self._render_pending = False
+                self._render(self._vm.get_state())
+        finally:
+            self._rendering = False
+
+    def _render(self, state: DownloadUiState) -> None:
         self._busy_bar.setVisible(state.is_busy)
 
         if self._output_path.text() != state.output_dir:
@@ -511,6 +569,11 @@ class DownloadTab(ScrollableTab):
             "The quiz list needs CANVAS_TOKEN. Enter the quiz ID directly, "
             "or set the token and press Recheck.",
         )
+        self._assignment_input.set_picker_available(
+            not token_missing,
+            "The assignment list needs CANVAS_TOKEN. Enter assignment IDs directly, "
+            "or set the token and press Recheck.",
+        )
         credentials_missing = not state.canvas_credentials_available
         self._gradescope_credentials_warning.setVisible(credentials_missing)
         self._gradescope_credentials_recheck_btn.setVisible(credentials_missing)
@@ -522,6 +585,7 @@ class DownloadTab(ScrollableTab):
         self._section_input.set_busy(busy)
         self._course_input.set_busy(busy)
         self._quiz_input.set_busy(busy)
+        self._assignment_input.set_busy(busy)
         self._download_roster_btn.setEnabled(not busy and state.can_download_roster)
         self._download_gradebook_btn.setEnabled(not busy and state.can_download_gradebook)
         self._download_gradescope_btn.setEnabled(not busy and state.can_download_submissions)
@@ -556,30 +620,16 @@ class DownloadTab(ScrollableTab):
                 select=state.selected_consent_quiz_id or _likely_consent_quiz(state.quizzes),
             )
 
-        if state.assignments:
-            self._assignment_combo.setEnabled(True)
-            if self._assignment_combo.count() != len(state.assignments):
-                self._assignment_combo.blockSignals(True)
-                try:
-                    self._assignment_combo.clear()
-                    for a in state.assignments:
-                        label = a.name if a.has_rubric else f"⚠ {a.name}"
-                        self._assignment_combo.addItem(label, a.id)
-                        if not a.has_rubric:
-                            index = self._assignment_combo.count() - 1
-                            self._assignment_combo.setItemData(
-                                index,
-                                "No rubric attached — no rubric-level data will be "
-                                "produced for this assignment.",
-                                Qt.ItemDataRole.ToolTipRole,
-                            )
-                finally:
-                    self._assignment_combo.blockSignals(False)
-                self._on_assignment_changed(self._assignment_combo.currentIndex())
-        else:
-            self._assignment_combo.setEnabled(False)
-            if self._assignment_combo.count():
-                self._assignment_combo.clear()
+        if self._assignment_picker.count() != len(state.assignments):
+            self._assignment_picker.set_items(
+                [(str(a.id), _assignment_label(a)) for a in state.assignments],
+                select=state.assignment_ids,
+            )
+            for box, assignment in zip(
+                self._assignment_picker.boxes(), state.assignments, strict=True
+            ):
+                if not assignment.has_rubric:
+                    box.setToolTip(_NO_RUBRIC_TIP)
 
         if state.last_saved_path:
             self._last_saved_label.setText(state.last_saved_path)
