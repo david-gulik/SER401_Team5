@@ -13,6 +13,10 @@ from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQ
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
+from GAVEL.app.usecases.download_all_quizzes import (
+    DownloadAllQuizzesRequest,
+    DownloadAllQuizzesUseCase,
+)
 from GAVEL.app.usecases.download_all_rubric_assessments import (
     DownloadAllRubricAssessmentsRequest,
     DownloadAllRubricAssessmentsUseCase,
@@ -29,10 +33,6 @@ from GAVEL.app.usecases.download_gradescope_submissions import (
 from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentRequest,
     DownloadRubricAssessmentUseCase,
-)
-from GAVEL.app.usecases.download_all_quizzes import (
-    DownloadAllQuizzesRequest,
-    DownloadAllQuizzesUseCase,
 )
 from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status

@@ -4,11 +4,11 @@ import sys
 from argparse import Namespace
 from pathlib import Path
 
-from GAVEL.app_context import AppContext
 from GAVEL.app.usecases.download_all_quizzes import (
     DownloadAllQuizzesRequest,
     DownloadAllQuizzesUseCase,
 )
+from GAVEL.app_context import AppContext
 
 
 def handle_quiz_analysis_download(ctx: AppContext, args: Namespace) -> int:
