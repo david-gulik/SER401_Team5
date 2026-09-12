@@ -13,6 +13,10 @@ from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQ
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
+from GAVEL.app.usecases.download_all_quizzes import (
+    DownloadAllQuizzesRequest,
+    DownloadAllQuizzesUseCase,
+)
 from GAVEL.app.usecases.download_all_rubric_assessments import (
     DownloadAllRubricAssessmentsRequest,
     DownloadAllRubricAssessmentsUseCase,
@@ -129,6 +133,10 @@ class DownloadUiState:
     @property
     def canvas_credentials_available(self) -> bool:
         return bool(os.getenv("CANVAS_USERNAME")) and bool(os.getenv("CANVAS_PASSWORD"))
+
+    @property
+    def can_download_all_quizzes(self) -> bool:
+        return bool(self.selected_course_id)
 
 
 @dataclass(frozen=True)
@@ -691,6 +699,78 @@ class DownloadViewModel(QObject):
             last_saved_path=str(last_path) if last_path else self._state.last_saved_path,
         )
         self.state_changed.emit(self._state)
+        if failed:
+            self.event_raised.emit(ShowError(message))
+        else:
+            self.event_raised.emit(ShowInfo(message))
+
+    def download_all_quizzes(self) -> None:
+        if self._state.is_busy:
+            return
+
+        course_id_str = self._state.selected_course_id.strip()
+        if not course_id_str:
+            self._emit_error("Select a course first.")
+            return
+
+        try:
+            course_id = int(course_id_str)
+        except ValueError:
+            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+            return
+
+        self._set_busy(f"Downloading all quiz reports for course {course_id}...")
+
+        try:
+            output_dir = self._resolve_output_dir()
+            result = DownloadAllQuizzesUseCase(self._canvas_client).execute(
+                DownloadAllQuizzesRequest(
+                    course_id=course_id,
+                    output_dir=output_dir,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Quiz report batch download failed: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            self.event_raised.emit(ShowError(str(exc)))
+            return
+
+        succeeded = result.succeeded
+        skipped = result.skipped
+        failed = result.failed
+
+        last_path = output_dir if succeeded else None
+
+        for outcome in skipped:
+            self._logger.warning(
+                f"Skipped quiz report for '{outcome.quiz_name}' "
+                f"(course {course_id}): {outcome.skipped_reason}"
+            )
+
+        print(f"[QUIZ] {len(succeeded)} succeeded, {len(skipped)} skipped, {len(failed)} failed.")
+
+        message = f"Quiz reports saved to {output_dir}"
+
+        status = Status.NOMINAL
+
+        if skipped:
+            status = Status.WARNING
+
+        if failed and (succeeded or skipped):
+            status = Status.WARNING
+        elif failed and not (succeeded or skipped):
+            status = Status.CRITICAL
+
+        self._state = replace(
+            self._state,
+            is_busy=False,
+            status=status,
+            message=message,
+            last_saved_path=str(last_path) if last_path else self._state.last_saved_path,
+        )
+
+        self.state_changed.emit(self._state)
+
         if failed:
             self.event_raised.emit(ShowError(message))
         else:

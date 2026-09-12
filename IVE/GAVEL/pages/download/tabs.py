@@ -198,6 +198,13 @@ class DownloadTab(ScrollableTab):
         )
         self._download_consent_btn.setProperty("role", "primary")
 
+        # Canvas - Quiz Reports
+        self._download_all_quizzes_btn = QPushButton("Download All Quiz Reports")
+        self._download_all_quizzes_btn.setProperty("role", "primary")
+        self._download_all_quizzes_btn.setToolTip(
+            "Downloads student analysis reports for every quiz in the selected course."
+        )
+
         # Canvas - Rubric Assessment
         self._assignment_combo = QComboBox()
         self._assignment_combo.setEnabled(False)
@@ -259,6 +266,7 @@ class DownloadTab(ScrollableTab):
         self._assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
         self._download_all_rubric_btn.clicked.connect(self._vm.download_all_rubric_assessments)
+        self._download_all_quizzes_btn.clicked.connect(self._vm.download_all_quizzes)
 
         self._output_path.textEdited.connect(self._vm.set_output_dir)
         self._browse_path_btn.clicked.connect(self._on_browse_output_path)
@@ -338,6 +346,11 @@ class DownloadTab(ScrollableTab):
         consent_panel.add_widget(consent_host)
         consent_panel.add_widget(self._download_consent_btn)
         card.add_row(consent_panel)
+
+        # Quiz Reports
+        quiz_panel = SubPanel(self._theme, "Quiz Reports")
+        quiz_panel.add_widget(self._download_all_quizzes_btn)
+        card.add_row(quiz_panel)
 
         # Rubric Assessment
         rubric_panel = SubPanel(self._theme, "Rubric Assessment")
@@ -499,6 +512,7 @@ class DownloadTab(ScrollableTab):
             not busy and state.can_download_all_rubric_assessments
         )
         self._download_all_btn.setEnabled(not busy and state.can_download_all)
+        self._download_all_quizzes_btn.setEnabled(not busy and state.can_download_all_quizzes)
 
         if self._term_picker.combo.count() != len(state.terms):
             self._term_picker.set_items(
