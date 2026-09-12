@@ -1,4 +1,4 @@
-"""DownloadTab wiring for the myASU Section InputModeToggle (SCRUM-239).
+"""DownloadTab wiring for the myASU Section InputModeToggle.
 
 Drives the real tab and view model against in-memory clients, offscreen.
 Download actions are never triggered here: they end in a modal dialog.
@@ -130,7 +130,7 @@ def test_unconfigured_roster_shows_warning_and_disables_roster_actions(
     env = build(qapp, theme, tmp_path, configured=False)
     assert env.tab._roster_warning.isVisibleTo(env.tab)
     assert env.section.mode() is InputMode.MANUAL
-    assert not env.tab._load_terms_btn.isEnabled()
+    assert env.tab.term_input.mode() is InputMode.MANUAL  # Load Terms sits in the hidden picker
     env.section.set_mode(InputMode.PICKER)  # refused: search needs the roster client
     assert env.section.mode() is InputMode.MANUAL
 
