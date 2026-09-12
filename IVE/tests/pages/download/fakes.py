@@ -85,17 +85,41 @@ class FakeCanvasClient(CanvasClient):
 
 
 class FakeRosterClient(RosterClient):
+    """Serves canned terms and sections and records searches and roster requests."""
+
+    def __init__(
+        self,
+        terms: Sequence[TermInfo] = (),
+        sections: Sequence[ClassSection] = (),
+        configured: bool = True,
+        roster_csv: str = "Student,ID\r\nAda Lovelace,1000000001\r\n",
+    ) -> None:
+        self.terms = list(terms)
+        self.sections = list(sections)
+        self.configured = configured
+        self.roster_csv = roster_csv
+        self.section_queries: list[tuple[str, str, str]] = []
+        self.roster_requests: list[RosterRequest] = []
+        self.authenticate_calls = 0
+        self.close_calls = 0
+
+    @property
+    def is_configured(self) -> bool:
+        return self.configured
+
     def list_terms(self) -> Sequence[TermInfo]:
-        return []
+        return list(self.terms)
 
     def find_sections(self, term: str, subject: str, catalog_number: str) -> Sequence[ClassSection]:
-        return []
+        self.section_queries.append((term, subject, catalog_number))
+        return list(self.sections)
 
     def authenticate(self) -> None:
-        pass
+        self.authenticate_calls += 1
 
     def fetch_roster(self, request: RosterRequest) -> str:
-        return ""
+        self.roster_requests.append(request)
+        return self.roster_csv
 
     def close(self) -> None:
-        pass
+        self.close_calls += 1
