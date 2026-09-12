@@ -4,7 +4,7 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
