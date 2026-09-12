@@ -117,11 +117,22 @@ def _build_parser() -> argparse.ArgumentParser:
     quiz_parser = subparsers.add_parser("quiz", help="Canvas quiz operations")
     quiz_subparsers = quiz_parser.add_subparsers(dest="quiz_command", required=True)
 
-    # quiz download
-    quiz_dl = quiz_subparsers.add_parser("download", help="Download a quiz student analysis CSV")
-    quiz_dl.add_argument("--course-id", required=True, help="Canvas course numeric identifier")
-    quiz_dl.add_argument("--quiz-id", required=True, help="Canvas quiz numeric identifier")
-    quiz_dl.add_argument("--output", "-o", help="Save CSV to this file (default: stdout)")
+    # quizzes download
+    quiz_dl = quiz_subparsers.add_parser(
+        "download",
+        help="Download student analysis reports for all quizzes in a course",
+    )
+    quiz_dl.add_argument(
+        "--course-id",
+        required=True,
+        help="Canvas course numeric identifier",
+    )
+    quiz_dl.add_argument(
+        "--output",
+        "-o",
+        required=True,
+        help="Directory where quiz analysis CSV files will be written",
+    )
     quiz_dl.set_defaults(handler=handle_quiz_analysis_download)
 
     # rubric commands

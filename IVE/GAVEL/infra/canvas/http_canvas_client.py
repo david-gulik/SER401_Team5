@@ -20,7 +20,10 @@ from GAVEL.app.dtos.rubric_definition import (
     RubricDefinition,
     RubricRating,
 )
-from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.app.ports.canvas_client import (
+    CanvasClient,
+    QuizReportUnavailableError,
+)
 
 
 @dataclass(frozen=True)
@@ -454,7 +457,19 @@ class HttpCanvasClient(CanvasClient):
             self._poll_progress(progress_url)
         report_url = f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/reports/{report['id']}"
         report_data = self._get(report_url)
-        csv_url = report_data["file"]["url"]
+
+        file_data = report_data.get("file")
+        if not isinstance(file_data, dict):
+            raise QuizReportUnavailableError(
+                f"No student analysis report is available for quiz {quiz_id}."
+            )
+
+        csv_url = file_data.get("url")
+        if not isinstance(csv_url, str) or not csv_url.strip():
+            raise QuizReportUnavailableError(
+                f"No student analysis report is available for quiz {quiz_id}."
+            )
+
         return self._download(csv_url)
 
     def _request_with_retries(

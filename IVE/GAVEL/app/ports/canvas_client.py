@@ -37,7 +37,7 @@ class CanvasClient(ABC):
     @abstractmethod
     def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
         """Retrieve the student analysis report
-        for a Canvas quiz consent form."""
+        for a Canvas quiz."""
         raise NotImplementedError
 
     @abstractmethod
@@ -65,3 +65,6 @@ class CanvasClient(ABC):
         associated with a Canvas assignment. Returns None if the assignment has no
         associated rubric."""
         raise NotImplementedError
+
+class QuizReportUnavailableError(RuntimeError):
+    """Raised when Canvas cannot provide a student-analysis report for a quiz."""

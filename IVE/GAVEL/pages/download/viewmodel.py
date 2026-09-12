@@ -30,6 +30,10 @@ from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentRequest,
     DownloadRubricAssessmentUseCase,
 )
+from GAVEL.app.usecases.download_all_quizzes import (
+    DownloadAllQuizzesRequest,
+    DownloadAllQuizzesUseCase,
+)
 from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
 from GAVEL.pages.download.sorting import course_sort_key
@@ -99,6 +103,10 @@ class DownloadUiState:
     @property
     def canvas_credentials_available(self) -> bool:
         return bool(os.getenv("CANVAS_USERNAME")) and bool(os.getenv("CANVAS_PASSWORD"))
+
+    @property
+    def can_download_all_quizzes(self) -> bool:
+        return bool(self.selected_course_id)
 
 
 @dataclass(frozen=True)
@@ -689,6 +697,90 @@ class DownloadViewModel(QObject):
             last_saved_path=str(last_path) if last_path else self._state.last_saved_path,
         )
         self.state_changed.emit(self._state)
+        if failed:
+            self.event_raised.emit(ShowError(message))
+        else:
+            self.event_raised.emit(ShowInfo(message))
+
+    def download_all_quizzes(self) -> None:
+        if self._state.is_busy:
+            return
+
+        course_id_str = self._state.selected_course_id.strip()
+        if not course_id_str:
+            self._emit_error("Select a course first.")
+            return
+
+        try:
+            course_id = int(course_id_str)
+        except ValueError:
+            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+            return
+
+        self._set_busy(f"Downloading all quiz reports for course {course_id}...")
+
+        try:
+            result = DownloadAllQuizzesUseCase(self._canvas_client).execute(
+                DownloadAllQuizzesRequest(
+                    course_id=course_id,
+                    output_dir=self._resolve_output_dir(),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._logger.error(f"Quiz report batch download failed: {exc}")
+            self._set_idle(Status.CRITICAL, str(exc))
+            self.event_raised.emit(ShowError(str(exc)))
+            return
+
+        succeeded = result.succeeded
+        skipped = result.skipped
+        failed = result.failed
+
+        last_path = succeeded[-1].saved_path if succeeded else None
+
+        for outcome in skipped:
+            self._logger.warning(
+                f"Skipped quiz report for '{outcome.quiz_name}' "
+                f"(course {course_id}): {outcome.skipped_reason}"
+            )
+
+        message = (
+            f"Quiz reports for course {course_id}: "
+            f"{len(succeeded)} succeeded, "
+            f"{len(skipped)} skipped, "
+            f"{len(failed)} failed."
+        )
+
+        if skipped:
+            message += " Skipped: " + "; ".join(
+                f"{o.quiz_name}: {o.skipped_reason}" for o in skipped
+            )
+
+        if failed:
+            message += " Failed: " + "; ".join(
+                f"{o.quiz_name}: {o.error}" for o in failed
+            )
+
+        status = Status.NOMINAL
+
+        if skipped:
+            status = Status.WARNING
+
+        if failed and (succeeded or skipped):
+            status = Status.WARNING
+        elif failed and not (succeeded or skipped):
+            status = Status.CRITICAL
+
+        self._state = replace(
+            self._state,
+            is_busy=False,
+            status=status,
+            message=message,
+            last_saved_path=str(last_path) if last_path else self._state.last_saved_path,
+        )
+
+        self.state_changed.emit(self._state)
+
         if failed:
             self.event_raised.emit(ShowError(message))
         else:
