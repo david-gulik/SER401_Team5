@@ -720,10 +720,11 @@ class DownloadViewModel(QObject):
         self._set_busy(f"Downloading all quiz reports for course {course_id}...")
 
         try:
+            output_dir = self._resolve_output_dir()
             result = DownloadAllQuizzesUseCase(self._canvas_client).execute(
                 DownloadAllQuizzesRequest(
                     course_id=course_id,
-                    output_dir=self._resolve_output_dir(),
+                    output_dir=output_dir,
                 )
             )
         except Exception as exc:  # noqa: BLE001
@@ -736,7 +737,7 @@ class DownloadViewModel(QObject):
         skipped = result.skipped
         failed = result.failed
 
-        last_path = succeeded[-1].saved_path if succeeded else None
+        last_path = output_dir if succeeded else None
 
         for outcome in skipped:
             self._logger.warning(
@@ -744,22 +745,13 @@ class DownloadViewModel(QObject):
                 f"(course {course_id}): {outcome.skipped_reason}"
             )
 
-        message = (
-            f"Quiz reports for course {course_id}: "
-            f"{len(succeeded)} succeeded, "
+        print(
+            f"[QUIZ] {len(succeeded)} succeeded, "
             f"{len(skipped)} skipped, "
             f"{len(failed)} failed."
         )
 
-        if skipped:
-            message += " Skipped: " + "; ".join(
-                f"{o.quiz_name}: {o.skipped_reason}" for o in skipped
-            )
-
-        if failed:
-            message += " Failed: " + "; ".join(
-                f"{o.quiz_name}: {o.error}" for o in failed
-            )
+        message = f"Quiz reports saved to {output_dir}"
 
         status = Status.NOMINAL
 

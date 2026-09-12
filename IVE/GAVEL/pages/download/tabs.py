@@ -146,7 +146,7 @@ class DownloadTab(ScrollableTab):
 
         # Canvas - Quiz Reports
         self._download_all_quizzes_btn = QPushButton("Download All Quiz Reports")
-        self._download_all_quizzes_btn.setProperty("role", "secondary")
+        self._download_all_quizzes_btn.setProperty("role", "primary")
         self._download_all_quizzes_btn.setToolTip(
             "Downloads student analysis reports for every quiz in the selected course."
         )

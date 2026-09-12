@@ -66,5 +66,6 @@ class CanvasClient(ABC):
         associated rubric."""
         raise NotImplementedError
 
+
 class QuizReportUnavailableError(RuntimeError):
     """Raised when Canvas cannot provide a student-analysis report for a quiz."""
