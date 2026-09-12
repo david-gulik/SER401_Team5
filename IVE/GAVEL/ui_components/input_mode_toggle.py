@@ -17,6 +17,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QFrame,
@@ -24,6 +25,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -164,6 +167,159 @@ class ComboPicker(PickerWidget):
         self.load_requested.emit()
 
 
+class CheckListPicker(PickerWidget):
+    """Multi-select picker: one check box per item, with load / all / none buttons.
+
+    Items are ``(value, label)`` pairs. ``value()`` is the checked values
+    joined by ``SEPARATOR`` in list order, so the toggle still sees a single
+    string; callers split it. Nothing is checked until the user asks, so a
+    freshly loaded list resolves to "".
+    """
+
+    SEPARATOR = ","
+    VISIBLE_ROWS = 6
+
+    def __init__(
+        self,
+        theme: ThemeContext,
+        *,
+        load_text: str,
+        empty_text: str = "Nothing loaded yet",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._boxes: list[QCheckBox] = []
+        self._busy = False
+
+        self._empty_label = QLabel(empty_text, self)
+        self._empty_label.setProperty("role", "text_muted")
+
+        self._list_host = QWidget()
+        self._list_layout = QVBoxLayout(self._list_host)
+        self._list_layout.setContentsMargins(0, 0, 0, 0)
+        set_spacing(self._list_layout, theme, 4)
+        self._list_layout.addStretch(1)
+
+        self._scroll = QScrollArea(self)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.viewport().setAutoFillBackground(False)
+        self._scroll.setWidget(self._list_host)
+        self._scroll.hide()
+
+        self._load_btn = QPushButton(load_text, self)
+        self._load_btn.setProperty("role", "secondary")
+        self._all_btn = QPushButton("Select All", self)
+        self._all_btn.setProperty("role", "secondary")
+        self._none_btn = QPushButton("Clear", self)
+        self._none_btn.setProperty("role", "secondary")
+
+        buttons = QVBoxLayout()
+        buttons.setContentsMargins(0, 0, 0, 0)
+        set_spacing(buttons, theme, 8)
+        buttons.addWidget(self._load_btn)
+        buttons.addWidget(self._all_btn)
+        buttons.addWidget(self._none_btn)
+        buttons.addStretch(1)
+
+        left = QVBoxLayout()
+        left.setContentsMargins(0, 0, 0, 0)
+        left.addWidget(self._empty_label)
+        left.addWidget(self._scroll)
+
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        set_spacing(row, theme, 8)
+        row.addLayout(left, 1)
+        row.addLayout(buttons)
+
+        self._load_btn.clicked.connect(self._on_load_clicked)
+        self._all_btn.clicked.connect(lambda: self._set_all(True))
+        self._none_btn.clicked.connect(lambda: self._set_all(False))
+        self._sync_controls()
+
+    @property
+    def load_button(self) -> QPushButton:
+        return self._load_btn
+
+    @property
+    def select_all_button(self) -> QPushButton:
+        return self._all_btn
+
+    @property
+    def clear_button(self) -> QPushButton:
+        return self._none_btn
+
+    def boxes(self) -> list[QCheckBox]:
+        """The check boxes in list order. Exposed for tests."""
+        return list(self._boxes)
+
+    def count(self) -> int:
+        return len(self._boxes)
+
+    def set_items(self, items: Sequence[tuple[str, str]], select: str = "") -> None:
+        """Replace the list. Checks every value named in ``select`` (SEPARATOR-joined)."""
+        wanted = {v.strip() for v in select.split(self.SEPARATOR) if v.strip()}
+        for box in self._boxes:
+            self._list_layout.removeWidget(box)
+            box.deleteLater()
+        self._boxes = []
+        for value, label in items:
+            box = QCheckBox(label, self._list_host)
+            box.setProperty("value", value)
+            box.setChecked(value in wanted)
+            box.toggled.connect(self._on_toggled)
+            self._list_layout.insertWidget(self._list_layout.count() - 1, box)
+            self._boxes.append(box)
+        self._scroll.setVisible(bool(items))
+        self._empty_label.setVisible(not items)
+        self._fit_height()
+        self._sync_controls()
+        self.value_changed.emit(self.value())
+
+    def values(self) -> list[str]:
+        return [str(b.property("value")) for b in self._boxes if b.isChecked()]
+
+    def value(self) -> str:
+        return self.SEPARATOR.join(self.values())
+
+    def display_value(self) -> str:
+        return ", ".join(b.text() for b in self._boxes if b.isChecked())
+
+    def set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        self._sync_controls()
+
+    def _set_all(self, checked: bool) -> None:
+        # One value_changed for the whole sweep, not one per box.
+        for box in self._boxes:
+            box.blockSignals(True)
+            try:
+                box.setChecked(checked)
+            finally:
+                box.blockSignals(False)
+        self.value_changed.emit(self.value())
+
+    def _fit_height(self) -> None:
+        if not self._boxes:
+            return
+        row = self._boxes[0].sizeHint().height() + self._list_layout.spacing()
+        self._scroll.setMaximumHeight(row * self.VISIBLE_ROWS)
+
+    def _sync_controls(self) -> None:
+        has_items = bool(self._boxes)
+        self._load_btn.setEnabled(not self._busy)
+        self._all_btn.setEnabled(not self._busy and has_items)
+        self._none_btn.setEnabled(not self._busy and has_items)
+        self._list_host.setEnabled(not self._busy)
+
+    def _on_toggled(self, _checked: bool) -> None:
+        self.value_changed.emit(self.value())
+
+    def _on_load_clicked(self, _checked: bool = False) -> None:
+        self.load_requested.emit()
+
+
 # ---------------------------------------------------------------------------
 # The toggle
 # ---------------------------------------------------------------------------
@@ -219,6 +375,7 @@ class InputModeToggle(QFrame):
         root = QVBoxLayout(self)
         set_margins(root, theme, 12)
         set_spacing(root, theme, 8)
+        self._root = root
 
         # 1. Title
         self._title = QLabel(title, self)
@@ -374,6 +531,14 @@ class InputModeToggle(QFrame):
         """What the readout line currently shows (for tests and logging)."""
         return self._readout_value.text()
 
+    def add_footer(self, widget: QWidget) -> None:
+        """Place a widget below the readout, inside the panel.
+
+        Meant for the action that consumes the value, such as a download
+        button, so a panel reads as "choose this, then do that".
+        """
+        self._root.addWidget(widget)
+
     def picker(self) -> PickerWidget:
         return self._picker
 
@@ -409,10 +574,27 @@ class InputModeToggle(QFrame):
             finally:
                 button.blockSignals(False)
         self._stack.setCurrentIndex(0 if mode is InputMode.PICKER else 1)
+        self._fit_stack()
         if emit:
             self._refresh()
         if changed and emit:
             self.mode_changed.emit(mode)
+
+    def _fit_stack(self) -> None:
+        """Size the stack to the active page only.
+
+        A QStackedWidget otherwise reserves the tallest page's height, so a
+        short manual field would sit above a blank gap the size of a tall
+        picker. Hidden pages get an Ignored policy, which the stacked layout
+        leaves out of its size hint.
+        """
+        current = self._stack.currentIndex()
+        for index in range(self._stack.count()):
+            policy = (
+                QSizePolicy.Policy.Preferred if index == current else QSizePolicy.Policy.Ignored
+            )
+            self._stack.widget(index).setSizePolicy(policy, policy)
+        self._stack.adjustSize()
 
     def _refresh(self, *_args: object) -> None:
         value = self.value()
