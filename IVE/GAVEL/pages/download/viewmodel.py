@@ -745,11 +745,7 @@ class DownloadViewModel(QObject):
                 f"(course {course_id}): {outcome.skipped_reason}"
             )
 
-        print(
-            f"[QUIZ] {len(succeeded)} succeeded, "
-            f"{len(skipped)} skipped, "
-            f"{len(failed)} failed."
-        )
+        print(f"[QUIZ] {len(succeeded)} succeeded, {len(skipped)} skipped, {len(failed)} failed.")
 
         message = f"Quiz reports saved to {output_dir}"
 
