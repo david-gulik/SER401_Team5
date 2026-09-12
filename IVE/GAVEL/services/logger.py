@@ -6,8 +6,10 @@ import logging
 class AppLogger:
     def __init__(self, name: str = "GAVEL", propagate: bool = True) -> None:
         self._logger = logging.getLogger(name)
-        self._logger.propagate = propagate
+
         if not self._logger.handlers:
+            self._logger.propagate = propagate
+
             handler = logging.StreamHandler()
             fmt = logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
             handler.setFormatter(fmt)
