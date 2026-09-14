@@ -34,6 +34,7 @@ from PyQt6.QtWidgets import (
 
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.layout import set_margins, set_spacing
+from GAVEL.ui_components.no_wheel_combo_box import NoWheelComboBox
 
 # Returns an error message for the given (stripped, non-empty) text, or None when valid.
 Validator = Callable[[str], str | None]
@@ -103,7 +104,7 @@ class ComboPicker(PickerWidget):
     ) -> None:
         super().__init__(parent)
 
-        self._combo = QComboBox(self)
+        self._combo = NoWheelComboBox(self)
         self._combo.setPlaceholderText(empty_text)
         self._combo.setEnabled(False)
 
