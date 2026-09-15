@@ -4,7 +4,7 @@ import os
 import sys
 from argparse import Namespace
 
-from GAVEL.app.ports.gradescope_client import GradescopeClient
+from GAVEL.infra.gradescope.http_gradescope_client import http_gradescope_client
 from GAVEL.app_context import AppContext
 
 
@@ -30,7 +30,7 @@ def handle_gradescope_download(ctx: AppContext, args: Namespace) -> int:
         return 2
 
     try:
-        client = GradescopeClient(
+        client = http_gradescope_client(
             course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
         )
 

@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from GAVEL.app.ports.gradescope_client import GradescopeClient
+from GAVEL.infra.gradescope.http_gradescope_client import http_gradescope_client
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ class DownloadGradescopeSubmissionsUseCase:
             request.output_dir.mkdir(parents=True, exist_ok=True)
             submissions_folder = str(request.output_dir)
 
-        client = GradescopeClient(
+        client = http_gradescope_client(
             course_url=f"https://canvas.asu.edu/courses/{request.course_id}",
             headless=request.headless,
             submissions_folder=submissions_folder,
