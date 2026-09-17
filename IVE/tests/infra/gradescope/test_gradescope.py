@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from GAVEL.infra.gradescope.http_gradescope_client import http_gradescope_client, GradescopeSession
+from GAVEL.infra.gradescope.http_gradescope_client import GradescopeSession, http_gradescope_client
 
 # testing extracting Gradescope courseID from URL
 
