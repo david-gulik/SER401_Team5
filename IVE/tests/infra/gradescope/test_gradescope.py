@@ -1,12 +1,12 @@
 from unittest.mock import MagicMock, patch
 
-from GAVEL.app.ports.gradescope_client import GradescopeClient, GradescopeSession
+from GAVEL.infra.gradescope.http_gradescope_client import http_gradescope_client, GradescopeSession
 
 # testing extracting Gradescope courseID from URL
 
 
 def test_extract_gradescope_course_id():
-    client = GradescopeClient("https://canvas.asu.edu/courses/123567")
+    client = http_gradescope_client("https://canvas.asu.edu/courses/123567")
     client._driver = MagicMock()
     client._driver.current_url = "https://www.gradescope.com/courses/987654/assignments"
 
@@ -19,7 +19,7 @@ def test_extract_gradescope_course_id():
 
 
 def test_extract_session():
-    client = GradescopeClient("dummy")
+    client = http_gradescope_client("dummy")
     client._driver = MagicMock()
     client._driver.get_cookies.return_value = [
         {"name": "_gradescope_session", "value": "123456"},
@@ -37,7 +37,7 @@ def test_extract_session():
 
 
 def test_build_requests_session():
-    client = GradescopeClient("dummy")
+    client = http_gradescope_client("dummy")
     gs = GradescopeSession(
         session_cookie="123456",
         token="csrf123",
@@ -79,7 +79,7 @@ def test_download_all_assignments(mock_session_cls, _):
     ]
 
     # instantiate fake session, capture fake cookies
-    client = GradescopeClient("courseID")
+    client = http_gradescope_client("courseID")
 
     client.capture_session = MagicMock(
         return_value=(GradescopeSession("cookie", None, {"_gradescope_session": "cookie"}), "999")
