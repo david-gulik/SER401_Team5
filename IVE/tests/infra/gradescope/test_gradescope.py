@@ -51,8 +51,8 @@ def test_build_requests_session():
     assert "Mozilla" in session.headers["User-Agent"]
 
 
-@patch("GAVEL.app.ports.gradescope_client.time.sleep", return_value=None)
-@patch("GAVEL.app.ports.gradescope_client.requests.Session")
+@patch("GAVEL.infra.gradescope.http_gradescope_client.time.sleep", return_value=None)
+@patch("GAVEL.infra.gradescope.http_gradescope_client.requests.Session")
 def test_download_all_assignments(mock_session_cls, _):
     mock_session = MagicMock()
     mock_session_cls.return_value = mock_session
