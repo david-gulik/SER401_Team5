@@ -4,8 +4,8 @@ import os
 import sys
 from argparse import Namespace
 
-from GAVEL.infra.gradescope.http_gradescope_client import http_gradescope_client
 from GAVEL.app_context import AppContext
+from GAVEL.infra.gradescope.http_gradescope_client import http_gradescope_client
 
 
 def handle_gradescope_download(ctx: AppContext, args: Namespace) -> int:
