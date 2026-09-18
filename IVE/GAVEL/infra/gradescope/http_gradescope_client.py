@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -19,7 +20,7 @@ from GAVEL.services.env_service import SCHEMA_DEFAULTS
 # Logging Setup
 # -------------------------
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("GradescopeClient")
 
 
@@ -120,7 +121,7 @@ class http_gradescope_client:
     def _handle_duo(self, wait: WebDriverWait):
         """
         Clicks:
-          - "No, other people use this device"
+          - "Yes, this is my device"
         """
 
         log.debug("Checking for Duo Prompt...")
@@ -131,7 +132,9 @@ class http_gradescope_client:
                     (By.XPATH, "//*[contains(text(), 'No, other people use this device')]")
                 )
             )
-            log.debug("Clicking 'No, other people use this device'...")
+            log.debug("Clicking 'Yes, this is my device'...")
+            duo_cookies = self._driver.get_cookies()
+            self._save_cookies(duo_cookies, path='duo_cookies.json')
             no_btn.click()
         except TimeoutException:
             log.warning("No trusted device prompt detected.")
@@ -204,6 +207,30 @@ class http_gradescope_client:
         )
 
     # -------------------------
+    # Save Cookies
+    # -------------------------
+
+    def _save_cookies(self, cookies, path='gradescope_session.json'):
+        log.debug("Saving Gradescope cookies...")
+        with open(path, 'w') as f:
+            json.dump(cookies, f)
+
+    # -------------------------
+    # Load Cookies, if they exist
+    # -------------------------
+
+    def _load_cookies(self, path='gradescope_session.json'):
+        log.debug("Attempting to load Gradescope cookies...")
+        try:
+            with open(path, 'r') as f:
+                return json.load(f)
+                log.debug("Gradescope cookies loaded.")
+        except FileNotFoundError:
+            log.debug("Gradescope cookies not found.")
+            return None
+
+
+    # -------------------------
     # Main Flow
     # -------------------------
 
@@ -223,7 +250,8 @@ class http_gradescope_client:
                 self._handle_cas_login(wait, username, password)
 
             wait.until(ec.presence_of_element_located((By.ID, "section-tabs")))
-
+            canvas_cookies = self._driver.get_cookies()
+            self._save_cookies(canvas_cookies, path='canvas_session.json')
             # Click Gradescope
             self._open_gradescope_from_course_nav(wait)
 
@@ -235,6 +263,7 @@ class http_gradescope_client:
 
             gs_course_id = self._extract_gradescope_course_id()
             log.debug("Detected Gradescope course ID: %s", gs_course_id)
+            # self._save_cookies(self._driver.get_cookies())
 
             return self._extract_session(), gs_course_id
 
@@ -293,11 +322,46 @@ class http_gradescope_client:
 
         return session
 
+    ## TODO: Navigate through Canvas to get Course ID without logging in via Duo!
+    #
+    # def _build_requests_session_from_cookies(
+    #     self, cookies
+    # ) -> requests.Session:
+    #     log.debug("Building requests session from extant cookies...")
+    #     session = requests.Session()
+    #
+    #     # Copy all cookies from Selenium
+    #     for name, value in cookies.items():
+    #         session.cookies.set(name, value, domain=self.GRADESCOPE_DOMAIN)
+    #
+    #     # Browser-like headers
+    #     session.headers.update(
+    #         {
+    #             "User-Agent": (
+    #                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    #                 "AppleWebKit/537.36 (KHTML, like Gecko) "
+    #                 "Chrome/122.0.0.0 Safari/537.36"
+    #             ),
+    #             "Referer": f"{self.base_url}{self.courses_suffix}/{course_id}",
+    #         }
+    #     )
+    #
+    #     # CSRF token if present
+    #     if cookies.token:
+    #         session.headers["X-CSRF-Token"] = cookies.token
+    #
+    #     return session
+
     def download_all_assignments(self, username: str, password: str):
         """
         Logs in, captures session, and downloads all assignment bulk exports.
         """
         log.info("Downloading all assignments...")
+        #
+        # extant_cookies = self._load_cookies()
+        # if extant_cookies:
+        #     session = self._build_requests_session_from_cookies(extant_cookies)
+        # else:
         gs_session, gs_course_id = self.capture_session(username, password)
         session = self._build_requests_session(gs_session, course_id=gs_course_id)
 
