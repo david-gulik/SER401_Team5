@@ -32,12 +32,80 @@ from GAVEL.app.usecases.download_gradescope_submissions import (
 )
 from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentRequest,
+    DownloadRubricAssessmentResult,
     DownloadRubricAssessmentUseCase,
 )
 from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
 from GAVEL.pages.download.sorting import course_sort_key
 from GAVEL.services.logger import AppLogger
+
+
+def course_id_error(text: str) -> str | None:
+    """Validation message for a Canvas course ID typed by hand, or None when usable.
+
+    Shared by the Download tab's manual course field (inline feedback) and by
+    the view model's final check before any download starts.
+    """
+    return None if text.isdigit() else "Course IDs are numbers only, like 213877."
+
+
+def class_number_error(text: str) -> str | None:
+    """Validation message for a myASU class number typed by hand, or None when usable."""
+    return None if text.isdigit() else "Class numbers are numbers only, like 12345."
+
+
+def quiz_id_error(text: str) -> str | None:
+    """Validation message for a Canvas quiz ID typed by hand, or None when usable."""
+    return None if text.isdigit() else "Quiz IDs are numbers only, like 1234567."
+
+
+ASSIGNMENT_ID_SEPARATOR = ","
+
+
+def assignment_ids_error(text: str) -> str | None:
+    """Validation message for one or more comma-separated Canvas assignment IDs.
+
+    Shared by the Download tab's manual assignment field (inline feedback)
+    and by the view model's final check before a rubric download starts.
+    """
+    parts = [p.strip() for p in text.split(ASSIGNMENT_ID_SEPARATOR)]
+    if any(not p for p in parts):
+        return "Separate assignment IDs with commas, like 7216983, 7216990."
+    if not all(p.isdigit() for p in parts):
+        return "Assignment IDs are numbers only, like 7216983. Separate several with commas."
+    return None
+
+
+def parse_assignment_ids(text: str) -> list[int]:
+    """Comma-separated assignment IDs as ints, first occurrence wins on duplicates.
+
+    Callers validate with ``assignment_ids_error`` first; this only splits.
+    """
+    seen: dict[int, None] = {}
+    for part in text.split(ASSIGNMENT_ID_SEPARATOR):
+        part = part.strip()
+        if part:
+            seen.setdefault(int(part), None)
+    return list(seen)
+
+
+def term_code_error(text: str) -> str | None:
+    """Validation message for a myASU term code typed by hand, or None when usable.
+
+    Term codes are 2[YY][T]: a literal 2, the two-digit year, then the
+    semester digit (1 Spring, 4 Summer, 7 Fall, 9 Winter). 2267 is Fall 2026.
+    """
+    if len(text) == 4 and text.isdigit() and text[0] == "2" and text[3] in "1479":
+        return None
+    return (
+        "Term codes look like 2267: a 2, the two-digit year, then 1, 4, 7, or 9 for the semester."
+    )
+
+
+_ROSTER_NOT_CONFIGURED = (
+    "Roster not configured. Set ROSTER_AUTH_METHOD in .env to enable myASU downloads."
+)
 
 
 @dataclass(frozen=True)
@@ -47,12 +115,11 @@ class DownloadUiState:
     subject: str = ""
     catalog_number: str = ""
     class_number: str = ""
-    assignment_id: str = ""
+    assignment_ids: str = ""
     courses: Sequence[CanvasCourse] = ()
     quizzes: Sequence[CanvasQuiz] = ()
     assignments: Sequence[CanvasAssignment] = ()
     sections: Sequence[ClassSection] = ()
-    selected_section_idx: int = -1
     selected_course_id: str = ""
     selected_consent_quiz_id: str = ""
     is_busy: bool = False
@@ -60,12 +127,11 @@ class DownloadUiState:
     message: str = "Enter search criteria or a class number."
     last_saved_path: str | None = None
     output_dir: str = ""
+    roster_configured: bool = True
 
     @property
     def can_download_roster(self) -> bool:
-        has_term = bool(self.selected_term)
-        has_section = self.selected_section_idx >= 0 or bool(self.class_number)
-        return has_term and has_section
+        return self.roster_configured and bool(self.selected_term) and bool(self.class_number)
 
     @property
     def can_download_gradebook(self) -> bool:
@@ -81,7 +147,7 @@ class DownloadUiState:
 
     @property
     def can_download_rubric(self) -> bool:
-        return bool(self.selected_course_id) and bool(self.assignment_id.strip())
+        return bool(self.selected_course_id) and bool(self.assignment_ids.strip())
 
     @property
     def can_download_all_rubric_assessments(self) -> bool:
@@ -177,6 +243,7 @@ class DownloadViewModel(QObject):
             status=initial_status,
             message=initial_msg,
             output_dir=str(default_output_dir),
+            roster_configured=roster_configured,
         )
 
     def get_state(self) -> DownloadUiState:
@@ -211,12 +278,6 @@ class DownloadViewModel(QObject):
         self._state = replace(self._state, class_number=text)
         self.state_changed.emit(self._state)
 
-    def set_selected_section(self, index: int) -> None:
-        if index == self._state.selected_section_idx:
-            return
-        self._state = replace(self._state, selected_section_idx=index)
-        self.state_changed.emit(self._state)
-
     def set_course_id(self, value: str) -> None:
         text = value.strip()
         if text == self._state.selected_course_id:
@@ -227,7 +288,7 @@ class DownloadViewModel(QObject):
             quizzes=(),
             selected_consent_quiz_id="",
             assignments=(),
-            assignment_id="",
+            assignment_ids="",
         )
         self.state_changed.emit(self._state)
         self._logger.info(f"Selected course ID set to {text}")
@@ -240,12 +301,14 @@ class DownloadViewModel(QObject):
         self.state_changed.emit(self._state)
         self._logger.info(f"Selected consent quiz ID set to {text}")
 
-    def set_assignment_id(self, value: str) -> None:
+    def set_assignment_ids(self, value: str) -> None:
+        """Store the comma-separated assignment IDs the rubric download reads."""
         text = value.strip()
-        if text == self._state.assignment_id:
+        if text == self._state.assignment_ids:
             return
-        self._state = replace(self._state, assignment_id=text)
+        self._state = replace(self._state, assignment_ids=text)
         self.state_changed.emit(self._state)
+        self._logger.info(f"Selected assignment IDs set to {text}")
 
     def set_output_dir(self, value: str) -> None:
         text = value.strip()
@@ -281,7 +344,10 @@ class DownloadViewModel(QObject):
     # Actions
 
     def load_terms(self) -> None:
-        if self._state.is_busy or not self._roster_configured:
+        if self._state.is_busy:
+            return
+        if not self._roster_configured:
+            self._emit_error(_ROSTER_NOT_CONFIGURED)
             return
         self._set_busy("Loading terms...")
         self._run_async(
@@ -312,17 +378,19 @@ class DownloadViewModel(QObject):
         self._set_idle(Status.CRITICAL, str(exc))
 
     def find_sections(self) -> None:
-        if self._state.is_busy or not self._roster_configured:
+        if self._state.is_busy:
             return
-        if not self._state.selected_term:
-            self._emit_error("Select a term first.")
+        if not self._roster_configured:
+            self._emit_error(_ROSTER_NOT_CONFIGURED)
+            return
+        term = self._resolved_term()
+        if term is None:
             return
         if not self._state.subject or not self._state.catalog_number:
             self._emit_error("Subject and catalog number are required.")
             return
 
         self._set_busy("Searching sections...")
-        term = self._state.selected_term
         subject = self._state.subject
         catalog = self._state.catalog_number
         self._run_async(
@@ -340,7 +408,6 @@ class DownloadViewModel(QObject):
         self._state = replace(
             self._state,
             sections=sorted_sections,
-            selected_section_idx=0,
             is_busy=False,
             status=Status.NOMINAL,
             message=f"Found {len(sorted_sections)} section(s).",
@@ -353,25 +420,20 @@ class DownloadViewModel(QObject):
         self.event_raised.emit(ShowError(str(exc)))
 
     def download_roster(self) -> None:
-        if self._state.is_busy or not self._roster_configured:
+        if self._state.is_busy:
             return
-
-        class_number = self._state.class_number.strip()
-        if not class_number and self._state.sections and self._state.selected_section_idx >= 0:
-            class_number = self._state.sections[self._state.selected_section_idx].class_number
-
-        if not class_number:
-            self._emit_error("Provide a class number directly, or search for sections first.")
+        if not self._roster_configured:
+            self._emit_error(_ROSTER_NOT_CONFIGURED)
             return
-        if not self._state.selected_term:
-            self._emit_error("Select a term first.")
+        term = self._resolved_term()
+        if term is None:
+            return
+        class_number = self._resolved_class_number()
+        if class_number is None:
             return
 
         self._set_busy("Authenticating and downloading roster...")
-        request = RosterRequest(
-            term=self._state.selected_term,
-            class_number=class_number,
-        )
+        request = RosterRequest(term=term, class_number=class_number)
         out_path = self._resolve_output_dir() / f"roster_{request.term}_{class_number}.csv"
 
         def work() -> Path:
@@ -476,14 +538,8 @@ class DownloadViewModel(QObject):
     def download_gradebook(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
-            return
-        try:
-            course_id = int(course_id_str)
-        except ValueError:
-            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
 
         self._set_busy(f"Downloading gradebook for course {course_id}...")
@@ -510,14 +566,8 @@ class DownloadViewModel(QObject):
     def download_gradescope_submissions(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
-            return
-        try:
-            course_id = int(course_id_str)
-        except ValueError:
-            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
 
         self._set_busy(f"Downloading Gradescope submissions for course {course_id}...")
@@ -546,19 +596,11 @@ class DownloadViewModel(QObject):
     def download_consent(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        quiz_id_str = self._state.selected_consent_quiz_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
-        if not quiz_id_str:
-            self._emit_error("Select a consent quiz first.")
-            return
-        try:
-            course_id = int(course_id_str)
-            quiz_id = int(quiz_id_str)
-        except ValueError:
-            self._emit_error("Invalid course or quiz ID.")
+        quiz_id = self._resolved_quiz_id()
+        if quiz_id is None:
             return
 
         self._set_busy(f"Downloading consent form for course {course_id}...")
@@ -587,28 +629,66 @@ class DownloadViewModel(QObject):
     def download_rubric_assessment(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        assignment_id_str = self._state.assignment_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
-        if not assignment_id_str:
-            self._emit_error("Enter an assignment ID first.")
-            return
-        try:
-            course_id = int(course_id_str)
-            assignment_id = int(assignment_id_str)
-        except ValueError:
-            self._emit_error("Course ID and Assignment ID must be numeric.")
+        assignment_ids = self._resolved_assignment_ids()
+        if assignment_ids is None:
             return
 
-        selected = next((a for a in self._state.assignments if a.id == assignment_id), None)
-        if selected is not None and not selected.has_rubric:
+        ids_text = ", ".join(str(a) for a in assignment_ids)
+        self._set_busy(
+            f"Downloading rubric assessment(s) for course {course_id}, assignment(s) {ids_text}..."
+        )
+        # Each assignment is attempted on its own so one bad ID does not
+        # block the rest, mirroring the Download All batch.
+        use_case = DownloadRubricAssessmentUseCase(self._canvas_client)
+        output_dir = self._resolve_output_dir()
+        # Only assignments loaded from Canvas carry has_rubric; a typed ID that
+        # was never loaded is attempted and left to fail on its own.
+        known = {a.id: a for a in self._state.assignments}
+        saved: list[DownloadRubricAssessmentResult] = []
+        skipped: list[str] = []
+        failed: list[str] = []
+        for assignment_id in assignment_ids:
+            assignment = known.get(assignment_id)
+            if assignment is not None and not assignment.has_rubric:
+                self._logger.warning(
+                    f"Skipped rubric download for '{assignment.name}' "
+                    f"(course {course_id}): no rubric attached."
+                )
+                skipped.append(f"'{assignment.name}' has no rubric attached")
+                continue
+            try:
+                result = use_case.execute(
+                    DownloadRubricAssessmentRequest(
+                        course_id=course_id,
+                        assignment_id=assignment_id,
+                        output_dir=output_dir,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001
+                self._logger.error(
+                    f"Rubric assessment download failed for assignment {assignment_id}: {exc}"
+                )
+                failed.append(f"{assignment_id}: {exc}")
+                continue
+            saved.append(result)
+
+        if not saved and failed:
+            message = "; ".join(failed)
+            if skipped:
+                message += ". Skipped: " + "; ".join(skipped)
+            self._set_idle(Status.CRITICAL, message)
+            self.event_raised.emit(ShowError(message))
+            return
+
+        if not saved:
+            # Everything was skipped: nothing fetched, nothing written.
             message = (
-                f"Skipped: '{selected.name}' has no rubric attached. "
-                "No rubric-level data will be produced for this assignment."
+                "Skipped: " + "; ".join(skipped) + ". "
+                "No rubric-level data will be produced for these assignments."
             )
-            self._logger.warning(message)
             self._state = replace(
                 self._state, is_busy=False, status=Status.WARNING, message=message
             )
@@ -616,44 +696,37 @@ class DownloadViewModel(QObject):
             self.event_raised.emit(ShowInfo(message))
             return
 
-        self._set_busy(
-            f"Downloading rubric assessment for course {course_id}, assignment {assignment_id}..."
-        )
-        try:
-            result = DownloadRubricAssessmentUseCase(self._canvas_client).execute(
-                DownloadRubricAssessmentRequest(
-                    course_id=course_id,
-                    assignment_id=assignment_id,
-                    output_dir=self._resolve_output_dir(),
-                )
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._logger.error(f"Rubric assessment download failed: {exc}")
-            self._set_idle(Status.CRITICAL, str(exc))
-            self.event_raised.emit(ShowError(str(exc)))
-            return
+        if len(saved) == 1 and not failed and not skipped:
+            message = saved[0].message
+        else:
+            counts = [f"{len(saved)} saved"]
+            if skipped:
+                counts.append(f"{len(skipped)} skipped")
+            counts.append(f"{len(failed)} failed")
+            message = f"Rubric assessments for course {course_id}: " + ", ".join(counts) + "."
+            if skipped:
+                message += " Skipped: " + "; ".join(skipped) + "."
+            if failed:
+                message += " Failed: " + "; ".join(failed)
 
         self._state = replace(
             self._state,
             is_busy=False,
-            status=Status.NOMINAL,
-            message=result.message,
-            last_saved_path=str(result.saved_path),
+            status=Status.WARNING if (failed or skipped) else Status.NOMINAL,
+            message=message,
+            last_saved_path=str(saved[-1].saved_path),
         )
         self.state_changed.emit(self._state)
-        self.event_raised.emit(ShowInfo(result.message))
+        if failed:
+            self.event_raised.emit(ShowError(message))
+        else:
+            self.event_raised.emit(ShowInfo(message))
 
     def download_all_rubric_assessments(self) -> None:
         if self._state.is_busy:
             return
-        course_id_str = self._state.selected_course_id.strip()
-        if not course_id_str:
-            self._emit_error("Select a course first.")
-            return
-        try:
-            course_id = int(course_id_str)
-        except ValueError:
-            self._emit_error(f"Invalid course ID: {course_id_str!r}")
+        course_id = self._resolved_course_id()
+        if course_id is None:
             return
 
         self._set_busy(f"Downloading all rubric assessments for course {course_id}...")
@@ -786,19 +859,18 @@ class DownloadViewModel(QObject):
             )
             return
 
-        term = self._state.selected_term
-        class_number = self._state.class_number.strip()
-        if not class_number and self._state.sections and self._state.selected_section_idx >= 0:
-            class_number = self._state.sections[self._state.selected_section_idx].class_number
-        if not class_number:
-            self._emit_error("Provide a class number directly, or search for sections first.")
+        term = self._resolved_term()
+        if term is None:
+            return
+        class_number = self._resolved_class_number()
+        if class_number is None:
             return
 
-        try:
-            course_id = int(self._state.selected_course_id.strip())
-            consent_quiz_id = int(self._state.selected_consent_quiz_id.strip())
-        except ValueError:
-            self._emit_error("Invalid course or consent quiz ID.")
+        course_id = self._resolved_course_id()
+        if course_id is None:
+            return
+        consent_quiz_id = self._resolved_quiz_id()
+        if consent_quiz_id is None:
             return
 
         self._set_busy("Downloading all data...")
@@ -940,3 +1012,78 @@ class DownloadViewModel(QObject):
     def _emit_error(self, message: str) -> None:
         self._set_idle(Status.CRITICAL, message)
         self.event_raised.emit(ShowError(message))
+
+    def _resolved_course_id(self) -> int | None:
+        """The one course id every Canvas download reads.
+
+        The Download tab feeds ``set_course_id`` from a single InputModeToggle,
+        so the stored value is normally already validated. This is the last
+        line of defence: it reports a clear error and returns None rather than
+        letting a download start with nothing usable.
+        """
+        text = self._state.selected_course_id.strip()
+        if not text:
+            self._emit_error("Select a course first.")
+            return None
+        error = course_id_error(text)
+        if error:
+            self._emit_error(f"Invalid course ID {text!r}. {error}")
+            return None
+        return int(text)
+
+    def _resolved_class_number(self) -> str | None:
+        """The one class number the roster download and Download All read.
+
+        Fed by the Download tab's Section InputModeToggle, which already
+        resolves "searched section" versus "typed class number" to a single
+        value, so there is nothing to fall back to here.
+        """
+        text = self._state.class_number.strip()
+        if not text:
+            self._emit_error("Search for a section or enter a class number first.")
+            return None
+        error = class_number_error(text)
+        if error:
+            self._emit_error(f"Invalid class number {text!r}. {error}")
+            return None
+        return text
+
+    def _resolved_quiz_id(self) -> int | None:
+        """The one consent quiz id the consent download and Download All read."""
+        text = self._state.selected_consent_quiz_id.strip()
+        if not text:
+            self._emit_error("Select a consent quiz first.")
+            return None
+        error = quiz_id_error(text)
+        if error:
+            self._emit_error(f"Invalid consent quiz ID {text!r}. {error}")
+            return None
+        return int(text)
+
+    def _resolved_assignment_ids(self) -> list[int] | None:
+        """The assignment ids the rubric download reads, in the order given.
+
+        Fed by the Download tab's Rubric Assessment InputModeToggle, which
+        already joins checked assignments or typed IDs into one string.
+        """
+        text = self._state.assignment_ids.strip()
+        if not text:
+            self._emit_error("Select or enter at least one assignment first.")
+            return None
+        error = assignment_ids_error(text)
+        if error:
+            self._emit_error(f"Invalid assignment IDs {text!r}. {error}")
+            return None
+        return parse_assignment_ids(text)
+
+    def _resolved_term(self) -> str | None:
+        """The one term code the section search, roster download, and Download All read."""
+        text = self._state.selected_term.strip()
+        if not text:
+            self._emit_error("Select a term first.")
+            return None
+        error = term_code_error(text)
+        if error:
+            self._emit_error(f"Invalid term code {text!r}. {error}")
+            return None
+        return text

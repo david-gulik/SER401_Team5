@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QFormLayout,
-    QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -20,18 +18,60 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQuiz
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.download.section_picker import SectionSearchPicker
 from GAVEL.pages.download.viewmodel import (
     DownloadUiState,
     DownloadViewModel,
     ShowError,
     ShowInfo,
+    assignment_ids_error,
+    class_number_error,
+    course_id_error,
+    quiz_id_error,
+    term_code_error,
 )
 from GAVEL.theme.context import ThemeContext
+from GAVEL.ui_components.input_mode_toggle import (
+    CheckListPicker,
+    ComboPicker,
+    InputMode,
+    InputModeToggle,
+)
 from GAVEL.ui_components.layout import set_h_margins, set_spacing
 from GAVEL.ui_components.section_card import SectionCard
 from GAVEL.ui_components.status_pill import StatusPill
 from GAVEL.ui_components.sub_panel import SubPanel
+
+
+def _likely_consent_quiz(quizzes: Sequence[CanvasQuiz]) -> str:
+    """Id of the first quiz whose name mentions consent, or "" if none does."""
+    return next((str(q.id) for q in quizzes if "consent" in q.name.lower()), "")
+
+
+def _quiz_label(quiz: CanvasQuiz) -> str:
+    """Dropdown text: name and the Canvas quiz ID so it can be matched to a URL."""
+    return f"{quiz.name}  ({quiz.id})"
+
+
+_NO_RUBRIC_TIP = "No rubric attached — no rubric-level data will be produced for this assignment."
+
+
+def _assignment_label(assignment: CanvasAssignment) -> str:
+    """Check box text: name and the Canvas assignment ID so it can be matched to a URL.
+
+    Assignments with no rubric attached are flagged so they can be seen before
+    downloading; the view model skips them rather than fetching empty data.
+    """
+    name = assignment.name if assignment.has_rubric else f"⚠ {assignment.name}"
+    return f"{name}  ({assignment.id})"
+
+
+def _course_label(course: CanvasCourse) -> str:
+    """Dropdown text: code, name, and the Canvas ID so it can be matched to a URL."""
+    head = f"{course.course_code}  {course.name}" if course.course_code else course.name
+    return f"{head}  ({course.id})"
 
 
 class DownloadTab(ScrollableTab):
@@ -39,6 +79,8 @@ class DownloadTab(ScrollableTab):
         super().__init__(theme)
         self._theme = theme
         self._vm = vm
+        self._rendering = False
+        self._render_pending = False
 
         self._build_widgets()
         self._connect_signals()
@@ -59,6 +101,31 @@ class DownloadTab(ScrollableTab):
 
         if self._vm.get_state().canvas_token_available:
             QTimer.singleShot(0, self._vm.load_courses)
+
+    @property
+    def course_input(self) -> InputModeToggle:
+        """The single Canvas course input (picker or manual). Exposed for tests."""
+        return self._course_input
+
+    @property
+    def section_input(self) -> InputModeToggle:
+        """The single myASU section input (search or class number). Exposed for tests."""
+        return self._section_input
+
+    @property
+    def term_input(self) -> InputModeToggle:
+        """The single myASU term input (list or code). Exposed for tests."""
+        return self._term_input
+
+    @property
+    def quiz_input(self) -> InputModeToggle:
+        """The single consent quiz input (list or ID). Exposed for tests."""
+        return self._quiz_input
+
+    @property
+    def assignment_input(self) -> InputModeToggle:
+        """The single rubric assignment input (check list or IDs). Exposed for tests."""
+        return self._assignment_input
 
     # ---------- Widget construction ----------
 
@@ -84,27 +151,46 @@ class DownloadTab(ScrollableTab):
         self._output_path_hint.setProperty("role", "text_muted")
         self._output_path_hint.setWordWrap(True)
 
-        # myASU - Step 1: Select Term
-        self._term_combo = QComboBox()
-        self._load_terms_btn = QPushButton("Load Terms")
-        self._term_code_override = QLineEdit()
-        self._term_code_override.setPlaceholderText("e.g. 2267 (Format: 2[YY][T])")
-        self._term_code_hint = QLabel(
-            "Format: 2[YY][T] where T = 1:Spring, 4:Summer, 7:Fall, 9:Winter"
+        # myASU - Step 1: one input, term list or term code, never both
+        self._term_picker = ComboPicker(
+            self._theme, load_text="Load Terms", empty_text="No terms loaded"
         )
-        self._term_code_hint.setProperty("role", "text_muted")
-        self._term_code_hint.setWordWrap(True)
+        self._term_input = InputModeToggle(
+            self._theme,
+            "Step 1: Select Term",
+            picker=self._term_picker,
+            manual_field_label="Term code",
+            picker_label="Choose from list",
+            manual_label="Enter code",
+            picker_hint="Press Load Terms to fetch the term list from myASU.",
+            manual_hint="Format 2[YY][T]. T is 1 Spring, 4 Summer, 7 Fall, 9 Winter.",
+            manual_placeholder="e.g. 2267",
+            validator=term_code_error,
+        )
 
-        # myASU - Step 2: Identify Class
-        self._subject = QLineEdit()
-        self._subject.setPlaceholderText("e.g. SER")
-        self._catalog_number = QLineEdit()
-        self._catalog_number.setPlaceholderText("e.g. 401")
-        self._find_sections_btn = QPushButton("Find Sections")
-        self._section_combo = QComboBox()
-        self._section_combo.setEnabled(False)
-        self._class_number = QLineEdit()
-        self._class_number.setPlaceholderText("Enter section number directly")
+        # myASU - warning banner
+        self._roster_warning = QLabel(
+            "Warning: ROSTER_AUTH_METHOD not set in .env file. "
+            "Set it to 'selenium' or 'cookies' to use myASU roster features."
+        )
+        self._roster_warning.setProperty("role", "warning")
+        self._roster_warning.setWordWrap(True)
+        self._roster_warning.hide()
+
+        # myASU - Step 2: one input, section search or class number, never both
+        self._section_picker = SectionSearchPicker(self._theme)
+        self._section_input = InputModeToggle(
+            self._theme,
+            "Step 2: Identify Class",
+            picker=self._section_picker,
+            manual_field_label="Class number",
+            picker_label="Search by class",
+            manual_label="Enter class number",
+            picker_hint="Pick a term in Step 1, then search by subject and catalog number.",
+            manual_hint="The 5-digit class number from ASU class search.",
+            manual_placeholder="e.g. 12345",
+            validator=class_number_error,
+        )
 
         # myASU - Download
         self._download_roster_btn = QPushButton("Download Roster")
@@ -123,21 +209,44 @@ class DownloadTab(ScrollableTab):
         self._canvas_recheck_btn = QPushButton("Recheck")
         self._canvas_recheck_btn.hide()
 
-        # Canvas - course selection
-        self._load_courses_btn = QPushButton("Reload Courses")
-        self._course_combo = QComboBox()
-        self._course_combo.setEnabled(False)
-        self._course_id_override = QLineEdit()
-        self._course_id_override.setPlaceholderText("Enter course ID directly")
+        # Canvas - course selection: one input, picker or manual, never both
+        self._course_picker = ComboPicker(
+            self._theme, load_text="Reload Courses", empty_text="No courses loaded"
+        )
+        self._course_input = InputModeToggle(
+            self._theme,
+            "Course",
+            picker=self._course_picker,
+            manual_field_label="Course ID",
+            picker_label="Choose from list",
+            manual_label="Enter ID",
+            picker_hint="Courses load from Canvas when this page opens.",
+            manual_hint="Press Enter after typing the ID to load its quizzes and assignments.",
+            manual_placeholder="e.g. 213877",
+            validator=course_id_error,
+        )
 
         # Canvas - gradebook
         self._download_gradebook_btn = QPushButton("Download Gradebook")
         self._download_gradebook_btn.setToolTip("Requires a valid course to be selected above.")
         self._download_gradebook_btn.setProperty("role", "primary")
 
-        # Canvas - consent form
-        self._consent_quiz_combo = QComboBox()
-        self._consent_quiz_combo.setEnabled(False)
+        # Canvas - consent form: one quiz input, list or ID
+        self._quiz_picker = ComboPicker(
+            self._theme, load_text="Reload Quizzes", empty_text="No quizzes loaded"
+        )
+        self._quiz_input = InputModeToggle(
+            self._theme,
+            "Consent Form",
+            picker=self._quiz_picker,
+            manual_field_label="Quiz ID",
+            picker_label="Choose from list",
+            manual_label="Enter ID",
+            picker_hint="Quizzes load for the selected course. The consent quiz is preselected "
+            "when its name says so.",
+            manual_placeholder="e.g. 1234567",
+            validator=quiz_id_error,
+        )
         self._download_consent_btn = QPushButton("Download Consent Form")
         self._download_consent_btn.setToolTip(
             "Requires a valid course and consent quiz to be selected above."
@@ -151,13 +260,27 @@ class DownloadTab(ScrollableTab):
             "Downloads student analysis reports for every quiz in the selected course."
         )
 
-        # Canvas - Rubric Assessment
-        self._assignment_combo = QComboBox()
-        self._assignment_combo.setEnabled(False)
+        # Canvas - Rubric Assessment: one assignment input, check list or comma-separated IDs
+        self._assignment_picker = CheckListPicker(
+            self._theme, load_text="Reload Assignments", empty_text="No assignments loaded"
+        )
+        self._assignment_input = InputModeToggle(
+            self._theme,
+            "Rubric Assessment",
+            picker=self._assignment_picker,
+            manual_field_label="Assignment IDs",
+            picker_label="Choose from list",
+            manual_label="Enter IDs",
+            picker_hint="Assignments load for the selected course. Check every assignment "
+            "whose rubric you want.",
+            manual_hint="Separate multiple assignment IDs with commas.",
+            manual_placeholder="e.g. 7216983, 7216990",
+            validator=assignment_ids_error,
+        )
         self._download_rubric_btn = QPushButton("Download Rubric Assessment")
         self._download_rubric_btn.setProperty("role", "primary")
         self._download_rubric_btn.setToolTip(
-            "Requires a valid course and assignment to be selected above."
+            "Requires a valid course and at least one assignment to be selected above."
         )
         self._download_all_rubric_btn = QPushButton("Download All Rubric Assessments")
         self._download_all_rubric_btn.setProperty("role", "secondary")
@@ -194,20 +317,26 @@ class DownloadTab(ScrollableTab):
 
     def _connect_signals(self) -> None:
         # Wired to existing view model behavior
-        self._load_terms_btn.clicked.connect(self._vm.load_terms)
-        self._term_combo.currentTextChanged.connect(self._on_term_changed)
-        self._term_code_override.textChanged.connect(self._vm.set_term)
-        self._subject.textChanged.connect(self._vm.set_subject)
-        self._catalog_number.textChanged.connect(self._vm.set_catalog_number)
-        self._find_sections_btn.clicked.connect(self._vm.find_sections)
-        self._section_combo.currentIndexChanged.connect(self._vm.set_selected_section)
-        self._class_number.textChanged.connect(self._vm.set_class_number)
+        self._term_picker.load_requested.connect(self._vm.load_terms)
+        # Single writer of the term, whichever mode produced it.
+        self._term_input.value_changed.connect(self._vm.set_term)
+        self._section_picker.subject_field.textChanged.connect(self._vm.set_subject)
+        self._section_picker.catalog_field.textChanged.connect(self._vm.set_catalog_number)
+        self._section_picker.load_requested.connect(self._vm.find_sections)
+        # Single writer of the class number, whichever mode produced it.
+        self._section_input.value_changed.connect(self._vm.set_class_number)
         self._download_roster_btn.clicked.connect(self._vm.download_roster)
 
-        self._course_combo.currentIndexChanged.connect(self._on_course_changed)
-        self._course_id_override.textChanged.connect(self._vm.set_course_id)
-        self._consent_quiz_combo.currentIndexChanged.connect(self._on_consent_quiz_changed)
-        self._assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
+        self._course_input.value_changed.connect(self._on_course_changed)
+        self._course_input.mode_changed.connect(self._on_course_mode_changed)
+        self._course_input.manual_field().editingFinished.connect(self._on_course_id_committed)
+        self._course_picker.load_requested.connect(self._vm.load_courses)
+        # Single writer of the consent quiz id, whichever mode produced it.
+        self._quiz_input.value_changed.connect(self._vm.set_consent_quiz_id)
+        self._quiz_picker.load_requested.connect(self._on_reload_quizzes)
+        # Single writer of the assignment ids, whichever mode produced them.
+        self._assignment_input.value_changed.connect(self._vm.set_assignment_ids)
+        self._assignment_picker.load_requested.connect(self._on_reload_assignments)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
         self._download_all_rubric_btn.clicked.connect(self._vm.download_all_rubric_assessments)
         self._download_all_quizzes_btn.clicked.connect(self._vm.download_all_quizzes)
@@ -224,7 +353,6 @@ class DownloadTab(ScrollableTab):
 
         self._canvas_recheck_btn.clicked.connect(self._vm.recheck)
         self._gradescope_credentials_recheck_btn.clicked.connect(self._vm.recheck)
-        self._load_courses_btn.clicked.connect(self._vm.load_courses)
         self._vm.state_changed.connect(self.render)
         self._vm.event_raised.connect(self._handle_event)
 
@@ -251,66 +379,13 @@ class DownloadTab(ScrollableTab):
 
     def _build_myasu_card(self) -> QWidget:
         card = SectionCard(self._theme, "myASU Class Roster")
+        card.add_row(self._roster_warning)
 
         # Step 1: Select Term
-        step1 = SubPanel(self._theme, "Step 1: Select Term")
-        step1.add_widget(self._option_label("Option A: Select from Term List"))
-
-        host_a = QWidget()
-        form_a = QFormLayout(host_a)
-        form_a.setContentsMargins(0, 0, 0, 0)
-        set_spacing(form_a, self._theme, 8)
-        form_a.addRow("Term", self._term_combo)
-        form_a.addRow("", self._load_terms_btn)
-        step1.add_widget(host_a)
-
-        step1.add_widget(self._or_divider())
-
-        step1.add_widget(self._option_label("Option B: Enter Term Code Directly"))
-        host_b = QWidget()
-        form_b = QFormLayout(host_b)
-        form_b.setContentsMargins(0, 0, 0, 0)
-        set_spacing(form_b, self._theme, 8)
-        form_b.addRow("Term Code", self._term_code_override)
-        step1.add_widget(host_b)
-        step1.add_widget(self._term_code_hint)
-
-        card.add_row(step1)
+        card.add_row(self._term_input)
 
         # Step 2: Identify Class
-        step2 = SubPanel(self._theme, "Step 2: Identify Class")
-        step2.add_widget(self._option_label("Option A: Search by Subject and Catalog Number"))
-
-        grid_host = QWidget()
-        grid = QGridLayout(grid_host)
-        grid.setContentsMargins(0, 0, 0, 0)
-        set_spacing(grid, self._theme, 8)
-        grid.addWidget(QLabel("Subject"), 0, 0)
-        grid.addWidget(QLabel("Catalog #"), 0, 1)
-        grid.addWidget(self._subject, 1, 0)
-        grid.addWidget(self._catalog_number, 1, 1)
-        step2.add_widget(grid_host)
-
-        step2.add_widget(self._find_sections_btn)
-
-        section_host = QWidget()
-        section_form = QFormLayout(section_host)
-        section_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(section_form, self._theme, 8)
-        section_form.addRow("Section", self._section_combo)
-        step2.add_widget(section_host)
-
-        step2.add_widget(self._or_divider())
-
-        step2.add_widget(self._option_label("Option B: Enter Section Number Directly"))
-        direct_host = QWidget()
-        direct_form = QFormLayout(direct_host)
-        direct_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(direct_form, self._theme, 8)
-        direct_form.addRow("Section Number", self._class_number)
-        step2.add_widget(direct_host)
-
-        card.add_row(step2)
+        card.add_row(self._section_input)
 
         card.add_row(self._download_roster_btn)
         return card
@@ -327,28 +402,7 @@ class DownloadTab(ScrollableTab):
         card.add_row(warning_row)
 
         # Course Selection
-        course_panel = SubPanel(self._theme, "Course Selection")
-        course_panel.add_widget(self._option_label("Option 1: Select from Course List"))
-
-        course_host = QWidget()
-        course_form = QFormLayout(course_host)
-        course_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(course_form, self._theme, 8)
-        course_form.addRow("Course", self._course_combo)
-        course_panel.add_widget(course_host)
-        course_panel.add_widget(self._load_courses_btn)
-
-        course_panel.add_widget(self._or_divider())
-
-        course_panel.add_widget(self._option_label("Option 2: Enter Course ID Directly"))
-        course_id_host = QWidget()
-        course_id_form = QFormLayout(course_id_host)
-        course_id_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(course_id_form, self._theme, 8)
-        course_id_form.addRow("Course ID", self._course_id_override)
-        course_panel.add_widget(course_id_host)
-
-        card.add_row(course_panel)
+        card.add_row(self._course_input)
 
         # Gradebook
         gradebook_panel = SubPanel(self._theme, "Gradebook")
@@ -356,15 +410,8 @@ class DownloadTab(ScrollableTab):
         card.add_row(gradebook_panel)
 
         # Consent Form
-        consent_panel = SubPanel(self._theme, "Consent Form")
-        consent_host = QWidget()
-        consent_form = QFormLayout(consent_host)
-        consent_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(consent_form, self._theme, 8)
-        consent_form.addRow("Consent Quiz", self._consent_quiz_combo)
-        consent_panel.add_widget(consent_host)
-        consent_panel.add_widget(self._download_consent_btn)
-        card.add_row(consent_panel)
+        self._quiz_input.add_footer(self._download_consent_btn)
+        card.add_row(self._quiz_input)
 
         # Quiz Reports
         quiz_panel = SubPanel(self._theme, "Quiz Reports")
@@ -372,16 +419,9 @@ class DownloadTab(ScrollableTab):
         card.add_row(quiz_panel)
 
         # Rubric Assessment
-        rubric_panel = SubPanel(self._theme, "Rubric Assessment")
-        rubric_host = QWidget()
-        rubric_form = QFormLayout(rubric_host)
-        rubric_form.setContentsMargins(0, 0, 0, 0)
-        set_spacing(rubric_form, self._theme, 8)
-        rubric_form.addRow("Assignment", self._assignment_combo)
-        rubric_panel.add_widget(rubric_host)
-        rubric_panel.add_widget(self._download_rubric_btn)
-        rubric_panel.add_widget(self._download_all_rubric_btn)
-        card.add_row(rubric_panel)
+        self._assignment_input.add_footer(self._download_rubric_btn)
+        self._assignment_input.add_footer(self._download_all_rubric_btn)
+        card.add_row(self._assignment_input)
 
         # Gradescope Submissions
         gradescope_panel = SubPanel(self._theme, "Gradescope Submissions")
@@ -420,36 +460,7 @@ class DownloadTab(ScrollableTab):
         layout.addWidget(self._download_all_btn)
         return host
 
-    # ---------- Small layout helpers ----------
-
-    def _option_label(self, text: str) -> QLabel:
-        label = QLabel(text)
-        label.setProperty("role", "text_muted")
-        label.setWordWrap(True)
-        return label
-
-    def _or_divider(self) -> QWidget:
-        host = QWidget()
-        layout = QHBoxLayout(host)
-        layout.setContentsMargins(0, 0, 0, 0)
-        set_spacing(layout, self._theme, 8)
-
-        left = QFrame()
-        left.setFrameShape(QFrame.Shape.HLine)
-        left.setFrameShadow(QFrame.Shadow.Sunken)
-
-        right = QFrame()
-        right.setFrameShape(QFrame.Shape.HLine)
-        right.setFrameShadow(QFrame.Shadow.Sunken)
-
-        label = QLabel("OR")
-        label.setProperty("role", "text_muted")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        layout.addWidget(left, 1)
-        layout.addWidget(label)
-        layout.addWidget(right, 1)
-        return host
+    # ---------- Handlers ----------
 
     def _on_browse_output_path(self) -> None:
         start = self._output_path.text().strip() or str(Path.home())
@@ -468,24 +479,47 @@ class DownloadTab(ScrollableTab):
     def _on_download_gradescope(self) -> None:
         self._vm.download_gradescope_submissions()
 
-    def _on_term_changed(self, text: str) -> None:
-        code = text.split("  ")[0].strip() if text else ""
-        self._vm.set_term(code)
+    def _on_course_changed(self, course_id: str) -> None:
+        """Single writer of the view model's course id, for both input modes.
 
-    def _on_course_changed(self, index: int) -> None:
-        course_id = self._course_combo.itemData(index) or ""
+        A picker change is a commit, so dependents load at once. Manual text
+        is only stored here; it commits on Enter or focus-out so partial IDs
+        never hit the Canvas API while the user is still typing.
+        """
         self._vm.set_course_id(course_id)
+        if self._course_input.mode() is InputMode.PICKER:
+            self._load_course_dependents(course_id)
+
+    def _on_course_mode_changed(self, mode: InputMode) -> None:
+        # Text already sitting in the manual field counts as committed.
+        if mode is InputMode.MANUAL:
+            self._load_course_dependents(self._course_input.value())
+
+    def _on_course_id_committed(self) -> None:
+        if self._course_input.mode() is InputMode.MANUAL:
+            self._load_course_dependents(self._course_input.value())
+
+    def _load_course_dependents(self, course_id: str) -> None:
+        if not course_id:
+            return
+        state = self._vm.get_state()
+        already_loaded = state.selected_course_id == course_id and bool(
+            state.quizzes or state.assignments
+        )
+        if already_loaded:
+            return
+        self._vm.load_quizzes(course_id)
+        self._vm.load_assignments(course_id)
+
+    def _on_reload_quizzes(self) -> None:
+        course_id = self._vm.get_state().selected_course_id
         if course_id:
             self._vm.load_quizzes(course_id)
+
+    def _on_reload_assignments(self) -> None:
+        course_id = self._vm.get_state().selected_course_id
+        if course_id:
             self._vm.load_assignments(course_id)
-
-    def _on_consent_quiz_changed(self, index: int) -> None:
-        quiz_id = self._consent_quiz_combo.itemData(index) or ""
-        self._vm.set_consent_quiz_id(str(quiz_id))
-
-    def _on_assignment_changed(self, index: int) -> None:
-        assignment_id = self._assignment_combo.itemData(index) or ""
-        self._vm.set_assignment_id(str(assignment_id))
 
     def _on_download_all(self) -> None:
         self._vm.download_all()
@@ -493,6 +527,29 @@ class DownloadTab(ScrollableTab):
     # ---------- View model rendering ----------
 
     def render(self, state: DownloadUiState) -> None:
+        """Paint ``state``; nested changes are folded into one follow-up pass.
+
+        Filling a picker can select an item, which writes to the view model
+        and emits ``state_changed`` while this render is still running. A
+        nested render would paint the newer state, only for the outer pass
+        to resume with its stale copy and undo it (for example, clearing a
+        just-loaded assignment list). So a render in progress records the
+        request instead, and the outer pass repeats with the latest state
+        until nothing changes.
+        """
+        if self._rendering:
+            self._render_pending = True
+            return
+        self._rendering = True
+        try:
+            self._render(state)
+            while self._render_pending:
+                self._render_pending = False
+                self._render(self._vm.get_state())
+        finally:
+            self._rendering = False
+
+    def _render(self, state: DownloadUiState) -> None:
         self._busy_bar.setVisible(state.is_busy)
 
         if self._output_path.text() != state.output_dir:
@@ -502,9 +559,34 @@ class DownloadTab(ScrollableTab):
             finally:
                 self._output_path.blockSignals(False)
 
+        self._roster_warning.setVisible(not state.roster_configured)
+        self._term_input.set_picker_available(
+            state.roster_configured,
+            "The term list needs the myASU roster client. Set ROSTER_AUTH_METHOD in .env.",
+        )
+        self._section_input.set_picker_available(
+            state.roster_configured,
+            "Section search needs the myASU roster client. Set ROSTER_AUTH_METHOD in .env.",
+        )
+
         token_missing = not state.canvas_token_available
         self._canvas_warning.setVisible(token_missing)
         self._canvas_recheck_btn.setVisible(token_missing)
+        self._course_input.set_picker_available(
+            not token_missing,
+            "The course list needs CANVAS_TOKEN. Enter the course ID directly, "
+            "or set the token and press Recheck.",
+        )
+        self._quiz_input.set_picker_available(
+            not token_missing,
+            "The quiz list needs CANVAS_TOKEN. Enter the quiz ID directly, "
+            "or set the token and press Recheck.",
+        )
+        self._assignment_input.set_picker_available(
+            not token_missing,
+            "The assignment list needs CANVAS_TOKEN. Enter assignment IDs directly, "
+            "or set the token and press Recheck.",
+        )
         credentials_missing = not state.canvas_credentials_available
         self._gradescope_credentials_warning.setVisible(credentials_missing)
         self._gradescope_credentials_recheck_btn.setVisible(credentials_missing)
@@ -512,9 +594,11 @@ class DownloadTab(ScrollableTab):
         self._message_label.setText(state.message)
 
         busy = state.is_busy
-        self._load_terms_btn.setEnabled(not busy)
-        self._load_courses_btn.setEnabled(not busy)
-        self._find_sections_btn.setEnabled(not busy)
+        self._term_input.set_busy(busy)
+        self._section_input.set_busy(busy)
+        self._course_input.set_busy(busy)
+        self._quiz_input.set_busy(busy)
+        self._assignment_input.set_busy(busy)
         self._download_roster_btn.setEnabled(not busy and state.can_download_roster)
         self._download_gradebook_btn.setEnabled(not busy and state.can_download_gradebook)
         self._download_gradescope_btn.setEnabled(not busy and state.can_download_submissions)
@@ -526,97 +610,40 @@ class DownloadTab(ScrollableTab):
         self._download_all_btn.setEnabled(not busy and state.can_download_all)
         self._download_all_quizzes_btn.setEnabled(not busy and state.can_download_all_quizzes)
 
-        if state.terms and self._term_combo.count() != len(state.terms):
-            self._term_combo.blockSignals(True)
-            try:
-                self._term_combo.clear()
-                for t in state.terms:
-                    self._term_combo.addItem(f"{t.code}  {t.name}", t.code)
-                if state.selected_term:
-                    for i in range(self._term_combo.count()):
-                        if self._term_combo.itemData(i) == state.selected_term:
-                            self._term_combo.setCurrentIndex(i)
-                            break
-            finally:
-                self._term_combo.blockSignals(False)
+        if self._term_picker.combo.count() != len(state.terms):
+            self._term_picker.set_items(
+                [(t.code, f"{t.code}  {t.name}") for t in state.terms],
+                select=state.selected_term,
+            )
 
-        if state.sections:
-            self._section_combo.setEnabled(True)
-            if self._section_combo.count() != len(state.sections):
-                self._section_combo.blockSignals(True)
-                try:
-                    self._section_combo.clear()
-                    for s in state.sections:
-                        self._section_combo.addItem(s.display_label, s.class_number)
-                finally:
-                    self._section_combo.blockSignals(False)
-        else:
-            self._section_combo.setEnabled(False)
-            if self._section_combo.count():
-                self._section_combo.clear()
+        if self._section_picker.combo.count() != len(state.sections):
+            self._section_picker.set_items(
+                [(s.class_number, s.display_label) for s in state.sections],
+                select=state.class_number,
+            )
 
-        if state.courses:
-            self._course_combo.setEnabled(True)
-            if self._course_combo.count() != len(state.courses):
-                self._course_combo.blockSignals(True)
-                try:
-                    self._course_combo.clear()
-                    for c in state.courses:
-                        label = f"{c.course_code}  {c.name}" if c.course_code else c.name
-                        self._course_combo.addItem(label, str(c.id))
-                finally:
-                    self._course_combo.blockSignals(False)
-                self._on_course_changed(0)
-        else:
-            self._course_combo.setEnabled(False)
-            if self._course_combo.count():
-                self._course_combo.clear()
+        if self._course_picker.combo.count() != len(state.courses):
+            self._course_picker.set_items(
+                [(str(c.id), _course_label(c)) for c in state.courses],
+                select=state.selected_course_id,
+            )
 
-        if state.quizzes:
-            self._consent_quiz_combo.setEnabled(True)
-            if self._consent_quiz_combo.count() != len(state.quizzes):
-                self._consent_quiz_combo.blockSignals(True)
-                try:
-                    self._consent_quiz_combo.clear()
-                    for q in state.quizzes:
-                        self._consent_quiz_combo.addItem(q.name, q.id)
-                    consent_idx = next(
-                        (i for i, q in enumerate(state.quizzes) if "consent" in q.name.lower()),
-                        0,
-                    )
-                    self._consent_quiz_combo.setCurrentIndex(consent_idx)
-                finally:
-                    self._consent_quiz_combo.blockSignals(False)
-                self._on_consent_quiz_changed(self._consent_quiz_combo.currentIndex())
-        else:
-            self._consent_quiz_combo.setEnabled(False)
-            if self._consent_quiz_combo.count():
-                self._consent_quiz_combo.clear()
+        if self._quiz_picker.combo.count() != len(state.quizzes):
+            self._quiz_picker.set_items(
+                [(str(q.id), _quiz_label(q)) for q in state.quizzes],
+                select=state.selected_consent_quiz_id or _likely_consent_quiz(state.quizzes),
+            )
 
-        if state.assignments:
-            self._assignment_combo.setEnabled(True)
-            if self._assignment_combo.count() != len(state.assignments):
-                self._assignment_combo.blockSignals(True)
-                try:
-                    self._assignment_combo.clear()
-                    for a in state.assignments:
-                        label = a.name if a.has_rubric else f"⚠ {a.name}"
-                        self._assignment_combo.addItem(label, a.id)
-                        if not a.has_rubric:
-                            index = self._assignment_combo.count() - 1
-                            self._assignment_combo.setItemData(
-                                index,
-                                "No rubric attached — no rubric-level data will be "
-                                "produced for this assignment.",
-                                Qt.ItemDataRole.ToolTipRole,
-                            )
-                finally:
-                    self._assignment_combo.blockSignals(False)
-                self._on_assignment_changed(self._assignment_combo.currentIndex())
-        else:
-            self._assignment_combo.setEnabled(False)
-            if self._assignment_combo.count():
-                self._assignment_combo.clear()
+        if self._assignment_picker.count() != len(state.assignments):
+            self._assignment_picker.set_items(
+                [(str(a.id), _assignment_label(a)) for a in state.assignments],
+                select=state.assignment_ids,
+            )
+            for box, assignment in zip(
+                self._assignment_picker.boxes(), state.assignments, strict=True
+            ):
+                if not assignment.has_rubric:
+                    box.setToolTip(_NO_RUBRIC_TIP)
 
         if state.last_saved_path:
             self._last_saved_label.setText(state.last_saved_path)

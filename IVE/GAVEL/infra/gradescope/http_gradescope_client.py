@@ -48,7 +48,7 @@ class GradescopeSession:
 # -------------------------
 
 
-class GradescopeClient:
+class http_gradescope_client:
     """
     ASU-specific Canvas → CAS → Duo → Canvas → Gradescope bridge.
     """

@@ -140,6 +140,13 @@ jobs:
             IVE/requirements.txt
             IVE/requirements-dev.txt
 
+      - name: Install Qt system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libopengl0 libxkbcommon0 libdbus-1-3 libfontconfig1 libglib2.0-0
+
       - name: Install dependencies
         working-directory: IVE
         run: |
