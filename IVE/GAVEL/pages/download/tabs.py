@@ -253,6 +253,13 @@ class DownloadTab(ScrollableTab):
         )
         self._download_consent_btn.setProperty("role", "primary")
 
+        # Canvas - Quiz Reports
+        self._download_all_quizzes_btn = QPushButton("Download All Quiz Reports")
+        self._download_all_quizzes_btn.setProperty("role", "primary")
+        self._download_all_quizzes_btn.setToolTip(
+            "Downloads student analysis reports for every quiz in the selected course."
+        )
+
         # Canvas - Rubric Assessment: one assignment input, check list or comma-separated IDs
         self._assignment_picker = CheckListPicker(
             self._theme, load_text="Reload Assignments", empty_text="No assignments loaded"
@@ -332,6 +339,7 @@ class DownloadTab(ScrollableTab):
         self._assignment_picker.load_requested.connect(self._on_reload_assignments)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
         self._download_all_rubric_btn.clicked.connect(self._vm.download_all_rubric_assessments)
+        self._download_all_quizzes_btn.clicked.connect(self._vm.download_all_quizzes)
 
         self._output_path.textEdited.connect(self._vm.set_output_dir)
         self._browse_path_btn.clicked.connect(self._on_browse_output_path)
@@ -404,6 +412,11 @@ class DownloadTab(ScrollableTab):
         # Consent Form
         self._quiz_input.add_footer(self._download_consent_btn)
         card.add_row(self._quiz_input)
+
+        # Quiz Reports
+        quiz_panel = SubPanel(self._theme, "Quiz Reports")
+        quiz_panel.add_widget(self._download_all_quizzes_btn)
+        card.add_row(quiz_panel)
 
         # Rubric Assessment
         self._assignment_input.add_footer(self._download_rubric_btn)
@@ -595,6 +608,7 @@ class DownloadTab(ScrollableTab):
             not busy and state.can_download_all_rubric_assessments
         )
         self._download_all_btn.setEnabled(not busy and state.can_download_all)
+        self._download_all_quizzes_btn.setEnabled(not busy and state.can_download_all_quizzes)
 
         if self._term_picker.combo.count() != len(state.terms):
             self._term_picker.set_items(
