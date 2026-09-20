@@ -33,6 +33,7 @@ from GAVEL.app.usecases.download_rubric_assessment import (
 )
 from GAVEL.app.usecases.roster import download_roster_to_file
 from GAVEL.core.status import Status
+from GAVEL.pages.download.section_match import section_mismatch
 from GAVEL.pages.download.sorting import course_sort_key
 from GAVEL.services.logger import AppLogger
 
@@ -103,6 +104,18 @@ _ROSTER_NOT_CONFIGURED = (
     "Roster not configured. Set ROSTER_AUTH_METHOD in .env to enable myASU downloads."
 )
 
+# Download names as they appear in Download All's summary and in ``completed``.
+ROSTER_DOWNLOAD = "Roster"
+GRADEBOOK_DOWNLOAD = "Gradebook"
+GRADESCOPE_DOWNLOAD = "Gradescope Submissions"
+CONSENT_DOWNLOAD = "Consent Form"
+RUBRIC_DOWNLOAD = "Rubric Assessment"
+
+# Everything keyed to the selected Canvas course, so a course change resets it.
+CANVAS_DOWNLOADS = frozenset(
+    {GRADEBOOK_DOWNLOAD, GRADESCOPE_DOWNLOAD, CONSENT_DOWNLOAD, RUBRIC_DOWNLOAD}
+)
+
 
 @dataclass(frozen=True)
 class DownloadUiState:
@@ -124,6 +137,29 @@ class DownloadUiState:
     last_saved_path: str | None = None
     output_dir: str = ""
     roster_configured: bool = True
+    # Downloads that succeeded for the current selections; see *_DOWNLOAD above.
+    completed: frozenset[str] = frozenset()
+
+    @property
+    def selected_course(self) -> CanvasCourse | None:
+        """The loaded course behind the selected ID, or None for a typed ID."""
+        return next((c for c in self.courses if str(c.id) == self.selected_course_id), None)
+
+    @property
+    def selected_section(self) -> ClassSection | None:
+        """The searched section behind the class number, or None for a typed one."""
+        return next((s for s in self.sections if s.class_number == self.class_number), None)
+
+    @property
+    def section_warning(self) -> str | None:
+        """Non-blocking notice when the roster class is not in the Canvas course."""
+        return section_mismatch(self.class_number, self.selected_course, self.selected_section)
+
+    @property
+    def canvas_downloads_partial(self) -> bool:
+        """Some, but not all, Canvas downloads are done for the selected course."""
+        done = self.completed & CANVAS_DOWNLOADS
+        return bool(done) and done != CANVAS_DOWNLOADS
 
     @property
     def can_download_roster(self) -> bool:
@@ -182,6 +218,7 @@ class _DownloadAllResult:
     successes: tuple[str, ...]
     failures: tuple[str, ...]
     last_saved_path: Path | None
+    completed: frozenset[str] = frozenset()
 
 
 class _WorkerSignals(QObject):
@@ -246,7 +283,11 @@ class DownloadViewModel(QObject):
     def set_term(self, value: str) -> None:
         if value == self._state.selected_term:
             return
-        self._state = replace(self._state, selected_term=value)
+        self._state = replace(
+            self._state,
+            selected_term=value,
+            completed=self._state.completed - {ROSTER_DOWNLOAD},
+        )
         self.state_changed.emit(self._state)
 
     def set_subject(self, value: str) -> None:
@@ -267,7 +308,11 @@ class DownloadViewModel(QObject):
         text = value.strip()
         if text == self._state.class_number:
             return
-        self._state = replace(self._state, class_number=text)
+        self._state = replace(
+            self._state,
+            class_number=text,
+            completed=self._state.completed - {ROSTER_DOWNLOAD},
+        )
         self.state_changed.emit(self._state)
 
     def set_course_id(self, value: str) -> None:
@@ -281,6 +326,7 @@ class DownloadViewModel(QObject):
             selected_consent_quiz_id="",
             assignments=(),
             assignment_ids="",
+            completed=self._state.completed - CANVAS_DOWNLOADS,
         )
         self.state_changed.emit(self._state)
         self._logger.info(f"Selected course ID set to {text}")
@@ -450,6 +496,7 @@ class DownloadViewModel(QObject):
             status=Status.NOMINAL,
             message=msg,
             last_saved_path=str(out_path),
+            completed=self._state.completed | {ROSTER_DOWNLOAD},
         )
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(msg))
@@ -551,6 +598,7 @@ class DownloadViewModel(QObject):
             status=Status.NOMINAL,
             message=result.message,
             last_saved_path=str(result.saved_path),
+            completed=self._state.completed | {GRADEBOOK_DOWNLOAD},
         )
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(result.message))
@@ -581,6 +629,7 @@ class DownloadViewModel(QObject):
             status=Status.NOMINAL,
             message=result.message,
             last_saved_path=str(result.saved_path),
+            completed=self._state.completed | {GRADESCOPE_DOWNLOAD},
         )
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(result.message))
@@ -614,6 +663,7 @@ class DownloadViewModel(QObject):
             status=Status.NOMINAL,
             message=result.message,
             last_saved_path=str(result.saved_path),
+            completed=self._state.completed | {CONSENT_DOWNLOAD},
         )
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(result.message))
@@ -707,6 +757,7 @@ class DownloadViewModel(QObject):
             status=Status.WARNING if (failed or skipped) else Status.NOMINAL,
             message=message,
             last_saved_path=str(saved[-1].saved_path),
+            completed=self._state.completed | {RUBRIC_DOWNLOAD},
         )
         self.state_changed.emit(self._state)
         if failed:
@@ -754,12 +805,16 @@ class DownloadViewModel(QObject):
         if failed and (succeeded or skipped):
             status = Status.WARNING
 
+        completed = self._state.completed
+        if succeeded:
+            completed = completed | {RUBRIC_DOWNLOAD}
         self._state = replace(
             self._state,
             is_busy=False,
             status=status,
             message=message,
             last_saved_path=str(last_path) if last_path else self._state.last_saved_path,
+            completed=completed,
         )
         self.state_changed.emit(self._state)
         if failed:
@@ -801,6 +856,7 @@ class DownloadViewModel(QObject):
         def work() -> _DownloadAllResult:
             successes: list[str] = []
             failures: list[str] = []
+            completed: set[str] = set()
             last_path: Path | None = None
 
             try:
@@ -812,30 +868,33 @@ class DownloadViewModel(QObject):
                         RosterRequest(term=term, class_number=class_number),
                         roster_path,
                     )
-                    successes.append("Roster")
+                    successes.append(ROSTER_DOWNLOAD)
+                    completed.add(ROSTER_DOWNLOAD)
                     last_path = roster_path
                 finally:
                     roster_client.close()
             except Exception as exc:  # noqa: BLE001
-                failures.append(f"Roster: {exc}")
+                failures.append(f"{ROSTER_DOWNLOAD}: {exc}")
 
             try:
                 gb_result = DownloadGradebookUseCase(canvas_client).execute(
                     DownloadGradebookRequest(course_id=course_id, output_dir=output_dir)
                 )
-                successes.append("Gradebook")
+                successes.append(GRADEBOOK_DOWNLOAD)
+                completed.add(GRADEBOOK_DOWNLOAD)
                 last_path = gb_result.saved_path
             except Exception as exc:  # noqa: BLE001
-                failures.append(f"Gradebook: {exc}")
+                failures.append(f"{GRADEBOOK_DOWNLOAD}: {exc}")
 
             try:
                 gs_result = DownloadGradescopeSubmissionsUseCase().execute(
                     DownloadGradescopeSubmissionsRequest(course_id=course_id, output_dir=output_dir)
                 )
-                successes.append("Gradescope Submissions")
+                successes.append(GRADESCOPE_DOWNLOAD)
+                completed.add(GRADESCOPE_DOWNLOAD)
                 last_path = gs_result.saved_path
             except Exception as exc:  # noqa: BLE001
-                failures.append(f"Gradescope Submissions: {exc}")
+                failures.append(f"{GRADESCOPE_DOWNLOAD}: {exc}")
 
             try:
                 consent_result = DownloadConsentFormUseCase(canvas_client).execute(
@@ -843,33 +902,36 @@ class DownloadViewModel(QObject):
                         course_id=course_id, quiz_id=consent_quiz_id, output_dir=output_dir
                     )
                 )
-                successes.append("Consent Form")
+                successes.append(CONSENT_DOWNLOAD)
+                completed.add(CONSENT_DOWNLOAD)
                 last_path = consent_result.saved_path
             except Exception as exc:  # noqa: BLE001
-                failures.append(f"Consent Form: {exc}")
+                failures.append(f"{CONSENT_DOWNLOAD}: {exc}")
 
             try:
                 rubric_result = DownloadAllRubricAssessmentsUseCase(canvas_client).execute(
                     DownloadAllRubricAssessmentsRequest(course_id=course_id, output_dir=output_dir)
                 )
                 for outcome in rubric_result.succeeded:
-                    successes.append(f"Rubric Assessment ({outcome.assignment_name})")
+                    successes.append(f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name})")
+                    completed.add(RUBRIC_DOWNLOAD)
                     last_path = outcome.saved_path
                 for outcome in rubric_result.skipped:
                     successes.append(
-                        f"Rubric Assessment ({outcome.assignment_name}) [skipped: no rubric]"
+                        f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name}) [skipped: no rubric]"
                     )
                 for outcome in rubric_result.failed:
                     failures.append(
-                        f"Rubric Assessment ({outcome.assignment_name}): {outcome.error}"
+                        f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name}): {outcome.error}"
                     )
             except Exception as exc:  # noqa: BLE001
-                failures.append(f"Rubric Assessment: {exc}")
+                failures.append(f"{RUBRIC_DOWNLOAD}: {exc}")
 
             return _DownloadAllResult(
                 successes=tuple(successes),
                 failures=tuple(failures),
                 last_saved_path=last_path,
+                completed=frozenset(completed),
             )
 
         self._run_async(work, self._on_download_all_complete, self._on_download_all_error)
@@ -899,6 +961,7 @@ class DownloadViewModel(QObject):
             status=status,
             message=message,
             last_saved_path=last_saved,
+            completed=self._state.completed | res.completed,
         )
         self.state_changed.emit(self._state)
 
