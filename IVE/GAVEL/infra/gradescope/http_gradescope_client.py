@@ -266,6 +266,13 @@ class http_gradescope_client:
         course_id = parts[parts.index("courses") + 1]
         return course_id
 
+    def _extract_canvas_course_id(self, url) -> str:
+        """
+        Extracts the Canvas course ID from the course_url variable
+        """
+        parts = url.split("/")
+        return parts[len(parts) - 1]
+
     def _build_requests_session(
         self, gs_session: GradescopeSession, course_id: int | str
     ) -> requests.Session:
@@ -293,10 +300,24 @@ class http_gradescope_client:
 
         return session
 
+    ##TODO: determine a better solution than a "misc" folder
+
+    def _extract_SER_course_code(self, filename: str) -> str:
+        """
+        Extracts course code like SER222 or SER334 from any filename format.
+        """
+        match = re.search(r"(?i)\bSER\d{3}", filename).group(0).upper()
+        if not match:
+            log.error(f"Could not find course code in: {filename}")
+            match = "misc"
+
+        return match
+
     def download_all_assignments(self, username: str, password: str):
         """
         Logs in, captures session, and downloads all assignment bulk exports.
         """
+
         log.info("Downloading all assignments...")
         gs_session, gs_course_id = self.capture_session(username, password)
         session = self._build_requests_session(gs_session, course_id=gs_course_id)
@@ -322,12 +343,17 @@ class http_gradescope_client:
             resp = session.get(autograder_url)
             soup = BeautifulSoup(resp.text, "html.parser")
             link = soup.find("a", string=lambda t: t and "Download Autograder" in t)
+
             if link and ".zip" in link["href"]:
                 href = link["href"]
-                log.info("Downloading Autograder for assignment: %s", name)
+                download_name = (href.split("/")[-1]).split("?")[0]
+                course_name = self._extract_SER_course_code(download_name)
+                log.info("Downloading autograder: %s", download_name)
                 autograder_download = session.get(href)
-                safe_name = self.remove_illegal_download_characters(name)
-                output_path = os.path.join(self.submissions_folder, safe_name + "_autograder.zip")
+                # safe_name = self.remove_illegal_download_characters(name)
+                ##TODO: un-hard-code this, prepare for case in which course name extraction fails
+                os.makedirs(f"GAVEL/autograders/{course_name}", exist_ok=True)
+                output_path = f'GAVEL/autograders/{course_name}/{download_name}'
                 with open(output_path, "wb") as f:
                     f.write(autograder_download.content)
 
@@ -345,8 +371,12 @@ class http_gradescope_client:
 
                 safe_name = self.remove_illegal_download_characters(name)
                 # print(self.submissions_folder, safe_name)
-                output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
-
+                # output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
+                ##TODO: Clean up this hard-coding and use environmental variables
+                canvas_id = self._extract_canvas_course_id(self.course_url)
+                output_folder = f'GAVEL/courses/{canvas_id}/original/assignments/'
+                os.makedirs(output_folder, exist_ok=True)
+                output_path = f'GAVEL/courses/{canvas_id}/original/assignments/{safe_name}.zip'
                 with open(output_path, "wb") as f:
                     f.write(zip_resp.content)
 
