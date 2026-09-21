@@ -55,5 +55,5 @@ def section_mismatch(
     return (
         f"The myASU roster is for {roster_label}, but the selected Canvas course is "
         f"{course_label}. Downloads will still run, but the roster and Canvas data "
-        "may not join cleanly."
+        "may not be what you are looking for. Verify you have the right courses selected."
     )
