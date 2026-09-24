@@ -1,0 +1,34 @@
+{
+  "_comment": "Maps each course's permanent module UIDs to the module number and title used in a given offering. Module numbers shift between semesters; UIDs do not. GAVEL will key autograders/ by UID. Fill in one block per course prefix; add offerings as they are taught.",
+  "ser222": {
+    "01_01": { "title": "Fundamentals (Recursion)", "offerings": { "ser222_25sc_12345": 1 } },
+    "01_02": { "title": "Data Abstraction", "offerings": { "ser222_25sc_12345": 2 } },
+    "01_03": { "title": "Lists, Stacks, and Generics", "offerings": {} },
+    "01_04": { "title": "Analysis of Algorithms", "offerings": {} },
+    "02_01": { "title": "Elementary Sorts", "offerings": {} },
+    "02_02": { "title": "Mergesort", "offerings": {} },
+    "02_04": { "title": "Priority Queues", "offerings": {} },
+    "03_01": { "title": "Symbol Tables", "offerings": {} },
+    "03_02": { "title": "Binary Search Trees", "offerings": {} },
+    "03_04": { "title": "Hash Tables", "offerings": {} },
+    "04_01": { "title": "Undirected Graphs", "offerings": {} },
+    "04_02": { "title": "Directed Graphs", "offerings": {} }
+  },
+  "ser334": {
+    "unit0": { "title": "Introduction", "offerings": {} },
+    "unit1": { "title": "C Programming I", "offerings": {} },
+    "unit2": { "title": "C Programming II", "offerings": {} },
+    "module_cp3": { "title": "C Programming III", "offerings": {} },
+    "unit4": { "title": "Operating-System Structures", "offerings": {} },
+    "unit5": { "title": "Processes", "offerings": {} },
+    "unit6": { "title": "Threads", "offerings": {} },
+    "unit7": { "title": "Process Synchronization I", "offerings": {} },
+    "unit8": { "title": "Process Synchronization II", "offerings": {} },
+    "unit9": { "title": "CPU Scheduling", "offerings": {} },
+    "unit10": { "title": "Main Memory", "offerings": {} },
+    "unit11": { "title": "Virtual Memory", "offerings": {} },
+    "unit12": { "title": "Mass-Storage Structure", "offerings": {} },
+    "opt_module_osc7": { "title": "Deadlocks", "offerings": {} },
+    "opt_module_spp3": { "title": "Parallel Programming", "offerings": {} }
+  }
+}

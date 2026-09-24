@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "course": {
+    "folder": "ser222_25sc_12345",
+    "subject": "SER",
+    "catalog_number": "222",
+    "year": 2025,
+    "term": "s",
+    "session": "c",
+    "class_number": "12345",
+    "term_code": "2251",
+    "canvas_course_id": 253450,
+    "canvas_course_name": "SER 222 Spring 2025 C",
+    "canvas_course_code": "2025SpringC-X-SER222-12345"
+  },
+  "created_at": "2026-09-21T10:00:00+00:00",
+  "updated_at": "2026-09-21T10:00:00+00:00",
+  "gavel_version": "0.1.0",
+  "modules": [
+    {
+      "id": 101,
+      "name": "Module 3: Lists"
+    },
+    {
+      "id": 102,
+      "name": "Module 4: Analysis"
+    }
+  ],
+  "assignments": [
+    {
+      "canvas_id": 7216972,
+      "name": "Module 3: Programming (Gradescope)",
+      "module_number": 3,
+      "has_rubric": false,
+      "due_at": null,
+      "points_possible": 26.0,
+      "gradescope_name": null
+    },
+    {
+      "canvas_id": 7216983,
+      "name": "Module 4: ADJ Problem Set",
+      "module_number": 4,
+      "has_rubric": true,
+      "due_at": null,
+      "points_possible": 30.0,
+      "gradescope_name": null
+    }
+  ],
+  "artifacts": [
+    {
+      "kind": "roster",
+      "path": "anonymized/roster.csv",
+      "downloaded_at": "2026-09-21T10:00:00+00:00",
+      "sha256": "f6927a7e273449b890d4efdb99a465d25816710b0050abcf919e97c4b7462f4e",
+      "size_bytes": 334,
+      "source_id": null
+    },
+    {
+      "kind": "rubric_assessments",
+      "path": "original/assignments/7216972_m3/rubric_assessments.json",
+      "downloaded_at": "2026-09-21T10:00:00+00:00",
+      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f",
+      "size_bytes": 4,
+      "source_id": 7216972
+    },
+    {
+      "kind": "rubric_assessments",
+      "path": "original/assignments/7216983_m4/rubric_assessments.json",
+      "downloaded_at": "2026-09-21T10:00:00+00:00",
+      "sha256": "dddbbb59f4146ebc02e5c62788e7ed5f93cdee658a44a982d3dd1960bd758d4b",
+      "size_bytes": 621,
+      "source_id": 7216983
+    },
+    {
+      "kind": "rubric_definition",
+      "path": "original/assignments/7216983_m4/rubric_definition.json",
+      "downloaded_at": "2026-09-21T10:00:00+00:00",
+      "sha256": "fa6781188826136bb8fb35483eb387993869603aeb6f5f2e9d6b272aa3f410cb",
+      "size_bytes": 736,
+      "source_id": 7216983
+    },
+    {
+      "kind": "consent_form",
+      "path": "original/consent_form.csv",
+      "downloaded_at": "2026-09-21T10:00:00+00:00",
+      "sha256": "06a4bd7575bc43c8991e8bcf5d72233105c8c9fe008999ca02884882d821d8dd",
+      "size_bytes": 1004,
+      "source_id": 1234567
+    },
+    {
+      "kind": "gradebook",
+      "path": "original/gradebook.csv",
+      "downloaded_at": "2026-09-21T10:00:00+00:00",
+      "sha256": "06e34b4f187706161cc4a1c0c73f26a4a0c941260bae785c00678ea4d90a4cf9",
+      "size_bytes": 2348,
+      "source_id": null
+    },
+    {
+      "kind": "roster",
+      "path": "original/roster.csv",
+      "downloaded_at": "2026-09-21T10:00:00+00:00",
+      "sha256": "3cda6fd4c289932ee66dd3b71a7b76d3542c30625d0dbee4710280d6aa12f411",
+      "size_bytes": 5451,
+      "source_id": null
+    }
+  ]
+}

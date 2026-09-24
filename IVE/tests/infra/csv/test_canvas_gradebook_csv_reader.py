@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from GAVEL.app.ports.canvas_gradebook_reader import GradebookReader
 from GAVEL.infra.csv.canvas_gradebook_csv_reader import LegacyGradebookCSVReader
 
 EXPECTED_STUDENT_COUNT = 3
@@ -25,6 +26,12 @@ def gradebook(reader: LegacyGradebookCSVReader, gradebook_csv_path: Path):
 class TestGradebookStructure:
     def test_returns_canvas_gradebook(self, gradebook) -> None:
         assert type(gradebook).__name__ == "CanvasGradebook"
+
+    def test_implements_gradebook_reader_port(
+        self, reader: LegacyGradebookCSVReader, gradebook, gradebook_csv_path: Path
+    ) -> None:
+        assert isinstance(reader, GradebookReader)
+        assert reader.read(str(gradebook_csv_path)) == gradebook
 
     def test_student_count_excludes_sentinel(self, gradebook) -> None:
         assert len(gradebook.rows) == EXPECTED_STUDENT_COUNT

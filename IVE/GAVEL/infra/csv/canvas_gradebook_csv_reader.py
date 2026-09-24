@@ -9,6 +9,7 @@ from GAVEL.app.dtos.canvas_gradebook import (
     GradebookAssignmentColumn,
     GradebookStudentRow,
 )
+from GAVEL.app.ports.canvas_gradebook_reader import GradebookReader
 
 # Canvas export preamble row indices (0-based after the header row is consumed
 # by DictReader, so these are the first two next() calls on the reader).
@@ -66,7 +67,7 @@ def _parse_score(raw: str) -> float | None:
         return None
 
 
-class LegacyGradebookCSVReader:
+class LegacyGradebookCSVReader(GradebookReader):
     """
     Parses a Canvas gradebook CSV export from a local file path.
 
@@ -81,6 +82,9 @@ class LegacyGradebookCSVReader:
     sentinel row is always excluded.
 
     """
+
+    def read(self, path: str | Path) -> CanvasGradebook:
+        return self.parse(Path(path))
 
     def parse(self, path: Path) -> CanvasGradebook:
         with path.open(encoding="utf-8") as f:

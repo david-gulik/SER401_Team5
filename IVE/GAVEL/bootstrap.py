@@ -2,9 +2,18 @@ from __future__ import annotations
 
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
+from GAVEL.app.workspace.dataset import DatasetReaders
 from GAVEL.infra.canvas.http_canvas_client import CanvasApiConfig, HttpCanvasClient
 from GAVEL.infra.canvas.unconfigured_canvas_client import UnconfiguredCanvasClient
+from GAVEL.infra.csv.canvas_consent_form_csv_reader import CanvasConsentFormCSVReader
+from GAVEL.infra.csv.canvas_gradebook_csv_reader import LegacyGradebookCSVReader
+from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
+from GAVEL.infra.json.rubric_json_reader import (
+    JsonRubricAssessmentReader,
+    JsonRubricDefinitionReader,
+)
 from GAVEL.infra.roster.unconfigured_roster_client import UnconfiguredRosterClient
+from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 from GAVEL.services.config_service import AppConfig
 from GAVEL.services.logger import AppLogger
 
@@ -51,3 +60,15 @@ def build_roster_client(cfg: AppConfig, logger: AppLogger) -> RosterClient:
 
     logger.warning("ROSTER_AUTH_METHOD not set; roster features disabled")
     return UnconfiguredRosterClient()
+
+
+def build_dataset_readers() -> DatasetReaders:
+    """One reader per file type in a course folder; see ``CourseDataset``."""
+    return DatasetReaders(
+        roster=CanvasRosterCSVReader(),
+        gradebook=LegacyGradebookCSVReader(),
+        consent_form=CanvasConsentFormCSVReader(),
+        rubric_definition=JsonRubricDefinitionReader(),
+        rubric_assessments=JsonRubricAssessmentReader(),
+        gradescope=YamlGradescopeReader(),
+    )

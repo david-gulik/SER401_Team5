@@ -32,6 +32,12 @@ def gradebook_csv_path(data_dir: Path) -> Path:
 
 
 @pytest.fixture(scope="session")
+def workspace_fixture_root(data_dir: Path) -> Path:
+    """A workspace root holding one course folder (ser222_25sc_12345) in the agreed layout."""
+    return data_dir / "workspace"
+
+
+@pytest.fixture(scope="session")
 def qapp():
     """One offscreen QApplication for the whole session (widgets require it)."""
     from PyQt6.QtWidgets import QApplication
