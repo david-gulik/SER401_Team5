@@ -67,7 +67,6 @@ class http_gradescope_client:
     GAVEL_COURSES_FOLDER = "GAVEL/courses"
     GAVEL_ORIGINAL_ASSIGNMENTS_SUFFIX = "original/assignments"
 
-
     def __init__(
         self, course_url: str, headless: bool = True, submissions_folder: str | None = None
     ):
@@ -359,8 +358,10 @@ class http_gradescope_client:
                 course_name = self._extract_SER_course_code(download_name)
                 log.info("Downloading autograder: %s", download_name)
                 autograder_download = session.get(href)
-                os.makedirs(os.path.join(self.GAVEL_AUTOGRADERS_DOWNLOAD, course_name), exist_ok=True)
-                output_path = f'GAVEL/autograders/{course_name}/{download_name}'
+                os.makedirs(
+                    os.path.join(self.GAVEL_AUTOGRADERS_DOWNLOAD, course_name), exist_ok=True
+                )
+                output_path = f"GAVEL/autograders/{course_name}/{download_name}"
                 with open(output_path, "wb") as f:
                     f.write(autograder_download.content)
 
@@ -377,14 +378,16 @@ class http_gradescope_client:
 
                 safe_name = remove_illegal_download_characters(name)
                 canvas_id = self._extract_canvas_course_id(self.course_url)
-                output_folder = os.path.join(self.GAVEL_COURSES_FOLDER, canvas_id, self.GAVEL_ORIGINAL_ASSIGNMENTS_SUFFIX)
+                output_folder = os.path.join(
+                    self.GAVEL_COURSES_FOLDER, canvas_id, self.GAVEL_ORIGINAL_ASSIGNMENTS_SUFFIX
+                )
                 os.makedirs(output_folder, exist_ok=True)
                 output_path = os.path.join(output_folder, canvas_id + " " + safe_name + ".zip")
                 output_path_unzipped = os.path.join(output_folder, canvas_id + " " + safe_name)
                 with open(output_path, "wb") as f:
                     f.write(zip_resp.content)
 
-                #unzip
+                # unzip
                 with zipfile.ZipFile(output_path, "r") as zip_ref:
                     zip_ref.extractall(output_path_unzipped)
 
@@ -428,13 +431,15 @@ class http_gradescope_client:
 
             safe_name = remove_illegal_download_characters(name)
             # print(self.submissions_folder, safe_name)
-            output_path = os.path.join(self.submissions_folder, canvas_id + " " + safe_name + ".zip")
+            output_path = os.path.join(
+                self.submissions_folder, canvas_id + " " + safe_name + ".zip"
+            )
             output_path_unzipped = os.path.join(output_folder, canvas_id + " " + safe_name)
 
             with open(output_path, "wb") as f:
                 f.write(zip_resp.content)
 
-            #unzip
+            # unzip
             with zipfile.ZipFile(output_path, "r") as zip_ref:
                 zip_ref.extractall(output_path_unzipped)
 
