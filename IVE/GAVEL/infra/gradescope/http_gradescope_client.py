@@ -2,8 +2,8 @@ import logging
 import os
 import re
 import time
-from dataclasses import dataclass
 import zipfile
+from dataclasses import dataclass
 
 import requests
 from bs4 import BeautifulSoup
