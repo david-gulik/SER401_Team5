@@ -3,6 +3,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+import zipfile
 
 import requests
 from bs4 import BeautifulSoup
@@ -48,6 +49,11 @@ class GradescopeSession:
 # -------------------------
 
 
+def remove_illegal_download_characters(name: str) -> str:
+    safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
+    return safe_name
+
+
 class http_gradescope_client:
     """
     ASU-specific Canvas → CAS → Duo → Canvas → Gradescope bridge.
@@ -56,6 +62,11 @@ class http_gradescope_client:
     GRADESCOPE_DOMAIN = "www.gradescope.com"
     SESSION_COOKIE_NAME = "_gradescope_session"
     TOKEN_COOKIE_NAME = "token"
+
+    GAVEL_AUTOGRADERS_DOWNLOAD = "GAVEL/autograders"
+    GAVEL_COURSES_FOLDER = "GAVEL/courses"
+    GAVEL_ORIGINAL_ASSIGNMENTS_SUFFIX = "original/assignments"
+
 
     def __init__(
         self, course_url: str, headless: bool = True, submissions_folder: str | None = None
@@ -300,8 +311,6 @@ class http_gradescope_client:
 
         return session
 
-    ##TODO: determine a better solution than a "misc" folder
-
     def _extract_SER_course_code(self, filename: str) -> str:
         """
         Extracts course code like SER222 or SER334 from any filename format.
@@ -350,15 +359,12 @@ class http_gradescope_client:
                 course_name = self._extract_SER_course_code(download_name)
                 log.info("Downloading autograder: %s", download_name)
                 autograder_download = session.get(href)
-                # safe_name = self.remove_illegal_download_characters(name)
-                ##TODO: un-hard-code this, prepare for case in which course name extraction fails
-                os.makedirs(f"GAVEL/autograders/{course_name}", exist_ok=True)
+                os.makedirs(os.path.join(self.GAVEL_AUTOGRADERS_DOWNLOAD, course_name), exist_ok=True)
                 output_path = f'GAVEL/autograders/{course_name}/{download_name}'
                 with open(output_path, "wb") as f:
                     f.write(autograder_download.content)
 
             review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
-            # print("Review_grades URL: ", review_url)
             resp = session.get(review_url)
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -369,16 +375,20 @@ class http_gradescope_client:
                 log.info("Downloading assignment: %s", name)
                 zip_resp = session.get(f"{self.base_url}" + link["href"])
 
-                safe_name = self.remove_illegal_download_characters(name)
-                # print(self.submissions_folder, safe_name)
-                # output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
-                ##TODO: Clean up this hard-coding and use environmental variables
+                safe_name = remove_illegal_download_characters(name)
                 canvas_id = self._extract_canvas_course_id(self.course_url)
-                output_folder = f'GAVEL/courses/{canvas_id}/original/assignments/'
+                output_folder = os.path.join(self.GAVEL_COURSES_FOLDER, canvas_id, self.GAVEL_ORIGINAL_ASSIGNMENTS_SUFFIX)
                 os.makedirs(output_folder, exist_ok=True)
-                output_path = f'GAVEL/courses/{canvas_id}/original/assignments/{safe_name}.zip'
+                output_path = os.path.join(output_folder, canvas_id + " " + safe_name + ".zip")
+                output_path_unzipped = os.path.join(output_folder, canvas_id + " " + safe_name)
                 with open(output_path, "wb") as f:
                     f.write(zip_resp.content)
+
+                #unzip
+                with zipfile.ZipFile(output_path, "r") as zip_ref:
+                    zip_ref.extractall(output_path_unzipped)
+
+                os.remove(output_path)
 
                 log.info("Assignment %s downloaded!", name)
                 continue
@@ -416,20 +426,23 @@ class http_gradescope_client:
             zip_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.zip"
             zip_resp = session.get(zip_url)
 
-            safe_name = self.remove_illegal_download_characters(name)
+            safe_name = remove_illegal_download_characters(name)
             # print(self.submissions_folder, safe_name)
-            output_path = os.path.join(self.submissions_folder, safe_name + ".zip")
+            output_path = os.path.join(self.submissions_folder, canvas_id + " " + safe_name + ".zip")
+            output_path_unzipped = os.path.join(output_folder, canvas_id + " " + safe_name)
 
             with open(output_path, "wb") as f:
                 f.write(zip_resp.content)
 
+            #unzip
+            with zipfile.ZipFile(output_path, "r") as zip_ref:
+                zip_ref.extractall(output_path_unzipped)
+
+            os.remove(output_path)
+
             log.info("Assignment %s downloaded!", name)
 
         log.info("Download of class %s complete!", gs_course_id)
-
-    def remove_illegal_download_characters(self, name: str) -> str:
-        safe_name = re.sub(r'[\\/:*?"<>|]', "", name)
-        return safe_name
 
 
 def main():
