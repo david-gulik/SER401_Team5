@@ -22,6 +22,11 @@ from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQ
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.download.section_picker import SectionSearchPicker
 from GAVEL.pages.download.viewmodel import (
+    CONSENT_DOWNLOAD,
+    GRADEBOOK_DOWNLOAD,
+    GRADESCOPE_DOWNLOAD,
+    ROSTER_DOWNLOAD,
+    RUBRIC_DOWNLOAD,
     DownloadUiState,
     DownloadViewModel,
     ShowError,
@@ -74,6 +79,18 @@ def _course_label(course: CanvasCourse) -> str:
     return f"{head}  ({course.id})"
 
 
+# Suffix on a download button once that download has succeeded.
+DONE_MARK = "✓"
+
+# Canvas downloads in the order the card shows them, for the switch prompt.
+_CANVAS_DOWNLOAD_ORDER = (
+    GRADEBOOK_DOWNLOAD,
+    CONSENT_DOWNLOAD,
+    RUBRIC_DOWNLOAD,
+    GRADESCOPE_DOWNLOAD,
+)
+
+
 class DownloadTab(ScrollableTab):
     def __init__(self, theme: ThemeContext, vm: DownloadViewModel) -> None:
         super().__init__(theme)
@@ -81,6 +98,7 @@ class DownloadTab(ScrollableTab):
         self._vm = vm
         self._rendering = False
         self._render_pending = False
+        self._reverting_course = False
 
         self._build_widgets()
         self._connect_signals()
@@ -126,6 +144,15 @@ class DownloadTab(ScrollableTab):
     def assignment_input(self) -> InputModeToggle:
         """The single rubric assignment input (check list or IDs). Exposed for tests."""
         return self._assignment_input
+
+    @property
+    def section_warning_label(self) -> QLabel:
+        """Banner shown when the roster class is not in the Canvas course. Exposed for tests."""
+        return self._section_mismatch_warning
+
+    def download_button(self, name: str) -> QPushButton:
+        """The primary button for a download name such as ROSTER_DOWNLOAD. Exposed for tests."""
+        return self._download_buttons[name][0]
 
     # ---------- Widget construction ----------
 
@@ -226,6 +253,12 @@ class DownloadTab(ScrollableTab):
             validator=course_id_error,
         )
 
+        # Canvas - roster/course mismatch banner. Non-blocking: downloads still run.
+        self._section_mismatch_warning = QLabel("")
+        self._section_mismatch_warning.setProperty("role", "warning")
+        self._section_mismatch_warning.setWordWrap(True)
+        self._section_mismatch_warning.hide()
+
         # Canvas - gradebook
         self._download_gradebook_btn = QPushButton("Download Gradebook")
         self._download_gradebook_btn.setToolTip("Requires a valid course to be selected above.")
@@ -315,6 +348,21 @@ class DownloadTab(ScrollableTab):
         self._last_saved_label.setProperty("role", "text_muted")
         self._last_saved_label.hide()
 
+        # Buttons that earn a DONE_MARK once their download succeeds, with the
+        # plain label to restore when the selection changes.
+        self._download_buttons: dict[str, tuple[QPushButton, ...]] = {
+            ROSTER_DOWNLOAD: (self._download_roster_btn,),
+            GRADEBOOK_DOWNLOAD: (self._download_gradebook_btn,),
+            CONSENT_DOWNLOAD: (self._download_consent_btn,),
+            RUBRIC_DOWNLOAD: (self._download_rubric_btn, self._download_all_rubric_btn),
+            GRADESCOPE_DOWNLOAD: (self._download_gradescope_btn,),
+        }
+        self._button_labels: dict[QPushButton, str] = {
+            button: button.text()
+            for buttons in self._download_buttons.values()
+            for button in buttons
+        }
+
     def _connect_signals(self) -> None:
         # Wired to existing view model behavior
         self._term_picker.load_requested.connect(self._vm.load_terms)
@@ -403,6 +451,7 @@ class DownloadTab(ScrollableTab):
 
         # Course Selection
         card.add_row(self._course_input)
+        card.add_row(self._section_mismatch_warning)
 
         # Gradebook
         gradebook_panel = SubPanel(self._theme, "Gradebook")
@@ -485,10 +534,62 @@ class DownloadTab(ScrollableTab):
         A picker change is a commit, so dependents load at once. Manual text
         is only stored here; it commits on Enter or focus-out so partial IDs
         never hit the Canvas API while the user is still typing.
+
+        Leaving a course with some of its downloads done asks first, so a
+        half-finished dataset is not abandoned by accident. Declining puts
+        the picker back, which re-enters here; the flag makes that re-entry
+        a no-op so the view model never sees the change.
         """
+        if self._reverting_course:
+            return
+        state = self._vm.get_state()
+        if self._should_confirm_course_switch(state, course_id) and not (
+            self._confirm_course_switch(state)
+        ):
+            self._reverting_course = True
+            try:
+                self._select_course_in_picker(state.selected_course_id)
+            finally:
+                self._reverting_course = False
+            return
         self._vm.set_course_id(course_id)
         if self._course_input.mode() is InputMode.PICKER:
             self._load_course_dependents(course_id)
+
+    def _should_confirm_course_switch(self, state: DownloadUiState, course_id: str) -> bool:
+        return (
+            not self._rendering
+            and self._course_input.mode() is InputMode.PICKER
+            and bool(state.selected_course_id)
+            and course_id != state.selected_course_id
+            and state.canvas_downloads_partial
+        )
+
+    def _confirm_course_switch(self, state: DownloadUiState) -> bool:
+        """Ask whether to leave a course whose downloads are only partly done."""
+        done = [n for n in _CANVAS_DOWNLOAD_ORDER if n in state.completed]
+        pending = [n for n in _CANVAS_DOWNLOAD_ORDER if n not in state.completed]
+        course = state.selected_course
+        course_text = state.selected_course_id
+        if course is not None:
+            course_text = course.course_code or course.name
+        answer = QMessageBox.question(
+            self,
+            "Switch Canvas course?",
+            f"{course_text} still has downloads pending.\n\n"
+            f"Done: {', '.join(done)}\n"
+            f"Not yet: {', '.join(pending)}\n\n"
+            "Switch course anyway?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def _select_course_in_picker(self, course_id: str) -> None:
+        combo = self._course_picker.combo
+        index = combo.findData(course_id)
+        if index >= 0:
+            combo.setCurrentIndex(index)
 
     def _on_course_mode_changed(self, mode: InputMode) -> None:
         # Text already sitting in the manual field counts as committed.
@@ -592,6 +693,15 @@ class DownloadTab(ScrollableTab):
         self._gradescope_credentials_recheck_btn.setVisible(credentials_missing)
         self._status_pill.set_status(state.status)
         self._message_label.setText(state.message)
+
+        section_warning = state.section_warning
+        self._section_mismatch_warning.setText(section_warning or "")
+        self._section_mismatch_warning.setVisible(section_warning is not None)
+
+        for name, buttons in self._download_buttons.items():
+            for button in buttons:
+                label = self._button_labels[button]
+                button.setText(f"{label} {DONE_MARK}" if name in state.completed else label)
 
         busy = state.is_busy
         self._term_input.set_busy(busy)
