@@ -5,11 +5,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from GAVEL.app.usecases.generate_anonymous_id_map import (
-    GenerateAnonymousIdMapRequest,
-    GenerateAnonymousIdMapUseCase,
-)
-
 from GAVEL.app.usecases.anonymize_consent_form import (
     AnonymizeConsentFormRequest,
     AnonymizeConsentFormUseCase,
@@ -29,6 +24,10 @@ from GAVEL.app.usecases.anonymize_rubric_assessment import (
 from GAVEL.app.usecases.downselect_consented_students import (
     DownselectConsentedStudentsRequest,
     DownselectConsentedStudentsUseCase,
+)
+from GAVEL.app.usecases.generate_anonymous_id_map import (
+    GenerateAnonymousIdMapRequest,
+    GenerateAnonymousIdMapUseCase,
 )
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
     CanvasConsentFormCSVReader,
