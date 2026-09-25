@@ -378,12 +378,16 @@ class TestFetchQuizStudentAnalysis:
         with (
             patch.object(client, "_post") as test_post,
             patch.object(client, "_poll_progress") as test_poll,
-            patch.object(client, "_get"),
+            patch.object(client, "_get") as test_get,
             patch.object(client, "_download") as test_download,
         ):
             test_post.return_value = {
                 "id": TEST_REPORT_ID,
                 "progress_url": "https://canvas.asu.edu/api/v1/progress/111",
+            }
+            test_get.return_value = {
+                "id": TEST_REPORT_ID,
+                "file": {"url": "https://canvas.asu.edu/files/123/download"},
             }
             test_download.return_value = TEST_CSV_BYTES
 
@@ -395,11 +399,15 @@ class TestFetchQuizStudentAnalysis:
         with (
             patch.object(client, "_post") as test_post,
             patch.object(client, "_poll_progress") as test_poll,
-            patch.object(client, "_get"),
+            patch.object(client, "_get") as test_get,
             patch.object(client, "_download") as test_download,
         ):
             test_post.return_value = {
                 "id": TEST_REPORT_ID,
+            }
+            test_get.return_value = {
+                "id": TEST_REPORT_ID,
+                "file": {"url": "https://canvas.asu.edu/files/123/download"},
             }
             test_download.return_value = TEST_CSV_BYTES
 
