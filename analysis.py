@@ -23,16 +23,15 @@ human grades.
 __author__ = "Ruben Acuna"
 __copyright__ = "Copyright 2024-25, Ruben Acuna"
 
-import os
 import json
+import os
 
 import pandas as pd
 
-from analysis_proxy_grade_ser222 import *
-import constants
-import analysis_proxy_grade_ser334 as proxy_ser334
 import analysis_proxy_comparison as apc
-
+import analysis_proxy_grade_ser334 as proxy_ser334
+import constants
+from analysis_proxy_grade_ser222 import *
 
 # pandas settings
 pd.options.display.width = 0

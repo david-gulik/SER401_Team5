@@ -61,7 +61,6 @@ def assessments_from_json(text: str) -> tuple[RubricAssessment, ...]:
     return tuple(assessment_from_dict(item) for item in data)
 
 
-
 def definition_to_dict(definition: RubricDefinition) -> dict[str, Any]:
     return {
         "rubric_id": definition.rubric_id,

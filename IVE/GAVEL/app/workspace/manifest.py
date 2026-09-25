@@ -180,7 +180,6 @@ def set_course_metadata(
     return replace(manifest, **changes)
 
 
-
 def manifest_to_dict(manifest: CourseManifest) -> dict[str, Any]:
     key = manifest.key
     return {
