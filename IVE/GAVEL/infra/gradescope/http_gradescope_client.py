@@ -20,7 +20,7 @@ from GAVEL.services.env_service import SCHEMA_DEFAULTS
 # Logging Setup
 # -------------------------
 
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("GradescopeClient")
 
 
@@ -57,6 +57,10 @@ class http_gradescope_client:
     GRADESCOPE_DOMAIN = "www.gradescope.com"
     SESSION_COOKIE_NAME = "_gradescope_session"
     TOKEN_COOKIE_NAME = "token"
+
+    CANVAS_COOKIE_PATH = "canvas_session.json"
+    DUO_COOKIE_PATH = "duo_cookies.json"
+
 
     def __init__(
         self, course_url: str, headless: bool = True, submissions_folder: str | None = None
@@ -134,7 +138,7 @@ class http_gradescope_client:
             )
             log.debug("Clicking 'Yes, this is my device'...")
             duo_cookies = self._driver.get_cookies()
-            self._save_cookies(duo_cookies, path='duo_cookies.json')
+            self._save_cookies(duo_cookies, path=self.DUO_COOKIE_PATH)
             no_btn.click()
         except TimeoutException:
             log.warning("No trusted device prompt detected.")
@@ -207,6 +211,13 @@ class http_gradescope_client:
         )
 
     # -------------------------
+    # Detects Canvas login
+    # -------------------------
+
+    def _is_canvas_logged_in(self) -> bool:
+        return "weblogin.asu.edu" not in self._driver.current_url
+
+    # -------------------------
     # Save Cookies
     # -------------------------
 
@@ -229,6 +240,26 @@ class http_gradescope_client:
             log.debug("Gradescope cookies not found.")
             return None
 
+    #---------------------------
+    # Injects cookies into Selenium
+    #--------------------------
+
+    def _inject_cookies(self, cookies, domain):
+        for c in cookies:
+            try:
+                self._driver.add_cookie({
+                    "name": c["name"],
+                    "value": c["value"],
+                    "domain": c["domain"],
+                    "path": c.get("path", "/"),
+                    "secure": c.get("secure", False),
+                    "httpOnly": c.get("httpOnly", False),
+                    "sameSite": c.get("sameSite", "Lax")
+                })
+            except Exception:
+                pass
+
+
 
     # -------------------------
     # Main Flow
@@ -241,9 +272,39 @@ class http_gradescope_client:
         wait = WebDriverWait(self._driver, timeout)
 
         try:
+
+
+            self._driver.get("https://canvas.asu.edu")
+            time.sleep(1)
+
+            # Load Canvas + Duo cookies
+            canvas_cookies = self._load_cookies(self.CANVAS_COOKIE_PATH)
+            duo_cookies = self._load_cookies(self.DUO_COOKIE_PATH)
+
+            if canvas_cookies:
+                log.info("Injecting Canvas cookies...")
+                self._inject_cookies(canvas_cookies, "canvas.asu.edu")
+                self._driver.refresh()
+                time.sleep(1)
+
+            if duo_cookies:
+                log.info("Injecting Duo cookies...")
+                self._inject_cookies(duo_cookies, "api-ab654001.duosecurity.com")
+                self._driver.refresh()
+                time.sleep(1)
+
+            # Navigate to course
             log.debug("Navigating to Canvas course: %s", self.course_url)
             self._driver.get(self.course_url)
             time.sleep(1)
+
+            # Check login state
+
+            if not self._is_canvas_logged_in():
+                log.info("Canvas not logged in — performing CAS + Duo login.")
+                self._handle_cas_login(wait, username, password)
+            else:
+                log.info("Canvas login already active — skipping CAS + Duo.")
 
             # CAS login if redirected
             if "weblogin.asu.edu" in self._driver.current_url:
