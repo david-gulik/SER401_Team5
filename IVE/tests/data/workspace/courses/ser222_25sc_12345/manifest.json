@@ -51,56 +51,56 @@
       "kind": "roster",
       "path": "anonymized/roster.csv",
       "downloaded_at": "2026-09-21T10:00:00+00:00",
-      "sha256": "f6927a7e273449b890d4efdb99a465d25816710b0050abcf919e97c4b7462f4e",
-      "size_bytes": 334,
+      "sha256": "fe970dc56e908b05c9a9b2f1982f40931100e8535f6782ede9f8ab8cdbf40a9e",
+      "size_bytes": 331,
       "source_id": null
     },
     {
       "kind": "rubric_assessments",
       "path": "original/assignments/7216972_m3/rubric_assessments.json",
       "downloaded_at": "2026-09-21T10:00:00+00:00",
-      "sha256": "a5338d955b09046ec0b16f3a9625b7955c763aae07dc722e474e6078745f932f",
-      "size_bytes": 4,
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "size_bytes": 3,
       "source_id": 7216972
     },
     {
       "kind": "rubric_assessments",
       "path": "original/assignments/7216983_m4/rubric_assessments.json",
       "downloaded_at": "2026-09-21T10:00:00+00:00",
-      "sha256": "dddbbb59f4146ebc02e5c62788e7ed5f93cdee658a44a982d3dd1960bd758d4b",
-      "size_bytes": 621,
+      "sha256": "96707b73636a99e7e52accab5375da85c5d7ce6c82c420ef0b4d9c085e21084b",
+      "size_bytes": 587,
       "source_id": 7216983
     },
     {
       "kind": "rubric_definition",
       "path": "original/assignments/7216983_m4/rubric_definition.json",
       "downloaded_at": "2026-09-21T10:00:00+00:00",
-      "sha256": "fa6781188826136bb8fb35483eb387993869603aeb6f5f2e9d6b272aa3f410cb",
-      "size_bytes": 736,
+      "sha256": "67df3899c6c1d029b3707d9752a0e11c194c85609cef165e3355afcd513bab4a",
+      "size_bytes": 701,
       "source_id": 7216983
     },
     {
       "kind": "consent_form",
       "path": "original/consent_form.csv",
       "downloaded_at": "2026-09-21T10:00:00+00:00",
-      "sha256": "06a4bd7575bc43c8991e8bcf5d72233105c8c9fe008999ca02884882d821d8dd",
-      "size_bytes": 1004,
+      "sha256": "964dbfbaaca8fdc0a47071b383f7aa80d199ce502a8d9d6739ab346acce7b66f",
+      "size_bytes": 991,
       "source_id": 1234567
     },
     {
       "kind": "gradebook",
       "path": "original/gradebook.csv",
       "downloaded_at": "2026-09-21T10:00:00+00:00",
-      "sha256": "06e34b4f187706161cc4a1c0c73f26a4a0c941260bae785c00678ea4d90a4cf9",
-      "size_bytes": 2348,
+      "sha256": "e2334f687bb5d84b5f77a13a394cdee12fe27d032261451d77a1ad366478911e",
+      "size_bytes": 2341,
       "source_id": null
     },
     {
       "kind": "roster",
       "path": "original/roster.csv",
       "downloaded_at": "2026-09-21T10:00:00+00:00",
-      "sha256": "3cda6fd4c289932ee66dd3b71a7b76d3542c30625d0dbee4710280d6aa12f411",
-      "size_bytes": 5451,
+      "sha256": "0bddee8f8801777e10a276452873924a705027d03a0811fc8b5f552fba74f45e",
+      "size_bytes": 5420,
       "source_id": null
     }
   ]
