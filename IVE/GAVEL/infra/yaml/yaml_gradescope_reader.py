@@ -30,7 +30,7 @@ class YamlGradescopeReader(GradescopeReader):
                     max_score=test.get("max_score"),
                     number=test.get("number"),
                 )
-                for test in submission_obj[":results"]["tests"]
+                for test in submission_obj.get(":results", {}).get("tests", [])
             ]
 
             submissions.append(
