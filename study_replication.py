@@ -9,8 +9,8 @@ __author__ = "Ruben Acuna"
 __copyright__ = "Copyright 2025, Ruben Acuna"
 
 import os
-import constants
 
+import constants
 from analysis import analyze_assignment
 from analysis_proxy_grade_ser334 import compute_proxies_m2_24sc
 from stats import perform_two_tailed_test, prepare_gradebook
@@ -51,7 +51,7 @@ def fie_2025_enhancing():
     )
 
     a = 0.05
-    print(f"Assessment\t\t\t\tSection\tn\tMean\tSD\tMin")
+    print("Assessment\t\t\t\tSection\tn\tMean\tSD\tMin")
     perform_two_tailed_test(
         "Module 1: Programming", None, a, df_grades_ser334_24sc, df_grades_ser334_24fc
     )

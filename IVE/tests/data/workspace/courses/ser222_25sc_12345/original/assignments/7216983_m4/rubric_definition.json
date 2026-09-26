@@ -1,0 +1,35 @@
+{
+  "rubric_id": "rub_1",
+  "title": "Problem Set Rubric",
+  "points_possible": 6.0,
+  "free_form_criterion_comments": false,
+  "criteria": [
+    {
+      "id": "crit_1",
+      "description": "Correctness",
+      "long_description": "",
+      "points": 4.0,
+      "ratings": [
+        {
+          "id": "r1",
+          "description": "Full",
+          "long_description": "",
+          "points": 4.0
+        },
+        {
+          "id": "r2",
+          "description": "None",
+          "long_description": "",
+          "points": 0.0
+        }
+      ]
+    },
+    {
+      "id": "crit_2",
+      "description": "Clarity",
+      "long_description": "",
+      "points": 2.0,
+      "ratings": []
+    }
+  ]
+}
