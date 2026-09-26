@@ -28,14 +28,15 @@ class AnonymizeConsentFormUseCase:
         skipped_count = 0
 
         for entry in request.entries:
-            if entry.sis_id not in id_map:
+            if entry.canvas_id not in id_map:
                 skipped_count += 1
                 continue
 
-            anonymous_id = id_map[entry.sis_id]
+            anonymous_id = id_map[entry.canvas_id]
 
             anonymized.append(
                 ConsentFormEntry(
+                    canvas_id=anonymous_id,
                     sis_id=anonymous_id,
                     lms_name=f"Anon{anonymous_id} Anon",
                     attempt=entry.attempt,

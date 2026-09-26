@@ -25,9 +25,9 @@ class DownselectConsentedStudentsUseCase:
         latest_by_student: dict[int, ConsentFormEntry] = {}
 
         for entry in request.entries:
-            current = latest_by_student.get(entry.sis_id)
+            current = latest_by_student.get(entry.canvas_id)
             if current is None or entry.attempt > current.attempt:
-                latest_by_student[entry.sis_id] = entry
+                latest_by_student[entry.canvas_id] = entry
 
         consented_ids: list[int] = []
         excluded_count = 0
@@ -45,12 +45,12 @@ class DownselectConsentedStudentsUseCase:
                 continue
 
             if response == lms_name:
-                consented_ids.append(entry.sis_id)
+                consented_ids.append(entry.canvas_id)
                 continue
 
             lms_chunks = [chunk for chunk in lms_name.split() if chunk]
             if any(chunk in response for chunk in lms_chunks):
-                consented_ids.append(entry.sis_id)
+                consented_ids.append(entry.canvas_id)
                 continue
 
             excluded_count += 1

@@ -15,7 +15,14 @@ REAL_ID_NAME_MISMATCH = 1224316977
 REAL_ID_LATEST_ATTEMPT_FALSE = 1234567890
 REAL_ID_PARTIAL_NAME_MATCH = 2345678901
 
+CANVAS_ID_CONSENTED = 309780
+CANVAS_ID_FALSE_BOOL = 494030
+CANVAS_ID_NAME_MISMATCH = 771671
+CANVAS_ID_LATEST_ATTEMPT_FALSE = 100001
+CANVAS_ID_PARTIAL_NAME_MATCH = 100002
+
 ENTRY_CONSENTED = ConsentFormEntry(
+    canvas_id=CANVAS_ID_CONSENTED,
     sis_id=REAL_ID_CONSENTED,
     lms_name="Bailey Bourque",
     attempt=1,
@@ -24,6 +31,7 @@ ENTRY_CONSENTED = ConsentFormEntry(
 )
 
 ENTRY_FALSE_BOOL = ConsentFormEntry(
+    canvas_id=CANVAS_ID_FALSE_BOOL,
     sis_id=REAL_ID_FALSE_BOOL,
     lms_name="Lindy Crain",
     attempt=1,
@@ -32,6 +40,7 @@ ENTRY_FALSE_BOOL = ConsentFormEntry(
 )
 
 ENTRY_NAME_MISMATCH = ConsentFormEntry(
+    canvas_id=CANVAS_ID_NAME_MISMATCH,
     sis_id=REAL_ID_NAME_MISMATCH,
     lms_name="Carli VonWeinstein",
     attempt=1,
@@ -40,6 +49,7 @@ ENTRY_NAME_MISMATCH = ConsentFormEntry(
 )
 
 ENTRY_PARTIAL_NAME_MATCH = ConsentFormEntry(
+    canvas_id=CANVAS_ID_PARTIAL_NAME_MATCH,
     sis_id=REAL_ID_PARTIAL_NAME_MATCH,
     lms_name="David Gulik",
     attempt=1,
@@ -48,6 +58,7 @@ ENTRY_PARTIAL_NAME_MATCH = ConsentFormEntry(
 )
 
 ENTRY_OLD_TRUE = ConsentFormEntry(
+    canvas_id=CANVAS_ID_LATEST_ATTEMPT_FALSE,
     sis_id=REAL_ID_LATEST_ATTEMPT_FALSE,
     lms_name="Sam Student",
     attempt=1,
@@ -56,6 +67,7 @@ ENTRY_OLD_TRUE = ConsentFormEntry(
 )
 
 ENTRY_NEW_FALSE = ConsentFormEntry(
+    canvas_id=CANVAS_ID_LATEST_ATTEMPT_FALSE,
     sis_id=REAL_ID_LATEST_ATTEMPT_FALSE,
     lms_name="Sam Student",
     attempt=2,
@@ -83,7 +95,7 @@ class TestConsentedStudentIncluded:
 
     def test_consented_student_id_is_included(self, use_case, request_single_consented):
         result = use_case.execute(request_single_consented)
-        assert result.consented_ids == (REAL_ID_CONSENTED,)
+        assert result.consented_ids == (CANVAS_ID_CONSENTED,)
 
     def test_included_count_is_one(self, use_case, request_single_consented):
         result = use_case.execute(request_single_consented)
@@ -132,7 +144,7 @@ class TestPartialNameMatchIncluded:
             entries=(ENTRY_PARTIAL_NAME_MATCH,),
         )
         result = use_case.execute(request)
-        assert result.consented_ids == (REAL_ID_PARTIAL_NAME_MATCH,)
+        assert result.consented_ids == (CANVAS_ID_PARTIAL_NAME_MATCH,)
 
     def test_partial_name_match_increments_included_count(self, use_case):
         request = DownselectConsentedStudentsRequest(
@@ -170,8 +182,8 @@ class TestMixedInputs:
         )
         result = use_case.execute(request)
         assert result.consented_ids == (
-            REAL_ID_CONSENTED,
-            REAL_ID_PARTIAL_NAME_MATCH,
+            CANVAS_ID_PARTIAL_NAME_MATCH,
+            CANVAS_ID_CONSENTED,
         )
 
     def test_counts_are_correct_for_mixed_inputs(self, use_case):
@@ -208,4 +220,4 @@ class TestOutputTypes:
 
     def test_result_ids_are_ints(self, use_case, request_single_consented):
         result = use_case.execute(request_single_consented)
-        assert all(isinstance(sis_id, int) for sis_id in result.consented_ids)
+        assert all(isinstance(canvas_id, int) for canvas_id in result.consented_ids)

@@ -13,15 +13,20 @@ REAL_ID_CONSENTED = 1217482318
 REAL_ID_NOT_CONSENTED = 1219749063
 REAL_ID_UNMAPPED = 1224316977
 
+CANVAS_ID_CONSENTED = 309780
+CANVAS_ID_NOT_CONSENTED = 494030
+CANVAS_ID_UNMAPPED = 771671
+
 ANON_ID_CONSENTED = 4242
 ANON_ID_NOT_CONSENTED = 5555
 
 ID_MAP = (
-    (REAL_ID_CONSENTED, ANON_ID_CONSENTED),
-    (REAL_ID_NOT_CONSENTED, ANON_ID_NOT_CONSENTED),
+    (CANVAS_ID_CONSENTED, ANON_ID_CONSENTED),
+    (CANVAS_ID_NOT_CONSENTED, ANON_ID_NOT_CONSENTED),
 )
 
 ENTRY_CONSENTED = ConsentFormEntry(
+    canvas_id=CANVAS_ID_CONSENTED,
     sis_id=REAL_ID_CONSENTED,
     lms_name="Bailey Bourque",
     attempt=1,
@@ -30,6 +35,7 @@ ENTRY_CONSENTED = ConsentFormEntry(
 )
 
 ENTRY_NOT_CONSENTED = ConsentFormEntry(
+    canvas_id=CANVAS_ID_NOT_CONSENTED,
     sis_id=REAL_ID_NOT_CONSENTED,
     lms_name="Lindy Crain",
     attempt=2,
@@ -38,6 +44,7 @@ ENTRY_NOT_CONSENTED = ConsentFormEntry(
 )
 
 ENTRY_UNMAPPED = ConsentFormEntry(
+    canvas_id=CANVAS_ID_UNMAPPED,
     sis_id=REAL_ID_UNMAPPED,
     lms_name="Carli VonWeinstein",
     attempt=1,
@@ -71,6 +78,10 @@ class TestMappedEntryAnonymized:
     def test_sis_id_is_anonymized(self, use_case, request_single_entry):
         result = use_case.execute(request_single_entry)
         assert result.entries[0].sis_id == ANON_ID_CONSENTED
+
+    def test_canvas_id_is_anonymized(self, use_case, request_single_entry):
+        result = use_case.execute(request_single_entry)
+        assert result.entries[0].canvas_id == ANON_ID_CONSENTED
 
     def test_lms_name_is_anonymized(self, use_case, request_single_entry):
         result = use_case.execute(request_single_entry)
