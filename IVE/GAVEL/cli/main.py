@@ -5,6 +5,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from GAVEL.app.usecases.proxy_grade.mappings.registry import MAPPINGS
 from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_canvas_client, build_roster_client
@@ -15,6 +16,7 @@ from GAVEL.cli.commands.canvas_course_dataset import (
 from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
 from GAVEL.cli.commands.consent_form import handle_consent_form_download
 from GAVEL.cli.commands.gradescope_download import handle_gradescope_download
+from GAVEL.cli.commands.proxy_grade_report import handle_proxy_grade_report
 from GAVEL.cli.commands.quiz_analysis import handle_quiz_analysis_download
 from GAVEL.cli.commands.roster import handle_roster_download, handle_roster_list_terms
 from GAVEL.cli.commands.rubric_assessment import (
@@ -117,11 +119,22 @@ def _build_parser() -> argparse.ArgumentParser:
     quiz_parser = subparsers.add_parser("quiz", help="Canvas quiz operations")
     quiz_subparsers = quiz_parser.add_subparsers(dest="quiz_command", required=True)
 
-    # quiz download
-    quiz_dl = quiz_subparsers.add_parser("download", help="Download a quiz student analysis CSV")
-    quiz_dl.add_argument("--course-id", required=True, help="Canvas course numeric identifier")
-    quiz_dl.add_argument("--quiz-id", required=True, help="Canvas quiz numeric identifier")
-    quiz_dl.add_argument("--output", "-o", help="Save CSV to this file (default: stdout)")
+    # quizzes download
+    quiz_dl = quiz_subparsers.add_parser(
+        "download",
+        help="Download student analysis reports for all quizzes in a course",
+    )
+    quiz_dl.add_argument(
+        "--course-id",
+        required=True,
+        help="Canvas course numeric identifier",
+    )
+    quiz_dl.add_argument(
+        "--output",
+        "-o",
+        required=True,
+        help="Directory where quiz analysis CSV files will be written",
+    )
     quiz_dl.set_defaults(handler=handle_quiz_analysis_download)
 
     # rubric commands
@@ -182,6 +195,40 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show Chrome instead of running headless",
     )
     gradescope_dl.set_defaults(handler=handle_gradescope_download)
+
+    # proxy-grade commands
+    proxy_grade_parser = subparsers.add_parser(
+        "proxy-grade", help="Proxy-grade computation operations"
+    )
+    proxy_grade_subparsers = proxy_grade_parser.add_subparsers(
+        dest="proxy_grade_command", required=True
+    )
+
+    proxy_grade_report = proxy_grade_subparsers.add_parser(
+        "report",
+        help="Generate a signed-error report from real Gradescope submissions and a gradebook",
+    )
+    proxy_grade_report.add_argument(
+        "--submissions-dir", required=True, help="Folder of Gradescope submission YAML files"
+    )
+    proxy_grade_report.add_argument(
+        "--mapping",
+        required=True,
+        choices=sorted(MAPPINGS),
+        help="Proxy-grade mapping that matches the assignment",
+    )
+    proxy_grade_report.add_argument(
+        "--gradebook", required=True, help="Path to the Canvas gradebook CSV"
+    )
+    proxy_grade_report.add_argument(
+        "--gradebook-column",
+        required=True,
+        help="Exact gradebook column header to use as the human score",
+    )
+    proxy_grade_report.add_argument(
+        "--output", "-o", required=True, help="Path where the JSON report will be written"
+    )
+    proxy_grade_report.set_defaults(handler=handle_proxy_grade_report)
 
     return parser
 
