@@ -16,7 +16,7 @@ from GAVEL.app.dtos.proxy_grade_result import ProxyGradeResult
 
 
 class MissingTestResultsError(ValueError):
-    """The submission has no result for one or more tests the mapping refers to."""
+    """The submission has no result for one or more tests that the mapping refers to."""
 
     def __init__(self, missing: Sequence[str]) -> None:
         self.missing = tuple(missing)
@@ -41,7 +41,7 @@ def _passed(test: GradescopeTestScore) -> bool:
 def _tier_satisfied(tier: Tier, passed: dict[str, bool]) -> bool:
     if not all(passed[name] for name in tier.all_of):
         return False
-    return not tier.any_of or any(passed[name] for name in tier.any_of)
+    return not tier.any_of or sum(passed[name] for name in tier.any_of) >= tier.at_least
 
 
 def _criterion_score(criterion: Criterion, passed: dict[str, bool]) -> float:
@@ -57,8 +57,8 @@ def compute_proxy_grade(
     """Scores a submission against a mapping.
 
     Raises MissingTestResultsError, naming every missing test at once, when the
-    submission lacks a test the mapping refers to. This is checked up front,
-    not only when a test happens to be needed, so a mapping that has drifted
+    submission lacks a test that the mapping refers to. This is checked up front,
+    (not only when a test happens to be needed) so a mapping that has drifted
     from an assignment's test suite is caught for every submission.
     """
     passed: dict[str, bool] = {}

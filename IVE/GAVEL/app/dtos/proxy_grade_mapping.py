@@ -8,17 +8,20 @@ class Tier:
     """Points awarded when the required tests passed.
 
     A tier is satisfied when every test in all_of passed and, if any_of is
-    given, at least one test in any_of passed. Tests are matched by a
-    substring of their name.
+    given, at least at_least of the tests in any_of passed. Tests are matched
+    by a substring of their name.
     """
 
     points: float
     all_of: tuple[str, ...] = ()
     any_of: tuple[str, ...] = ()
+    at_least: int = 1
 
     def __post_init__(self) -> None:
         if not self.all_of and not self.any_of:
             raise ValueError("A tier needs at least one required test.")
+        if self.any_of and not 1 <= self.at_least <= len(self.any_of):
+            raise ValueError("at_least must be between 1 and the number of any_of tests.")
 
 
 @dataclass(frozen=True)

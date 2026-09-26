@@ -90,3 +90,16 @@ def test_a_missing_test_raises_even_when_it_would_not_change_the_score() -> None
     with pytest.raises(MissingTestResultsError) as error:
         compute_proxy_grade(_submission(results), TOY)
     assert error.value.missing == ("Test B",)
+
+
+def test_at_least_needs_that_many_any_of_tests_to_pass() -> None:
+    mapping = ProxyGradeMapping(
+        name="toy",
+        criteria=(
+            Criterion("only", (Tier(2.0, any_of=("Test A", "Test B", "Test C"), at_least=2),)),
+        ),
+    )
+    two = compute_proxy_grade(_submission(_all(Test_A=FAIL)), mapping)
+    one = compute_proxy_grade(_submission(_all(Test_A=FAIL, Test_B=FAIL)), mapping)
+    assert two.criterion_scores == (2.0,)
+    assert one.criterion_scores == (0.0,)
