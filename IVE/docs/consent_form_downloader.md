@@ -16,10 +16,9 @@ Before running any commands, create a `.env` file in the `IVE/` directory with t
 Run the following from the `IVE/` directory:
 
 ```bash
-python -m GAVEL.cli.main quiz download \
+python -m GAVEL.cli.main consent_form download \
     --course-id <ID> \
-    --quiz-id <ID> \
-    --output <PATH>
+    --quiz-id <ID>
 ```
 
 ### Arguments
@@ -28,15 +27,16 @@ python -m GAVEL.cli.main quiz download \
 |----------|----------|-------------|
 | `--course-id` | Yes | Canvas course ID — found in the URL: `canvas.asu.edu/courses/<course-id>` |
 | `--quiz-id` | Yes | Canvas quiz ID — found in the URL: `.../quizzes/<quiz-id>` |
-| `--output / -o` | Yes | File path to save the CSV (e.g. `consent_form.csv`) |
+| `--workspace` | No | Workspace root. Defaults to `DEFAULT_OUTPUT_DIR` from `.env`, else `~/Downloads/GAVEL` |
+| `--course-folder` | See note | Course folder name such as `ser222_25sc_12345`. Canvas commands derive it from `--course-id` when omitted |
+| `--overwrite` | No | Replace files already downloaded into the course folder; without it a second download is refused |
 
 ### Example
 
 ```bash
-python -m GAVEL.cli.main quiz download \
+python -m GAVEL.cli.main consent_form download \
     --course-id 253450 \
-    --quiz-id 1960789 \
-    --output consent_form.csv
+    --quiz-id 1960789
 ```
 
 ---
@@ -81,7 +81,7 @@ Response includes: { "file": { "url": "https://canvas.asu.edu/files/..." } }
 
 ### Step 4 — Download CSV
 
-The signed file URL from Step 3 is fetched with Bearer token authentication. The raw CSV bytes are written to the path specified by `--output`.
+The signed file URL from Step 3 is fetched with Bearer token authentication. The raw CSV bytes are written to `original/consent_form.csv` inside the course folder (`<workspace>/courses/<course folder>/`, see `docs/workspace_layout.md`) and recorded in `manifest.json` with the quiz id.
 
 ---
 
@@ -92,8 +92,8 @@ On a successful run:
 ```
 [INFO] GAVEL.cli: Configuring Canvas HTTP client
 [INFO] GAVEL.cli: AppServices: initializing use cases
-[QUIZ] Downloading student analysis for course=253450, quiz=1960789...
-[QUIZ] Saved to consent_form.csv
+[CONSENT_FORM] Downloading consent form for course=253450, quiz=1960789...
+[CONSENT_FORM] Consent form for course 253450 saved to C:\Users\you\Downloads\GAVEL\courses\ser222_25sc_12345\original\consent_form.csv
 ```
 
 ---

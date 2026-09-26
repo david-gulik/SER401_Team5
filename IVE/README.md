@@ -162,8 +162,14 @@ If `CANVAS_TOKEN` is missing, the app falls back to `UnconfiguredCanvasClient`, 
 ## CLI Usage
 
 ```
-python -m GAVEL.cli.main canvas-course download --course-id 123 --output-dir ./dump
+python -m GAVEL.cli.main canvas-gradebook download --course-id 123
+python -m GAVEL.cli.main canvas-gradebook download --course-id 123 --course-folder ser222_25sc_12345 --workspace ./data
 ```
+
+Every download command writes into `<workspace>/courses/<course folder>/` and records what it
+wrote in that folder's `manifest.json`; see `docs/workspace_layout.md`. The workspace root
+defaults to `DEFAULT_OUTPUT_DIR`, and the course folder is derived from the Canvas course
+code unless `--course-folder` is given.
 
 The CLI shares the same `AppContext`, so any new use cases/services wired in GUI land can be exposed here by adding a subcommand.
 

@@ -1,108 +1,103 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from GAVEL.app.dtos.canvas_course import CanvasAssignment
 from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.app.workspace.layout import (
+    AssignmentFolder,
+    CourseFolder,
+    DataTree,
+    module_number_from_name,
+)
+from GAVEL.app.workspace.manifest import AssignmentEntry
+from GAVEL.app.workspace.recording import (
+    guard_not_downloaded,
+    note_assignment,
+    note_course,
+    record,
+)
+from GAVEL.infra.json.rubric_json import assessments_to_json, definition_to_json
 
 
 @dataclass(frozen=True)
 class DownloadRubricAssessmentRequest:
     course_id: int
-    assignment_id: int
-    output_dir: Path
+    assignment: CanvasAssignment
+    folder: CourseFolder
+    overwrite: bool = False
 
 
 @dataclass(frozen=True)
 class DownloadRubricAssessmentResult:
     saved_path: Path
     definition_saved_path: Path | None
+    assignment_folder: AssignmentFolder
     message: str
 
 
+def assignment_folder_for(tree: DataTree, assignment: CanvasAssignment) -> AssignmentFolder:
+    """The folder an assignment's files belong in.
+
+    Reuses a folder already on disk for this id (whatever its module tag) so a
+    download by typed id and a download from the loaded list never produce two
+    folders for one assignment.
+    """
+    existing = tree.find_assignment(assignment.id)
+    if existing is not None:
+        return existing
+    return tree.assignment(assignment.id, module_number_from_name(assignment.name))
+
+
 class DownloadRubricAssessmentUseCase:
+    """Saves one assignment's rubric definition and assessments under ``assignments/``."""
+
     def __init__(self, canvas_client: CanvasClient) -> None:
         self._canvas_client = canvas_client
 
     def execute(self, request: DownloadRubricAssessmentRequest) -> DownloadRubricAssessmentResult:
         if request.course_id <= 0:
             raise ValueError("course_id must be greater than zero")
-        if request.assignment_id <= 0:
+        assignment = request.assignment
+        if assignment.id <= 0:
             raise ValueError("assignment_id must be greater than zero")
 
-        request.output_dir.mkdir(parents=True, exist_ok=True)
+        target_folder = assignment_folder_for(request.folder.original, assignment)
+        assessments_path = target_folder.rubric_assessments_json
+        guard_not_downloaded(request.folder, assessments_path, request.overwrite)
 
-        assessments = self._canvas_client.fetch_rubric_assessments(
-            request.course_id, request.assignment_id
+        assessments = self._canvas_client.fetch_rubric_assessments(request.course_id, assignment.id)
+        definition = self._canvas_client.fetch_rubric_definition(request.course_id, assignment.id)
+
+        target_folder.path.mkdir(parents=True, exist_ok=True)
+        assessments_path.write_text(assessments_to_json(assessments) + "\n", encoding="utf-8")
+        record(request.folder, "rubric_assessments", assessments_path, source_id=assignment.id)
+
+        definition_path: Path | None = None
+        if definition is not None:
+            definition_path = target_folder.rubric_definition_json
+            definition_path.write_text(definition_to_json(definition) + "\n", encoding="utf-8")
+            record(request.folder, "rubric_definition", definition_path, source_id=assignment.id)
+
+        note_assignment(
+            request.folder,
+            AssignmentEntry(
+                canvas_id=assignment.id,
+                name=assignment.name,
+                module_number=target_folder.module_number,
+                has_rubric=definition is not None,
+            ),
         )
+        note_course(request.folder, canvas_course_id=request.course_id)
 
-        payload = [
-            {
-                "student_id": a.student_id,
-                "submission_id": a.submission_id,
-                "criteria": [
-                    {
-                        "criterion_id": c.criterion_id,
-                        "points": c.points,
-                        "comments": c.comments,
-                    }
-                    for c in a.criteria
-                ],
-            }
-            for a in assessments
-        ]
-
-        path = (
-            request.output_dir
-            / f"rubric_assessment_{request.course_id}_{request.assignment_id}.json"
+        message = (
+            f"Rubric assessment for course {request.course_id}, assignment {assignment.id} "
+            f"saved to {assessments_path}"
         )
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-        definition_path = self._save_rubric_definition(request)
-
-        message = f"Rubric assessment for course {request.course_id}, assignment {request.assignment_id} saved to {path}"
         return DownloadRubricAssessmentResult(
-            saved_path=path,
+            saved_path=assessments_path,
             definition_saved_path=definition_path,
+            assignment_folder=target_folder,
             message=message,
         )
-
-    def _save_rubric_definition(self, request: DownloadRubricAssessmentRequest) -> Path | None:
-        definition = self._canvas_client.fetch_rubric_definition(
-            request.course_id, request.assignment_id
-        )
-        if definition is None:
-            return None
-
-        payload = {
-            "rubric_id": definition.rubric_id,
-            "title": definition.title,
-            "points_possible": definition.points_possible,
-            "free_form_criterion_comments": definition.free_form_criterion_comments,
-            "criteria": [
-                {
-                    "id": c.id,
-                    "description": c.description,
-                    "long_description": c.long_description,
-                    "points": c.points,
-                    "ratings": [
-                        {
-                            "id": r.id,
-                            "description": r.description,
-                            "long_description": r.long_description,
-                            "points": r.points,
-                        }
-                        for r in c.ratings
-                    ],
-                }
-                for c in definition.criteria
-            ],
-        }
-
-        path = (
-            request.output_dir
-            / f"rubric_definition_{request.course_id}_{request.assignment_id}.json"
-        )
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        return path

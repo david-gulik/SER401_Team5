@@ -22,6 +22,8 @@ from GAVEL.app.usecases.download_course_dataset import (
     DownloadCourseDatasetRequest,
     DownloadCourseDatasetUseCase,
 )
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
+from GAVEL.app.workspace.manifest import load_manifest
 
 # ---------------------------------------------------------------------------
 # Test data
@@ -195,336 +197,167 @@ def use_case(client: MockCanvasClient) -> DownloadCourseDatasetUseCase:
 
 
 @pytest.fixture
-def request_(tmp_path: Path) -> DownloadCourseDatasetRequest:
+def folder(tmp_path: Path) -> CourseFolder:
+    return Workspace(tmp_path).course(CourseKey.parse("ser222_25sc_12345"))
+
+
+@pytest.fixture
+def request_(folder: CourseFolder) -> DownloadCourseDatasetRequest:
     return DownloadCourseDatasetRequest(
         course_id=COURSE_ID,
         quiz_id=QUIZ_ID,
         assignment_ids=ASSIGNMENT_IDS,
-        output_dir=tmp_path,
+        folder=folder,
     )
 
 
+def statuses(result) -> dict[str, str]:
+    return {o.step: o.status for o in result.outcomes}
+
+
 # ---------------------------------------------------------------------------
-# Gradebook CSV happy path + API error tests
+# Happy path: everything lands in one course folder and one manifest
 # ---------------------------------------------------------------------------
 
 
-class TestGradebookHappyPath:
-    def test_execute_returns_result(self, use_case, request_):
+class TestHappyPath:
+    def test_every_step_succeeds(self, use_case, request_):
         result = use_case.execute(request_)
-        assert result is not None
+        assert set(statuses(result).values()) == {"succeeded"}
+        assert [o.step for o in result.outcomes] == [
+            "course metadata",
+            "gradebook",
+            "consent form",
+            "rubric 101",
+            "rubric 102",
+        ]
+        assert result.failed == () and result.already_downloaded == ()
 
-    def test_dataset_dir_is_created(self, use_case, request_):
-        result = use_case.execute(request_)
-        assert result.dataset_path.exists()
-
-    def test_dataset_dir_name_contains_course_id(self, use_case, request_):
-        result = use_case.execute(request_)
-        assert str(COURSE_ID) in result.dataset_path.name
-
-    def test_gradebook_csv_is_written(self, use_case, request_):
-        result = use_case.execute(request_)
-        assert (result.dataset_path / "gradebook.csv").exists()
-
-    def test_gradebook_csv_content_matches(self, use_case, request_):
-        result = use_case.execute(request_)
-        assert (result.dataset_path / "gradebook.csv").read_bytes() == GRADEBOOK_CSV_BYTES
-
-    def test_gradebook_fetched_with_correct_course_id(self, use_case, request_, client):
+    def test_files_land_in_the_original_tree(self, use_case, request_, folder):
         use_case.execute(request_)
-        assert COURSE_ID in client.fetch_gradebook_csv_calls
+        original = folder.original
+        assert original.gradebook_csv.read_bytes() == GRADEBOOK_CSV_BYTES
+        assert original.consent_form_csv.read_bytes() == CONSENT_CSV_BYTES
+        for assignment_id in ASSIGNMENT_IDS:
+            assignment = original.find_assignment(assignment_id)
+            assert assignment is not None
+            assert isinstance(json.loads(assignment.rubric_assessments_json.read_text()), list)
+            assert assignment.rubric_definition_json.exists()
 
-    def test_result_message_contains_course_id(self, use_case, request_):
+    def test_result_points_at_the_folder(self, use_case, request_, folder):
         result = use_case.execute(request_)
+        assert result.folder == folder
         assert str(COURSE_ID) in result.message
+        assert "5 saved" in result.message
 
-    def test_manifest_is_written(self, use_case, request_):
-        result = use_case.execute(request_)
-        assert (result.dataset_path / "dataset_manifest.json").exists()
-
-    def test_manifest_references_gradebook_csv(self, use_case, request_):
-        result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        assert data["gradebook_csv"] == "gradebook.csv"
-
-    def test_manifest_contains_course_id(self, use_case, request_):
-        result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        assert data["course_id"] == COURSE_ID
-
-    def test_manifest_contains_generated_at(self, use_case, request_):
-        result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        assert "generated_at" in data
-
-
-class TestGradebookApiErrors:
-    def test_timeout_on_gradebook_propagates(self, use_case, request_, client):
-        client.fetch_gradebook_csv_error = TimeoutError("network timeout")
-        with pytest.raises(TimeoutError, match="network timeout"):
-            use_case.execute(request_)
-
-    def test_unauthorized_on_gradebook_propagates(self, use_case, request_, client):
-        client.fetch_gradebook_csv_error = PermissionError("401 Unauthorized")
-        with pytest.raises(PermissionError, match="401"):
-            use_case.execute(request_)
-
-    def test_no_manifest_written_on_gradebook_error(self, use_case, request_, client, tmp_path):
-        client.fetch_gradebook_csv_error = TimeoutError("network timeout")
-        with pytest.raises(TimeoutError):
-            use_case.execute(request_)
-        assert not any(tmp_path.rglob("dataset_manifest.json"))
-
-
-# ---------------------------------------------------------------------------
-# Consent form CSV happy path + missing consent form error tests
-# ---------------------------------------------------------------------------
-
-
-class TestConsentFormHappyPath:
-    def test_consent_form_csv_is_written(self, use_case, request_):
-        result = use_case.execute(request_)
-        assert (result.dataset_path / "consent_form.csv").exists()
-
-    def test_consent_form_csv_content_matches(self, use_case, request_):
-        result = use_case.execute(request_)
-        assert (result.dataset_path / "consent_form.csv").read_bytes() == CONSENT_CSV_BYTES
-
-    def test_quiz_fetched_with_correct_ids(self, use_case, request_, client):
+    def test_fetches_use_the_requested_ids(self, use_case, request_, client):
         use_case.execute(request_)
-        assert (COURSE_ID, QUIZ_ID) in client.fetch_quiz_calls
+        assert client.fetch_course_data_calls == [COURSE_ID]
+        assert client.fetch_gradebook_csv_calls == [COURSE_ID]
+        assert client.fetch_quiz_calls == [(COURSE_ID, QUIZ_ID)]
+        assert [aid for _, aid in client.fetch_rubric_calls] == ASSIGNMENT_IDS
+        assert [aid for _, aid in client.fetch_rubric_definition_calls] == ASSIGNMENT_IDS
 
-    def test_manifest_references_consent_form_csv(self, use_case, request_):
-        result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        assert data["consent_form_csv"] == "consent_form.csv"
-
-    def test_consent_csv_has_leave_blank_if_column(self, use_case, request_):
-        """Verify the consent CSV contains the column palantir's find_consented searches for."""
-        result = use_case.execute(request_)
-        csv_text = (result.dataset_path / "consent_form.csv").read_bytes().decode()
-        assert "leave blank if" in csv_text.splitlines()[0]
-
-    def test_consent_csv_has_do_you_consent_column(self, use_case, request_):
-        """Verify the consent CSV contains the column palantir's find_consented searches for."""
-        result = use_case.execute(request_)
-        csv_text = (result.dataset_path / "consent_form.csv").read_bytes().decode()
-        assert "Do you consent" in csv_text.splitlines()[0]
-
-
-class TestMissingConsentForm:
-    def test_raises_when_quiz_not_found(self, use_case, request_, client):
-        client.consent_csv = None
-        with pytest.raises(FileNotFoundError):
-            use_case.execute(request_)
-
-    def test_error_message_contains_quiz_id(self, use_case, request_, client):
-        client.consent_csv = None
-        with pytest.raises(FileNotFoundError) as exc_info:
-            use_case.execute(request_)
-        assert str(QUIZ_ID) in str(exc_info.value)
-
-    def test_error_message_contains_course_id(self, use_case, request_, client):
-        client.consent_csv = None
-        with pytest.raises(FileNotFoundError) as exc_info:
-            use_case.execute(request_)
-        assert str(COURSE_ID) in str(exc_info.value)
-
-    def test_quiz_fetch_was_attempted(self, use_case, request_, client):
-        client.consent_csv = None
-        with pytest.raises(FileNotFoundError):
-            use_case.execute(request_)
-        assert len(client.fetch_quiz_calls) == 1
-
-    def test_timeout_on_quiz_fetch_propagates(self, use_case, request_, client):
-        client.fetch_quiz_error = TimeoutError("network timeout")
-        with pytest.raises(TimeoutError, match="network timeout"):
-            use_case.execute(request_)
-
-    def test_unauthorized_on_quiz_fetch_propagates(self, use_case, request_, client):
-        client.fetch_quiz_error = PermissionError("401 Unauthorized")
-        with pytest.raises(PermissionError, match="401"):
-            use_case.execute(request_)
-
-    def test_no_manifest_written_on_quiz_error(self, use_case, request_, client, tmp_path):
-        client.fetch_quiz_error = TimeoutError("network timeout")
-        with pytest.raises(TimeoutError):
-            use_case.execute(request_)
-        assert not any(tmp_path.rglob("dataset_manifest.json"))
-
-
-# ---------------------------------------------------------------------------
-# Rubric assessments happy path + empty rubric + API errors
-# ---------------------------------------------------------------------------
-
-
-class TestRubricHappyPath:
-    def test_rubric_dir_is_created(self, use_case, request_):
-        result = use_case.execute(request_)
-        assert (result.dataset_path / "rubric_assessments").exists()
-
-    def test_rubric_json_written_per_assignment(self, use_case, request_):
-        result = use_case.execute(request_)
-        for assignment_id in ASSIGNMENT_IDS:
-            assert (
-                result.dataset_path / "rubric_assessments" / f"assignment_{assignment_id}.json"
-            ).exists()
-
-    def test_rubric_json_is_valid_json(self, use_case, request_):
-        result = use_case.execute(request_)
-        for assignment_id in ASSIGNMENT_IDS:
-            rubric = result.dataset_path / "rubric_assessments" / f"assignment_{assignment_id}.json"
-            assert isinstance(json.loads(rubric.read_text()), list)
-
-    def test_rubric_json_contains_student_id(self, use_case, request_):
-        result = use_case.execute(request_)
-        rubric = result.dataset_path / "rubric_assessments" / f"assignment_{ASSIGNMENT_IDS[0]}.json"
-        data = json.loads(rubric.read_text())
-        assert all("student_id" in entry for entry in data)
-
-    def test_rubric_json_contains_criteria(self, use_case, request_):
-        result = use_case.execute(request_)
-        rubric = result.dataset_path / "rubric_assessments" / f"assignment_{ASSIGNMENT_IDS[0]}.json"
-        data = json.loads(rubric.read_text())
-        assert all("criteria" in entry for entry in data)
-
-    def test_rubric_fetched_for_each_assignment(self, use_case, request_, client):
+    def test_one_manifest_describes_everything(self, use_case, request_, folder):
         use_case.execute(request_)
-        fetched_assignment_ids = [aid for _, aid in client.fetch_rubric_calls]
-        for assignment_id in ASSIGNMENT_IDS:
-            assert assignment_id in fetched_assignment_ids
+        manifest = load_manifest(folder.manifest_path)
+        assert manifest.canvas_course_id == COURSE_ID
+        assert manifest.canvas_course_name == "IVE Capstone"
+        assert [m.name for m in manifest.modules] == ["Module 0"]
+        assert {a.kind for a in manifest.artifacts} == {
+            "gradebook",
+            "consent_form",
+            "rubric_assessments",
+            "rubric_definition",
+        }
+        assert [a.canvas_id for a in manifest.assignments] == ASSIGNMENT_IDS
+        assert not (folder.path / "dataset_manifest.json").exists()
 
-    def test_manifest_references_all_rubric_files(self, use_case, request_):
-        result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        assert len(data["rubric_assessments"]) == len(ASSIGNMENT_IDS)
-
-    def test_manifest_rubric_paths_use_subdirectory(self, use_case, request_):
-        result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        for path in data["rubric_assessments"]:
-            assert path.startswith("rubric_assessments/")
-
-
-class TestEmptyRubricAssessments:
-    def test_rubric_json_is_empty_list_when_no_assessments(self, use_case, request_, client):
-        client.rubric_assessments = []
-        result = use_case.execute(request_)
-        for assignment_id in ASSIGNMENT_IDS:
-            rubric = result.dataset_path / "rubric_assessments" / f"assignment_{assignment_id}.json"
-            assert json.loads(rubric.read_text()) == []
-
-    def test_manifest_still_references_rubric_files(self, use_case, request_, client):
-        client.rubric_assessments = []
-        result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        assert len(data["rubric_assessments"]) == len(ASSIGNMENT_IDS)
-
-    def test_gradebook_and_consent_still_written(self, use_case, request_, client):
-        client.rubric_assessments = []
-        result = use_case.execute(request_)
-        assert (result.dataset_path / "gradebook.csv").exists()
-        assert (result.dataset_path / "consent_form.csv").exists()
-
-
-class TestRubricApiErrors:
-    def test_timeout_on_rubric_fetch_propagates(self, use_case, request_, client):
-        client.fetch_rubric_error = TimeoutError("network timeout")
-        with pytest.raises(TimeoutError, match="network timeout"):
-            use_case.execute(request_)
-
-    def test_unauthorized_on_rubric_fetch_propagates(self, use_case, request_, client):
-        client.fetch_rubric_error = PermissionError("401 Unauthorized")
-        with pytest.raises(PermissionError, match="401"):
-            use_case.execute(request_)
-
-
-# ---------------------------------------------------------------------------
-# Rubric definitions happy path + missing rubric + API errors
-# ---------------------------------------------------------------------------
-
-
-class TestRubricDefinitionHappyPath:
-    def test_definition_json_written_per_assignment(self, use_case, request_):
-        result = use_case.execute(request_)
-        for assignment_id in ASSIGNMENT_IDS:
-            assert (
-                result.dataset_path
-                / "rubric_assessments"
-                / f"assignment_{assignment_id}_definition.json"
-            ).exists()
-
-    def test_definition_fetched_for_each_assignment(self, use_case, request_, client):
-        use_case.execute(request_)
-        fetched_assignment_ids = [aid for _, aid in client.fetch_rubric_definition_calls]
-        for assignment_id in ASSIGNMENT_IDS:
-            assert assignment_id in fetched_assignment_ids
-
-    def test_definition_json_matches_schema_required_fields(self, use_case, request_):
-        result = use_case.execute(request_)
-        path = (
-            result.dataset_path
-            / "rubric_assessments"
-            / f"assignment_{ASSIGNMENT_IDS[0]}_definition.json"
+    def test_no_assignments_skips_rubrics(self, use_case, folder, client):
+        result = use_case.execute(
+            DownloadCourseDatasetRequest(
+                course_id=COURSE_ID, quiz_id=QUIZ_ID, assignment_ids=[], folder=folder
+            )
         )
-        data = json.loads(path.read_text())
-        for field in (
-            "rubric_id",
-            "title",
-            "points_possible",
-            "free_form_criterion_comments",
-            "criteria",
-        ):
-            assert field in data
+        assert [o.step for o in result.outcomes] == ["course metadata", "gradebook", "consent form"]
+        assert client.fetch_rubric_calls == []
 
-    def test_manifest_references_rubric_definitions(self, use_case, request_):
+
+# ---------------------------------------------------------------------------
+# Steps are independent
+# ---------------------------------------------------------------------------
+
+
+class TestPartialFailure:
+    def test_gradebook_error_does_not_stop_the_rest(self, use_case, request_, client, folder):
+        client.fetch_gradebook_csv_error = TimeoutError("network timeout")
         result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        assert len(data["rubric_definitions"]) == len(ASSIGNMENT_IDS)
+        assert statuses(result)["gradebook"] == "failed"
+        assert "network timeout" in result.failed[0].detail
+        assert statuses(result)["consent form"] == "succeeded"
+        assert folder.original.consent_form_csv.exists()
+        assert not folder.original.gradebook_csv.exists()
 
-    def test_manifest_rubric_definition_paths_use_subdirectory(self, use_case, request_):
+    def test_missing_consent_form_is_reported(self, use_case, request_, client):
+        client.consent_csv = None
         result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        for path in data["rubric_definitions"]:
-            assert path.startswith("rubric_assessments/")
+        assert statuses(result)["consent form"] == "failed"
+        assert str(QUIZ_ID) in result.failed[0].detail
 
+    def test_rubric_error_is_scoped_to_its_assignment(self, use_case, request_, client):
+        client.fetch_rubric_error = PermissionError("401 Unauthorized")
+        result = use_case.execute(request_)
+        assert statuses(result)["rubric 101"] == "failed"
+        assert statuses(result)["rubric 102"] == "failed"
+        assert statuses(result)["gradebook"] == "succeeded"
 
-class TestAssignmentWithoutRubric:
-    def test_no_definition_file_when_assignment_has_no_rubric(self, use_case, request_, client):
+    def test_course_metadata_error_is_reported(self, use_case, request_, client):
+        client.fetch_course_data_error = RuntimeError("no such course")
+        result = use_case.execute(request_)
+        assert statuses(result)["course metadata"] == "failed"
+        assert statuses(result)["gradebook"] == "succeeded"
+
+    def test_assignment_without_rubric_still_records_assessments(
+        self, use_case, request_, client, folder
+    ):
         client.rubric_definition = None
-        result = use_case.execute(request_)
+        use_case.execute(request_)
         for assignment_id in ASSIGNMENT_IDS:
-            assert not (
-                result.dataset_path
-                / "rubric_assessments"
-                / f"assignment_{assignment_id}_definition.json"
-            ).exists()
+            assignment = folder.original.find_assignment(assignment_id)
+            assert assignment is not None
+            assert assignment.rubric_assessments_json.exists()
+            assert not assignment.rubric_definition_json.exists()
 
-    def test_manifest_rubric_definitions_empty(self, use_case, request_, client):
-        client.rubric_definition = None
+
+# ---------------------------------------------------------------------------
+# Re-running
+# ---------------------------------------------------------------------------
+
+
+class TestAlreadyDownloaded:
+    def test_second_run_downloads_nothing_new(self, use_case, request_, client):
+        use_case.execute(request_)
+        fetched = len(client.fetch_gradebook_csv_calls)
         result = use_case.execute(request_)
-        data = json.loads((result.dataset_path / "dataset_manifest.json").read_text())
-        assert data["rubric_definitions"] == []
+        assert statuses(result)["gradebook"] == "already_downloaded"
+        assert statuses(result)["consent form"] == "already_downloaded"
+        assert statuses(result)["rubric 101"] == "already_downloaded"
+        assert statuses(result)["course metadata"] == "succeeded"  # metadata is always refreshed
+        assert len(client.fetch_gradebook_csv_calls) == fetched
+        assert "4 already downloaded" in result.message
 
-    def test_assessment_files_still_written(self, use_case, request_, client):
-        client.rubric_definition = None
-        result = use_case.execute(request_)
-        for assignment_id in ASSIGNMENT_IDS:
-            assert (
-                result.dataset_path / "rubric_assessments" / f"assignment_{assignment_id}.json"
-            ).exists()
-
-
-class TestRubricDefinitionApiErrors:
-    def test_timeout_on_definition_fetch_propagates(self, use_case, request_, client):
-        client.fetch_rubric_definition_error = TimeoutError("network timeout")
-        with pytest.raises(TimeoutError, match="network timeout"):
-            use_case.execute(request_)
-
-    def test_unauthorized_on_definition_fetch_propagates(self, use_case, request_, client):
-        client.fetch_rubric_definition_error = PermissionError("401 Unauthorized")
-        with pytest.raises(PermissionError, match="401"):
-            use_case.execute(request_)
+    def test_overwrite_downloads_everything_again(self, use_case, request_, folder):
+        use_case.execute(request_)
+        result = use_case.execute(
+            DownloadCourseDatasetRequest(
+                course_id=COURSE_ID,
+                quiz_id=QUIZ_ID,
+                assignment_ids=ASSIGNMENT_IDS,
+                folder=folder,
+                overwrite=True,
+            )
+        )
+        assert set(statuses(result).values()) == {"succeeded"}
 
 
 # ---------------------------------------------------------------------------
@@ -533,82 +366,19 @@ class TestRubricDefinitionApiErrors:
 
 
 class TestValidation:
-    def test_raises_for_zero_course_id(self, use_case, tmp_path):
-        request_ = DownloadCourseDatasetRequest(
-            course_id=0,
-            quiz_id=QUIZ_ID,
-            assignment_ids=ASSIGNMENT_IDS,
-            output_dir=tmp_path,
-        )
-        with pytest.raises(ValueError, match="course_id must be greater than zero"):
-            use_case.execute(request_)
-
-    def test_raises_for_negative_course_id(self, use_case, tmp_path):
-        request_ = DownloadCourseDatasetRequest(
-            course_id=-1,
-            quiz_id=QUIZ_ID,
-            assignment_ids=ASSIGNMENT_IDS,
-            output_dir=tmp_path,
-        )
-        with pytest.raises(ValueError, match="course_id must be greater than zero"):
-            use_case.execute(request_)
-
-    def test_client_not_called_for_invalid_request(self, use_case, tmp_path, client):
-        request_ = DownloadCourseDatasetRequest(
-            course_id=0,
-            quiz_id=QUIZ_ID,
-            assignment_ids=ASSIGNMENT_IDS,
-            output_dir=tmp_path,
-        )
-        with pytest.raises(ValueError):
-            use_case.execute(request_)
+    @pytest.mark.parametrize(
+        ("course_id", "quiz_id"), [(0, QUIZ_ID), (-1, QUIZ_ID), (COURSE_ID, 0)]
+    )
+    def test_invalid_ids_raise_before_any_fetch(self, use_case, folder, client, course_id, quiz_id):
+        with pytest.raises(ValueError, match="must be greater than zero"):
+            use_case.execute(
+                DownloadCourseDatasetRequest(
+                    course_id=course_id,
+                    quiz_id=quiz_id,
+                    assignment_ids=ASSIGNMENT_IDS,
+                    folder=folder,
+                )
+            )
         assert client.fetch_gradebook_csv_calls == []
         assert client.fetch_quiz_calls == []
         assert client.fetch_rubric_calls == []
-        assert client.fetch_rubric_definition_calls == []
-
-
-# ---------------------------------------------------------------------------
-# MockCanvasClient reusability
-# ---------------------------------------------------------------------------
-
-
-class TestMockCanvasClientReusability:
-    def test_is_subclass_of_canvas_client(self):
-        assert issubclass(MockCanvasClient, CanvasClient)
-
-    def test_returns_gradebook_csv(self):
-        client = MockCanvasClient()
-        assert client.fetch_gradebook_csv(COURSE_ID) == GRADEBOOK_CSV_BYTES
-
-    def test_returns_consent_csv(self):
-        client = MockCanvasClient()
-        assert client.fetch_quiz_student_analysis(COURSE_ID, QUIZ_ID) == CONSENT_CSV_BYTES
-
-    def test_returns_rubric_assessments(self):
-        client = MockCanvasClient()
-        result = client.fetch_rubric_assessments(COURSE_ID, ASSIGNMENT_IDS[0])
-        assert isinstance(result, list)
-        assert all(isinstance(r, RubricAssessment) for r in result)
-
-    def test_returns_rubric_definition(self):
-        client = MockCanvasClient()
-        result = client.fetch_rubric_definition(COURSE_ID, ASSIGNMENT_IDS[0])
-        assert isinstance(result, RubricDefinition)
-
-    def test_tracks_quiz_calls(self):
-        client = MockCanvasClient()
-        client.fetch_quiz_student_analysis(COURSE_ID, QUIZ_ID)
-        client.fetch_quiz_student_analysis(COURSE_ID, QUIZ_ID)
-        assert len(client.fetch_quiz_calls) == 2
-
-    def test_custom_gradebook_csv(self):
-        client = MockCanvasClient()
-        client.gradebook_csv = b"custom,csv\n1,2\n"
-        assert client.fetch_gradebook_csv(COURSE_ID) == b"custom,csv\n1,2\n"
-
-    def test_injected_error_raises(self):
-        client = MockCanvasClient()
-        client.fetch_quiz_error = RuntimeError("Canvas is down")
-        with pytest.raises(RuntimeError, match="Canvas is down"):
-            client.fetch_quiz_student_analysis(COURSE_ID, QUIZ_ID)

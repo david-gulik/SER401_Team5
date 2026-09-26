@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from GAVEL.app.dtos.canvas_course import CanvasAssignment
+from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 from GAVEL.app.dtos.rubric_definition import RubricDefinition
 from GAVEL.core.status import Status
@@ -21,6 +21,7 @@ from GAVEL.services.logger import AppLogger
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
 
 COURSE_ID = "213877"
+COURSE = CanvasCourse(id=213877, name="SER 401", course_code="2026FallC-X-SER401-12345")
 ASSIGNMENTS = [CanvasAssignment(id=7, name="Homework 1"), CanvasAssignment(id=9, name="Project")]
 NO_RUBRIC = CanvasAssignment(id=12, name="Quiz 3", has_rubric=False)
 
@@ -37,7 +38,7 @@ class RubricCanvasClient(FakeCanvasClient):
         failing: set[int] = frozenset(),
         assignments: list[CanvasAssignment] = ASSIGNMENTS,
     ) -> None:
-        super().__init__(assignments=assignments)
+        super().__init__(courses=[COURSE], assignments=assignments)
         self.failing = set(failing)
         self.rubric_calls: list[int] = []
 
@@ -68,8 +69,21 @@ def make_vm(qapp, canvas: FakeCanvasClient, tmp_path: Path) -> DownloadViewModel
         logger=AppLogger("test"),
         roster_configured=True,
     )
+    vm.load_courses()
     vm.set_course_id(COURSE_ID)
     return vm
+
+
+def rubric_path(tmp_path: Path, assignment_id: int) -> Path:
+    return (
+        tmp_path
+        / "courses"
+        / "ser401_26fc_12345"
+        / "original"
+        / "assignments"
+        / str(assignment_id)
+        / "rubric_assessments.json"
+    )
 
 
 @pytest.fixture
@@ -130,8 +144,8 @@ def test_single_assignment_download_keeps_the_use_case_message(vm, canvas, tmp_p
     assert canvas.rubric_calls == [7]
     state = vm.get_state()
     assert state.status is Status.NOMINAL
-    assert (tmp_path / "rubric_assessment_213877_7.json").exists()
-    assert state.last_saved_path == str(tmp_path / "rubric_assessment_213877_7.json")
+    assert (rubric_path(tmp_path, 7)).exists()
+    assert state.last_saved_path == str(rubric_path(tmp_path, 7))
     assert seen == [ShowInfo(state.message)]
     assert "assignment 7" in state.message
 
@@ -141,12 +155,12 @@ def test_multiple_assignments_download_one_file_each(vm, canvas, tmp_path):
     seen = events(vm)
     vm.download_rubric_assessment()
     assert canvas.rubric_calls == [9, 7]
-    assert (tmp_path / "rubric_assessment_213877_9.json").exists()
-    assert (tmp_path / "rubric_assessment_213877_7.json").exists()
+    assert (rubric_path(tmp_path, 9)).exists()
+    assert (rubric_path(tmp_path, 7)).exists()
     state = vm.get_state()
     assert state.status is Status.NOMINAL
     assert state.message == "Rubric assessments for course 213877: 2 saved, 0 failed."
-    assert state.last_saved_path == str(tmp_path / "rubric_assessment_213877_7.json")
+    assert state.last_saved_path == str(rubric_path(tmp_path, 7))
     assert seen == [ShowInfo(state.message)]
 
 
@@ -161,7 +175,7 @@ def test_one_failing_assignment_does_not_stop_the_others(qapp, tmp_path):
     assert state.status is Status.WARNING
     assert state.message.startswith("Rubric assessments for course 213877: 1 saved, 1 failed.")
     assert "9: no rubric on 9" in state.message
-    assert state.last_saved_path == str(tmp_path / "rubric_assessment_213877_7.json")
+    assert state.last_saved_path == str(rubric_path(tmp_path, 7))
     assert seen == [ShowError(state.message)]
 
 
@@ -203,7 +217,7 @@ def test_loaded_assignment_without_a_rubric_is_skipped_not_fetched(qapp, tmp_pat
         "Rubric assessments for course 213877: 1 saved, 1 skipped, 0 failed. "
         "Skipped: 'Quiz 3' has no rubric attached."
     )
-    assert state.last_saved_path == str(tmp_path / "rubric_assessment_213877_7.json")
+    assert state.last_saved_path == str(rubric_path(tmp_path, 7))
     assert seen == [ShowInfo(state.message)]
 
 

@@ -13,13 +13,13 @@
       "required": ["folder", "subject", "catalog_number", "year", "term", "session", "class_number"],
       "additionalProperties": false,
       "properties": {
-        "folder": { "type": "string", "pattern": "^[a-z]{2,4}[0-9]{3}[a-z]?_[0-9]{2}[sufw][a-z]?_[0-9]{5}$" },
+        "folder": { "type": "string", "pattern": "^[a-z]{2,4}[0-9]{3}[a-z]?_[0-9]{2}[sufw][a-z]?_[0-9]+$" },
         "subject": { "type": "string", "pattern": "^[A-Z]{2,4}$" },
         "catalog_number": { "type": "string", "pattern": "^[0-9]{3}[A-Z]?$" },
         "year": { "type": "integer", "minimum": 2000, "maximum": 2099 },
         "term": { "type": "string", "enum": ["s", "u", "f", "w"] },
         "session": { "type": "string", "pattern": "^[a-z]?$" },
-        "class_number": { "type": "string", "pattern": "^[0-9]{5}$" },
+        "class_number": { "type": "string", "pattern": "^[0-9]+$" },
         "term_code": { "type": ["string", "null"], "pattern": "^2[0-9]{2}[1479]$" },
         "canvas_course_id": { "type": ["integer", "null"] },
         "canvas_course_name": { "type": ["string", "null"] },
@@ -73,7 +73,8 @@
           "downloaded_at": { "type": "string", "format": "date-time" },
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "size_bytes": { "type": "integer", "minimum": 0 },
-          "source_id": { "type": ["integer", "null"] }
+          "source_id": { "type": ["integer", "null"] },
+          "label": { "type": ["string", "null"] }
         }
       }
     }

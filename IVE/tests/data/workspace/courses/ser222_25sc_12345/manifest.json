@@ -53,7 +53,8 @@
       "downloaded_at": "2026-09-21T10:00:00+00:00",
       "sha256": "fe970dc56e908b05c9a9b2f1982f40931100e8535f6782ede9f8ab8cdbf40a9e",
       "size_bytes": 331,
-      "source_id": null
+      "source_id": null,
+      "label": null
     },
     {
       "kind": "rubric_assessments",
@@ -61,7 +62,8 @@
       "downloaded_at": "2026-09-21T10:00:00+00:00",
       "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
       "size_bytes": 3,
-      "source_id": 7216972
+      "source_id": 7216972,
+      "label": null
     },
     {
       "kind": "rubric_assessments",
@@ -69,7 +71,8 @@
       "downloaded_at": "2026-09-21T10:00:00+00:00",
       "sha256": "96707b73636a99e7e52accab5375da85c5d7ce6c82c420ef0b4d9c085e21084b",
       "size_bytes": 587,
-      "source_id": 7216983
+      "source_id": 7216983,
+      "label": null
     },
     {
       "kind": "rubric_definition",
@@ -77,7 +80,8 @@
       "downloaded_at": "2026-09-21T10:00:00+00:00",
       "sha256": "67df3899c6c1d029b3707d9752a0e11c194c85609cef165e3355afcd513bab4a",
       "size_bytes": 701,
-      "source_id": 7216983
+      "source_id": 7216983,
+      "label": null
     },
     {
       "kind": "consent_form",
@@ -85,7 +89,8 @@
       "downloaded_at": "2026-09-21T10:00:00+00:00",
       "sha256": "964dbfbaaca8fdc0a47071b383f7aa80d199ce502a8d9d6739ab346acce7b66f",
       "size_bytes": 991,
-      "source_id": 1234567
+      "source_id": 1234567,
+      "label": null
     },
     {
       "kind": "gradebook",
@@ -93,7 +98,8 @@
       "downloaded_at": "2026-09-21T10:00:00+00:00",
       "sha256": "e2334f687bb5d84b5f77a13a394cdee12fe27d032261451d77a1ad366478911e",
       "size_bytes": 2341,
-      "source_id": null
+      "source_id": null,
+      "label": null
     },
     {
       "kind": "roster",
@@ -101,7 +107,8 @@
       "downloaded_at": "2026-09-21T10:00:00+00:00",
       "sha256": "0bddee8f8801777e10a276452873924a705027d03a0811fc8b5f552fba74f45e",
       "size_bytes": 5420,
-      "source_id": null
+      "source_id": null,
+      "label": null
     }
   ]
 }

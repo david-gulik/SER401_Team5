@@ -17,14 +17,18 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from GAVEL.app.dtos.canvas_course import CanvasModule
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.app.workspace.manifest import (
     ArtifactEntry,
+    AssignmentEntry,
     CourseManifest,
     load_manifest,
     new_manifest,
     record_artifact,
+    record_assignment,
     save_manifest,
+    set_course_metadata,
     utc_now_iso,
 )
 
@@ -82,6 +86,7 @@ def record(
     target: Path,
     *,
     source_id: int | None = None,
+    label: str | None = None,
     gavel_version: str | None = None,
     now: str | None = None,
 ) -> ArtifactEntry:
@@ -94,8 +99,51 @@ def record(
         sha256=sha256_of(target),
         size_bytes=target.stat().st_size,
         source_id=source_id,
+        label=label,
     )
     manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
     manifest = record_artifact(manifest, entry, now=stamp)
     save_manifest(folder.manifest_path, manifest)
     return entry
+
+
+def note_course(
+    folder: CourseFolder,
+    *,
+    canvas_course_id: int | None = None,
+    canvas_course_name: str | None = None,
+    canvas_course_code: str | None = None,
+    term_code: str | None = None,
+    modules: tuple[CanvasModule, ...] | None = None,
+    gavel_version: str | None = None,
+    now: str | None = None,
+) -> CourseManifest:
+    """Fill in course fields on the manifest and save it. None arguments leave a field alone."""
+    stamp = now or utc_now_iso()
+    manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
+    manifest = set_course_metadata(
+        manifest,
+        canvas_course_id=canvas_course_id,
+        canvas_course_name=canvas_course_name,
+        canvas_course_code=canvas_course_code,
+        term_code=term_code,
+        modules=modules,
+        now=stamp,
+    )
+    save_manifest(folder.manifest_path, manifest)
+    return manifest
+
+
+def note_assignment(
+    folder: CourseFolder,
+    entry: AssignmentEntry,
+    *,
+    gavel_version: str | None = None,
+    now: str | None = None,
+) -> CourseManifest:
+    """Add or replace one assignment entry on the manifest and save it."""
+    stamp = now or utc_now_iso()
+    manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
+    manifest = record_assignment(manifest, entry, now=stamp)
+    save_manifest(folder.manifest_path, manifest)
+    return manifest

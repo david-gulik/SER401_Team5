@@ -165,7 +165,7 @@ The roster can be downloaded through the CLI using one of two methods:
 python -m GAVEL.cli.main roster download \
   --term <TERM_CODE> \
   --class-number <5-DIGIT-CLASS-NUMBER> \
-  --output roster.csv
+  --course-folder <COURSE_FOLDER>
 ```
 
 Example:
@@ -174,7 +174,7 @@ Example:
 python -m GAVEL.cli.main roster download \
   --term 2261 \
   --class-number 12345 \
-  --output roster.csv
+  --course-folder ser401_26f_12345
 ```
 
 **Option B — Catalog lookup (you only know subject + catalog number):**
@@ -183,8 +183,7 @@ python -m GAVEL.cli.main roster download \
 python -m GAVEL.cli.main roster download \
   --term <TERM_CODE> \
   --subject <SUBJECT> \
-  --catalog-number <CATALOG-NUMBER> \
-  --output roster.csv
+  --catalog-number <CATALOG-NUMBER>
 ```
 
 Example:
@@ -193,11 +192,15 @@ Example:
 python -m GAVEL.cli.main roster download \
   --term 2261 \
   --subject SER \
-  --catalog-number 401 \
-  --output roster.csv
+  --catalog-number 401
 ```
 
 If more than one section is found, the CLI will prompt you to select one.
+
+The roster is saved as `original/roster.csv` inside the course folder,
+`<workspace>/courses/<course folder>/` (see `docs/workspace_layout.md`). In lookup
+mode the course folder is named from the term and the section you pick; in direct
+mode a class number alone cannot name it, so `--course-folder` is required.
 
 ---
 
@@ -219,7 +222,7 @@ The tool performs **one** browser login and reuses the session for both the cata
 
 ### 5. Verify the output
 
-- [ ] `roster.csv` was created at the path you specified
+- [ ] `original/roster.csv` was created inside the course folder, and `manifest.json` next to it lists it
 - [ ] Open in Excel. The rows should appear without extra blank lines
 - [ ] Confirm the expected students are present
 
@@ -233,7 +236,9 @@ The tool performs **one** browser login and reuses the session for both the cata
 | `--class-number` | Mode A | Five-digit class number |
 | `--subject` | Mode B | Subject prefix (e.g., `SER`) |
 | `--catalog-number` | Mode B | Catalog number (e.g., `401`) |
-| `--output` / `-o` | No | Save CSV to file; omit to print to stdout |
+| `--workspace` | No | Workspace root. Defaults to `DEFAULT_OUTPUT_DIR` from `.env`, else `~/Downloads/GAVEL` |
+| `--course-folder` | See note | Course folder name such as `ser222_25sc_12345`. Canvas commands derive it from `--course-id` when omitted |
+| `--overwrite` | No | Replace files already downloaded into the course folder; without it a second download is refused |
 | `--info-only` | No | Print resolved term/class number without downloading, like a dry run |
 
 ---

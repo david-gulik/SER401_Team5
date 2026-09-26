@@ -18,8 +18,7 @@ Run the following from the `IVE/` directory:
 ```
 python -m GAVEL.cli.main rubric download \
     --course-id <ID> \
-    --assignment-id <ID> \
-    --output <PATH>
+    --assignment-id <ID>
 ```
 
 ### Arguments
@@ -28,15 +27,16 @@ python -m GAVEL.cli.main rubric download \
 |-----------------|----------|-----------------------------------------------------------------------------|
 | `--course-id`   | Yes      | Canvas course ID — found in the URL: `canvas.asu.edu/courses/<course-id>`  |
 | `--assignment-id` | Yes    | Canvas assignment ID — found in the URL: `.../assignments/<assignment-id>` |
-| `--output / -o` | Yes      | Directory path to save the JSON output (e.g. `rubric_assessments/`)        |
+| `--workspace` | No | Workspace root. Defaults to `DEFAULT_OUTPUT_DIR` from `.env`, else `~/Downloads/GAVEL` |
+| `--course-folder` | See note | Course folder name such as `ser222_25sc_12345`. Canvas commands derive it from `--course-id` when omitted |
+| `--overwrite` | No | Replace files already downloaded into the course folder; without it a second download is refused |
 
 ### Example
 
 ```
 python -m GAVEL.cli.main rubric download \
     --course-id 253450 \
-    --assignment-id 7216983 \
-    --output rubric_assessments/
+    --assignment-id 7216983
 ```
 
 ---
@@ -57,11 +57,16 @@ Each submission object in the response contains a `rubric_assessment` hash keyed
 
 ### Step 2 — Serialize to JSON
 
-The assessments are serialized into a flat JSON array and written to:
+The assessments are serialized into a flat JSON array and written into the assignment folder
+inside the course folder (see `docs/workspace_layout.md`), next to the rubric definition:
 
 ```
-<output_dir>/rubric_assessment_{course_id}_{assignment_id}.json
+<workspace>/courses/<course folder>/original/assignments/<assignment id>_m<module>/rubric_assessments.json
+<workspace>/courses/<course folder>/original/assignments/<assignment id>_m<module>/rubric_definition.json
 ```
+
+The `_m<module>` tag comes from the assignment name (`Module 4: ...`). Both files and the
+assignment itself are recorded in the course manifest.
 
 ---
 
@@ -73,7 +78,7 @@ On a successful run:
 [INFO] GAVEL.cli: Configuring Canvas HTTP client
 [INFO] AppServices: Initializing use cases
 [RUBRIC] Downloading rubric assessments for course=253450, assignment=7216983...
-[RUBRIC] Rubric assessment for course 253450, assignment 7216983 saved to rubric_assessments/rubric_assessment_253450_7216983.json
+[RUBRIC] Rubric assessment for course 253450, assignment 7216983 saved to C:\Users\you\Downloads\GAVEL\courses\ser222_25sc_12345\original\assignments\7216983_m4\rubric_assessments.json
 ```
 
 ---

@@ -65,11 +65,20 @@ TERM_LETTERS = frozenset(TERM_DIGIT_LETTERS.values())
 _TERM_CODE = re.compile(r"^2\d\d[1479]$")
 _CANVAS_TERM_TOKEN = re.compile(r"^(\d{4})(Spring|Summer|Fall|Winter)([A-Za-z]?)$")
 _CANVAS_COURSE_TOKEN = re.compile(r"^([A-Za-z]{2,4})(\d{3}[A-Za-z]?)$")
-_CLASS_NUMBER = re.compile(r"^\d{5}$")
+# Class numbers in a Canvas course code are always five digits; a key accepts any
+# run of digits so folders can be named for sections numbered differently.
+_SIS_CLASS_NUMBER = re.compile(r"^\d{5}$")
+_CLASS_NUMBER = re.compile(r"^\d+$")
 _SUBJECT = re.compile(r"^[A-Z]{2,4}$")
 _CATALOG_NUMBER = re.compile(r"^\d{3}[A-Z]?$")
 _SESSION = re.compile(r"^[a-z]?$")
-_FOLDER_NAME = re.compile(r"^([a-z]{2,4})(\d{3}[a-z]?)_(\d{2})([sufw])([a-z]?)_(\d{5})$")
+_FOLDER_NAME = re.compile(r"^([a-z]{2,4})(\d{3}[a-z]?)_(\d{2})([sufw])([a-z]?)_(\d+)$")
+_FOLDER_COURSE_PART = re.compile(r"^([a-z]{2,4})(\d{3}[a-z]?)$")
+_FOLDER_TERM_PART = re.compile(r"^(\d{2})([sufw])([a-z]?)$")
+FOLDER_NAME_FORMAT = (
+    "<subject><catalog number>_<2-digit year><term letter><session letter>_<class number>, "
+    "like ser222_25sc_12345"
+)
 _MODULE_NUMBER = re.compile(r"^\s*mod(?:ule)?\s*(\d+)\b", re.IGNORECASE)
 _ASSIGNMENT_FOLDER = re.compile(r"^(\d+)(?:_m(\d+))?$")
 
@@ -86,6 +95,38 @@ def module_number_from_name(name: str | None) -> int | None:
         return None
     match = _MODULE_NUMBER.match(name)
     return int(match[1]) if match else None
+
+
+def _describe_bad_folder_name(name: str) -> str:
+    """Which check a course folder name failed, in the words of the person who typed it."""
+    prefix = f"{name!r} is not a valid course folder name"
+    if not name:
+        return f"{prefix}: expected {FOLDER_NAME_FORMAT}"
+    if name != name.lower() and _FOLDER_NAME.fullmatch(name.lower()):
+        return f"{prefix}: it must be all lower case, try {name.lower()!r}"
+    parts = name.split("_")
+    if len(parts) != 3:
+        return (
+            f"{prefix}: expected three parts joined by underscores, {FOLDER_NAME_FORMAT}; "
+            f"got {len(parts)} part(s)"
+        )
+    course, term, class_number = parts
+    if not _FOLDER_COURSE_PART.fullmatch(course):
+        return (
+            f"{prefix}: the first part must be the subject (2-4 lower-case letters) followed "
+            f"by the catalog number (3 digits and an optional letter), like ser222; got {course!r}"
+        )
+    if not _FOLDER_TERM_PART.fullmatch(term):
+        return (
+            f"{prefix}: the second part must be the two-digit year, a term letter "
+            f"(s Spring, u Summer, f Fall, w Winter) and an optional session letter, "
+            f"like 25sc; got {term!r}"
+        )
+    if not _CLASS_NUMBER.fullmatch(class_number):
+        return (
+            f"{prefix}: the third part must be the class number, digits only; got {class_number!r}"
+        )
+    return f"{prefix}: expected {FOLDER_NAME_FORMAT}"
 
 
 def assignment_folder_name(assignment_id: int, module_number: int | None = None) -> str:
@@ -132,7 +173,7 @@ class CourseKey:
         if not _SESSION.fullmatch(self.session):
             raise ValueError(f"session must be one letter or empty, got {self.session!r}")
         if not _CLASS_NUMBER.fullmatch(self.class_number):
-            raise ValueError(f"class_number must be five digits, got {self.class_number!r}")
+            raise ValueError(f"class_number must be digits only, got {self.class_number!r}")
 
     @property
     def folder_name(self) -> str:
@@ -171,7 +212,7 @@ class CourseKey:
         )
         if course_match is None:
             return None
-        numbers = [p for p in parts[1:] if _CLASS_NUMBER.fullmatch(p)]
+        numbers = [p for p in parts[1:] if _SIS_CLASS_NUMBER.fullmatch(p)]
         chosen = class_number.strip() if class_number else (numbers[0] if numbers else "")
         if not chosen:
             return None
@@ -202,10 +243,15 @@ class CourseKey:
 
     @classmethod
     def parse(cls, folder_name: str) -> CourseKey:
-        """Inverse of ``folder_name``. Raises ValueError for anything else."""
-        match = _FOLDER_NAME.fullmatch(folder_name.strip())
+        """Inverse of ``folder_name``.
+
+        Raises ValueError naming the part that failed and what was expected of
+        it, so the message can be shown to whoever typed the name.
+        """
+        name = folder_name.strip()
+        match = _FOLDER_NAME.fullmatch(name)
         if match is None:
-            raise ValueError(f"{folder_name!r} is not a course folder name like ser222_25sc_12345")
+            raise ValueError(_describe_bad_folder_name(name))
         return cls(
             subject=match[1],
             catalog_number=match[2],

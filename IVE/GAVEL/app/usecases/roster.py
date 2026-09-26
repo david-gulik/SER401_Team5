@@ -14,5 +14,6 @@ def download_roster_to_file(
     csv_text = client.fetch_roster(request)
     normalized = csv_text.replace("\r\n", "\n").replace("\r", "\n")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(normalized, encoding="utf-8")
+    # Bytes, not text mode: keeps LF on every platform so checksums agree across machines.
+    destination.write_bytes(normalized.encode("utf-8"))
     return destination

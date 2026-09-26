@@ -57,7 +57,7 @@ class TestCourseKey:
         "bad",
         [
             "ser222_25xc_12345",  # unknown term letter
-            "ser222_25sc_1234",  # four-digit class number
+            "ser222_25sc_1234a",  # class number with a letter
             "SER222_25sc_12345",  # upper case
             "ser222-25sc-12345",
             "roster_2251_12345.csv",
@@ -75,7 +75,7 @@ class TestCourseKey:
             {"year": 1999},
             {"term": "x"},
             {"session": "cc"},
-            {"class_number": "123456"},
+            {"class_number": "12a45"},
         ],
     )
     def test_constructor_rejects(self, kwargs: dict) -> None:
@@ -93,6 +93,33 @@ class TestCourseKey:
 
     def test_course_label(self) -> None:
         assert KEY.course_label == "SER 222"
+
+    @pytest.mark.parametrize("class_number", ["1", "1234", "12345", "123456789"])
+    def test_class_number_may_be_any_run_of_digits(self, class_number: str) -> None:
+        key = CourseKey("SER", "222", 2025, "s", "c", class_number)
+        assert key.folder_name == f"ser222_25sc_{class_number}"
+        assert CourseKey.parse(key.folder_name) == key
+
+    @pytest.mark.parametrize(
+        ("bad", "expected"),
+        [
+            ("", "expected <subject>"),
+            ("SER222_25sc_12345", "must be all lower case, try 'ser222_25sc_12345'"),
+            ("ser222-25sc-12345", "three parts joined by underscores"),
+            ("ser222_25sc", "got 2 part(s)"),
+            ("s222_25sc_12345", "first part must be the subject"),
+            ("ser22_25sc_12345", "first part must be the subject"),
+            ("ser222_25xc_12345", "term letter (s Spring, u Summer, f Fall, w Winter)"),
+            ("ser222_2025sc_12345", "second part must be the two-digit year"),
+            ("ser222_25sc_1234a", "third part must be the class number, digits only"),
+        ],
+    )
+    def test_parse_says_which_part_failed(self, bad: str, expected: str) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            CourseKey.parse(bad)
+        message = str(excinfo.value)
+        assert message.startswith(f"{bad!r} is not a valid course folder name")
+        assert expected in message
 
 
 class TestFromCanvasCourseCode:

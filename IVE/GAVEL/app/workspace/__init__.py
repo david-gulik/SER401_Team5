@@ -25,7 +25,14 @@ from GAVEL.app.workspace.manifest import (
     load_manifest,
     save_manifest,
 )
-from GAVEL.app.workspace.recording import ArtifactExistsError, guard_not_downloaded, record
+from GAVEL.app.workspace.recording import (
+    ArtifactExistsError,
+    guard_not_downloaded,
+    note_assignment,
+    note_course,
+    record,
+)
+from GAVEL.app.workspace.resolve import course_key_from_selections
 
 __all__ = [
     "ArtifactEntry",
@@ -41,9 +48,12 @@ __all__ = [
     "ManifestError",
     "MissingArtifactError",
     "Workspace",
+    "course_key_from_selections",
     "guard_not_downloaded",
     "load_manifest",
     "module_number_from_name",
+    "note_assignment",
+    "note_course",
     "record",
     "save_manifest",
 ]

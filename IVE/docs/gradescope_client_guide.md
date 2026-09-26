@@ -37,3 +37,22 @@ Variables are stored in `IVE.env`.
 | Variable             | Default | Description                             |
 |----------------------| --- |-----------------------------------------|
 | `SUBMISSIONS_FOLDER` | _(none)_ | Filepath to desired submissions folder. |
+
+## Where the files go
+
+Exports are staged under the course folder and then filed by Canvas assignment
+(see `docs/workspace_layout.md`):
+
+```
+<workspace>/courses/<course folder>/original/assignments/<assignment id>_m<module>/submissions.zip
+<workspace>/courses/<course folder>/original/assignments/<assignment id>_m<module>/autograder.zip
+```
+
+A Gradescope assignment is matched to a Canvas assignment by name (case and
+punctuation ignored, a trailing `(Gradescope)` on the Canvas side ignored). Anything
+that cannot be matched is kept in `original/assignments/_unmatched/` and still
+recorded in `manifest.json`, so nothing downloaded is lost.
+
+`gradescope download` takes the shared `--workspace`, `--course-folder` and
+`--overwrite` arguments. The course folder is derived from `--course-id` through the
+Canvas course code; `SUBMISSIONS_FOLDER` is no longer used by this command.

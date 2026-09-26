@@ -87,7 +87,7 @@ def write_rubric(snapshot_dir: Path) -> Path:
     assignment_dir = snapshot_dir / "original" / "assignments" / "7216983_m1"
     assignment_dir.mkdir(parents=True, exist_ok=True)
 
-    rubric_path = assignment_dir / "rubric_assessment_12345_7216983.json"
+    rubric_path = assignment_dir / "rubric_assessments.json"
 
     rubric_path.write_text(
         json.dumps(
@@ -212,9 +212,7 @@ class TestFullPipeline:
         assert (output_dir / "roster.csv").exists()
         assert (output_dir / "gradebook.csv").exists()
 
-        rubric_output = (
-            output_dir / "assignments" / "7216983_m1" / "rubric_assessment_12345_7216983.json"
-        )
+        rubric_output = output_dir / "assignments" / "7216983_m1" / "rubric_assessments.json"
 
         assert rubric_output.exists()
 

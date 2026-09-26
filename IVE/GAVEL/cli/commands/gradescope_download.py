@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-import os
 import sys
 from argparse import Namespace
 
+from GAVEL.app.usecases.download_gradescope_submissions import (
+    DownloadGradescopeSubmissionsRequest,
+    DownloadGradescopeSubmissionsUseCase,
+)
+from GAVEL.app.workspace.recording import ArtifactExistsError
 from GAVEL.app_context import AppContext
-from GAVEL.infra.gradescope.http_gradescope_client import http_gradescope_client
+from GAVEL.cli.commands.workspace_args import resolve_course_folder
 
 
 def handle_gradescope_download(ctx: AppContext, args: Namespace) -> int:
@@ -14,32 +18,40 @@ def handle_gradescope_download(ctx: AppContext, args: Namespace) -> int:
     except (TypeError, ValueError):
         print("course_id must be a valid integer.", file=sys.stderr)
         return 2
-
     if course_id <= 0:
         print("course_id must be greater than zero.", file=sys.stderr)
         return 2
 
-    username = os.getenv("CANVAS_USERNAME")
-    password = os.getenv("CANVAS_PASSWORD")
-
-    if not username or not password:
-        print(
-            "Environment variables CANVAS_USERNAME and CANVAS_PASSWORD are required.",
-            file=sys.stderr,
-        )
+    folder = resolve_course_folder(ctx, args, course_id=course_id)
+    if folder is None:
         return 2
 
     try:
-        client = http_gradescope_client(
-            course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
+        result = DownloadGradescopeSubmissionsUseCase(ctx.services.canvas_client).execute(
+            DownloadGradescopeSubmissionsRequest(
+                course_id=course_id,
+                folder=folder,
+                headless=not args.show_browser,
+                overwrite=args.overwrite,
+            )
         )
-
-        client.download_all_assignments(username=username, password=password)
-
-    except Exception as exc:
+    except ArtifactExistsError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except RuntimeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001
         ctx.logger.error(f"Gradescope download failed: {exc}")
         print(f"Failed to download Gradescope submissions: {exc}", file=sys.stderr)
         return 1
 
-    print("Gradescope submissions downloaded successfully.")
+    for artifact in result.artifacts:
+        where = (
+            f"assignment {artifact.assignment_id}"
+            if artifact.assignment_id is not None
+            else "unmatched"
+        )
+        print(f"[GRADESCOPE] {artifact.kind} '{artifact.gradescope_name}' -> {where}")
+    print(result.message)
     return 0

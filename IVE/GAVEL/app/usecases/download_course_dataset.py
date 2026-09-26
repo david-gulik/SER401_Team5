@@ -1,11 +1,38 @@
+"""Everything Canvas has for a course, into one course folder.
+
+The CLI's ``download-dataset`` command. Each step runs independently and
+reports its own outcome, so one failing call does not leave the folder in an
+unknown state: whatever did land is in the manifest.
+"""
+
 from __future__ import annotations
 
-import json
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
-from pathlib import Path
+from dataclasses import dataclass
 
+from GAVEL.app.dtos.canvas_course import CanvasAssignment
 from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.app.usecases.canvas_download_course import (
+    DownloadCourseDataRequest,
+    DownloadCourseDataUseCase,
+)
+from GAVEL.app.usecases.download_consent_form import (
+    DownloadConsentFormRequest,
+    DownloadConsentFormUseCase,
+)
+from GAVEL.app.usecases.download_gradebook import (
+    DownloadGradebookRequest,
+    DownloadGradebookUseCase,
+)
+from GAVEL.app.usecases.download_rubric_assessment import (
+    DownloadRubricAssessmentRequest,
+    DownloadRubricAssessmentUseCase,
+)
+from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.recording import ArtifactExistsError
+
+COURSE_STEP = "course metadata"
+GRADEBOOK_STEP = "gradebook"
+CONSENT_STEP = "consent form"
 
 
 @dataclass(frozen=True)
@@ -13,13 +40,34 @@ class DownloadCourseDatasetRequest:
     course_id: int
     quiz_id: int
     assignment_ids: list[int]
-    output_dir: Path
+    folder: CourseFolder
+    overwrite: bool = False
+
+
+@dataclass(frozen=True)
+class DatasetStepOutcome:
+    step: str
+    status: str  # "succeeded" | "already_downloaded" | "failed"
+    detail: str
 
 
 @dataclass(frozen=True)
 class DownloadCourseDatasetResult:
-    dataset_path: Path
+    folder: CourseFolder
+    outcomes: tuple[DatasetStepOutcome, ...]
     message: str
+
+    @property
+    def succeeded(self) -> tuple[DatasetStepOutcome, ...]:
+        return tuple(o for o in self.outcomes if o.status == "succeeded")
+
+    @property
+    def already_downloaded(self) -> tuple[DatasetStepOutcome, ...]:
+        return tuple(o for o in self.outcomes if o.status == "already_downloaded")
+
+    @property
+    def failed(self) -> tuple[DatasetStepOutcome, ...]:
+        return tuple(o for o in self.outcomes if o.status == "failed")
 
 
 class DownloadCourseDatasetUseCase:
@@ -27,66 +75,85 @@ class DownloadCourseDatasetUseCase:
         self._canvas_client = canvas_client
 
     def execute(self, request: DownloadCourseDatasetRequest) -> DownloadCourseDatasetResult:
-
         if request.course_id <= 0:
             raise ValueError("course_id must be greater than zero")
+        if request.quiz_id <= 0:
+            raise ValueError("quiz_id must be greater than zero")
 
-        dataset_dir = request.output_dir / f"dataset_{request.course_id}"
-        dataset_dir.mkdir(parents=True, exist_ok=True)
+        outcomes: list[DatasetStepOutcome] = []
 
-        gradebook_bytes = self._canvas_client.fetch_gradebook_csv(request.course_id)
-        gradebook_path = dataset_dir / "gradebook.csv"
-        gradebook_path.write_bytes(gradebook_bytes)
+        def run(step: str, action) -> None:  # noqa: ANN001
+            try:
+                detail = action()
+            except ArtifactExistsError as exc:
+                outcomes.append(DatasetStepOutcome(step, "already_downloaded", str(exc)))
+            except Exception as exc:  # noqa: BLE001
+                outcomes.append(DatasetStepOutcome(step, "failed", str(exc)))
+            else:
+                outcomes.append(DatasetStepOutcome(step, "succeeded", detail))
 
-        consent_bytes = self._canvas_client.fetch_quiz_student_analysis(
-            request.course_id, request.quiz_id
+        run(
+            COURSE_STEP,
+            lambda: (
+                DownloadCourseDataUseCase(self._canvas_client)
+                .execute(DownloadCourseDataRequest(request.course_id, request.folder))
+                .message
+            ),
         )
-        consent_path = dataset_dir / "consent_form.csv"
-        consent_path.write_bytes(consent_bytes)
+        run(
+            GRADEBOOK_STEP,
+            lambda: (
+                DownloadGradebookUseCase(self._canvas_client)
+                .execute(
+                    DownloadGradebookRequest(request.course_id, request.folder, request.overwrite)
+                )
+                .message
+            ),
+        )
+        run(
+            CONSENT_STEP,
+            lambda: (
+                DownloadConsentFormUseCase(self._canvas_client)
+                .execute(
+                    DownloadConsentFormRequest(
+                        request.course_id, request.quiz_id, request.folder, request.overwrite
+                    )
+                )
+                .message
+            ),
+        )
 
-        rubric_dir = dataset_dir / "rubric_assessments"
-        rubric_dir.mkdir(exist_ok=True)
+        if request.assignment_ids:
+            known = self._known_assignments(request.course_id)
+            rubric_use_case = DownloadRubricAssessmentUseCase(self._canvas_client)
+            for assignment_id in request.assignment_ids:
+                assignment = known.get(assignment_id, CanvasAssignment(id=assignment_id, name=""))
+                run(
+                    f"rubric {assignment_id}",
+                    lambda a=assignment: (
+                        rubric_use_case.execute(
+                            DownloadRubricAssessmentRequest(
+                                request.course_id, a, request.folder, request.overwrite
+                            )
+                        ).message
+                    ),
+                )
 
-        rubric_files = []
-        rubric_definition_files = []
-
-        for assignment_id in request.assignment_ids or []:
-            assessments = self._canvas_client.fetch_rubric_assessments(
-                request.course_id, assignment_id
-            )
-
-            payload = [asdict(a) for a in assessments]
-
-            file_path = rubric_dir / f"assignment_{assignment_id}.json"
-            with file_path.open("w", encoding="utf-8") as fh:
-                json.dump(payload, fh, indent=2)
-
-            rubric_files.append(file_path)
-
-            definition = self._canvas_client.fetch_rubric_definition(
-                request.course_id, assignment_id
-            )
-            if definition is not None:
-                definition_path = rubric_dir / f"assignment_{assignment_id}_definition.json"
-                with definition_path.open("w", encoding="utf-8") as fh:
-                    json.dump(asdict(definition), fh, indent=2)
-                rubric_definition_files.append(definition_path)
-
-        manifest = {
-            "course_id": request.course_id,
-            "generated_at": datetime.now(UTC).isoformat(),
-            "gradebook_csv": gradebook_path.name,
-            "consent_form_csv": consent_path.name,
-            "rubric_assessments": [f"rubric_assessments/{p.name}" for p in rubric_files],
-            "rubric_definitions": [f"rubric_assessments/{p.name}" for p in rubric_definition_files],
-        }
-
-        manifest_path = dataset_dir / "dataset_manifest.json"
-        with manifest_path.open("w", encoding="utf-8") as fh:
-            json.dump(manifest, fh, indent=2)
-
-        message = f"Dataset for course {request.course_id} saved to {dataset_dir}"
+        result = DownloadCourseDatasetResult(
+            folder=request.folder, outcomes=tuple(outcomes), message=""
+        )
+        message = (
+            f"Dataset for course {request.course_id} in {request.folder.path}: "
+            f"{len(result.succeeded)} saved, {len(result.already_downloaded)} already downloaded, "
+            f"{len(result.failed)} failed"
+        )
         return DownloadCourseDatasetResult(
-            dataset_path=dataset_dir,
-            message=message,
+            folder=request.folder, outcomes=tuple(outcomes), message=message
         )
+
+    def _known_assignments(self, course_id: int) -> dict[int, CanvasAssignment]:
+        """Names for the folder tags; empty when the list call fails."""
+        try:
+            return {a.id: a for a in self._canvas_client.list_assignments(course_id)}
+        except Exception:  # noqa: BLE001
+            return {}

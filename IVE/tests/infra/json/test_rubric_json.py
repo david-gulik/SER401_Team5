@@ -20,6 +20,7 @@ from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentRequest,
     DownloadRubricAssessmentUseCase,
 )
+from GAVEL.app.workspace.layout import CourseKey, Workspace
 from GAVEL.infra.json.rubric_json import (
     assessment_from_dict,
     assessment_to_dict,
@@ -35,7 +36,7 @@ from GAVEL.infra.json.rubric_json_reader import (
     JsonRubricDefinitionReader,
 )
 from tests.app.usecases.test_download_rubric_assessment import (
-    ASSIGNMENT_ID,
+    ASSIGNMENT,
     COURSE_ID,
     RUBRIC_ASSESSMENTS,
     RUBRIC_DEFINITION,
@@ -147,7 +148,9 @@ class TestReadersMatchExistingDownloads:
     def downloaded(self, tmp_path: Path) -> tuple[Path, Path]:
         result = DownloadRubricAssessmentUseCase(MockCanvasClient()).execute(
             DownloadRubricAssessmentRequest(
-                course_id=COURSE_ID, assignment_id=ASSIGNMENT_ID, output_dir=tmp_path
+                course_id=COURSE_ID,
+                assignment=ASSIGNMENT,
+                folder=Workspace(tmp_path).course(CourseKey.parse("ser222_25sc_12345")),
             )
         )
         assert result.definition_saved_path is not None

@@ -9,7 +9,12 @@ from PyQt6.QtCore import QThreadPool
 
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.core.status import Status
-from GAVEL.pages.download.viewmodel import DownloadViewModel, ShowError, class_number_error
+from GAVEL.pages.download.viewmodel import (
+    DownloadViewModel,
+    FocusCourseFolder,
+    ShowError,
+    class_number_error,
+)
 from GAVEL.services.logger import AppLogger
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
 
@@ -104,16 +109,44 @@ def test_roster_download_rejects_non_numeric_class_number(vm, roster):
 
 def test_roster_download_uses_the_resolved_class_number(qapp, vm, roster, tmp_path: Path):
     vm.set_term("2267")
-    vm.set_class_number("12345")
+    vm.set_subject("SER")
+    vm.set_catalog_number("401")
+    vm.find_sections()
+    wait_for_workers(qapp)
+    vm.set_class_number("22222")
     vm.download_roster()
     wait_for_workers(qapp)
 
-    assert roster.roster_requests == [RosterRequest(term="2267", class_number="12345")]
+    assert roster.roster_requests == [RosterRequest(term="2267", class_number="22222")]
     assert roster.authenticate_calls == 1 and roster.close_calls == 1
     state = vm.get_state()
     assert state.status is Status.NOMINAL
-    assert state.last_saved_path == str(tmp_path / "roster_2267_12345.csv")
-    assert Path(state.last_saved_path).read_text(encoding="utf-8").startswith("Student,ID\n")
+    expected = tmp_path / "courses" / "ser401_26f_22222" / "original" / "roster.csv"
+    assert state.last_saved_path == str(expected)
+    assert expected.read_text(encoding="utf-8").startswith("Student,ID\n")
+
+
+def test_typed_class_number_alone_cannot_name_the_course_folder(vm, roster):
+    vm.set_term("2267")
+    vm.set_class_number("12345")
+    seen = events(vm)
+    vm.download_roster()
+    assert isinstance(seen[0], ShowError) and seen[1] == FocusCourseFolder()
+    assert "name the course folder" in seen[0].message
+    assert vm.get_state().course_folder_name is None
+    assert vm.get_state().course_folder_error == seen[0].message
+    assert roster.roster_requests == []
+
+
+def test_searched_section_names_the_course_folder(qapp, vm):
+    vm.set_term("2267")
+    vm.set_subject("SER")
+    vm.set_catalog_number("401")
+    vm.find_sections()
+    wait_for_workers(qapp)
+    vm.set_class_number("11111")
+    assert vm.get_state().course_folder_name == "courses/ser401_26f_11111"
+    assert vm.get_state().course_folder_error is None
 
 
 def test_find_sections_publishes_sorted_results_without_choosing_one(qapp, vm, roster):

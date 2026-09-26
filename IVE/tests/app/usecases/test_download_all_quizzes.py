@@ -6,6 +6,12 @@ from GAVEL.app.usecases.download_all_quizzes import (
     DownloadAllQuizzesRequest,
     DownloadAllQuizzesUseCase,
 )
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
+from GAVEL.app.workspace.manifest import load_manifest
+
+
+def course_folder(tmp_path) -> CourseFolder:
+    return Workspace(tmp_path).course(CourseKey.parse("ser222_25sc_12345"))
 
 
 class FakeCanvasClient:
@@ -43,7 +49,7 @@ def test_all_quizzes_download_successfully(tmp_path):
     result = DownloadAllQuizzesUseCase(client).execute(
         DownloadAllQuizzesRequest(
             course_id=123,
-            output_dir=tmp_path,
+            folder=course_folder(tmp_path),
         )
     )
 
@@ -51,8 +57,30 @@ def test_all_quizzes_download_successfully(tmp_path):
     assert len(result.skipped) == 0
     assert len(result.failed) == 0
 
-    assert (tmp_path / "Quiz_One_101.csv").exists()
-    assert (tmp_path / "Quiz_Two_202.csv").exists()
+    folder = course_folder(tmp_path)
+    assert folder.original.quiz_csv(101).read_bytes() == b"student,score\nA,10\n"
+    assert folder.original.quiz_csv(202).exists()
+    manifest = load_manifest(folder.manifest_path)
+    entry = manifest.artifact("original/quizzes/101.csv")
+    assert entry is not None and entry.kind == "quiz"
+    assert entry.source_id == 101 and entry.label == "Quiz One"
+    assert manifest.canvas_course_id == 123
+
+
+def test_quiz_already_in_the_folder_is_skipped_not_overwritten(tmp_path):
+    client = FakeCanvasClient(
+        quizzes=[CanvasQuiz(id=101, name="Quiz One")], responses={101: b"first\n"}
+    )
+    request = DownloadAllQuizzesRequest(course_id=123, folder=course_folder(tmp_path))
+    DownloadAllQuizzesUseCase(client).execute(request)
+    client.responses[101] = b"second\n"
+
+    result = DownloadAllQuizzesUseCase(client).execute(request)
+
+    assert result.succeeded == ()
+    assert len(result.skipped) == 1 and "already downloaded" in result.skipped[0].skipped_reason
+    assert course_folder(tmp_path).original.quiz_csv(101).read_bytes() == b"first\n"
+    assert client.attempted_quiz_ids == [101]
 
 
 def test_unavailable_report_is_skipped_and_batch_continues(tmp_path):
@@ -72,7 +100,7 @@ def test_unavailable_report_is_skipped_and_batch_continues(tmp_path):
     result = DownloadAllQuizzesUseCase(client).execute(
         DownloadAllQuizzesRequest(
             course_id=123,
-            output_dir=tmp_path,
+            folder=course_folder(tmp_path),
         )
     )
 
@@ -103,7 +131,7 @@ def test_failure_does_not_stop_batch(tmp_path):
     result = DownloadAllQuizzesUseCase(client).execute(
         DownloadAllQuizzesRequest(
             course_id=123,
-            output_dir=tmp_path,
+            folder=course_folder(tmp_path),
         )
     )
 
@@ -124,7 +152,7 @@ def test_invalid_course_id_raises_value_error(tmp_path):
         DownloadAllQuizzesUseCase(client).execute(
             DownloadAllQuizzesRequest(
                 course_id=0,
-                output_dir=tmp_path,
+                folder=course_folder(tmp_path),
             )
         )
 
@@ -135,7 +163,7 @@ def test_empty_quiz_list_returns_empty_result(tmp_path):
     result = DownloadAllQuizzesUseCase(client).execute(
         DownloadAllQuizzesRequest(
             course_id=123,
-            output_dir=tmp_path,
+            folder=course_folder(tmp_path),
         )
     )
 

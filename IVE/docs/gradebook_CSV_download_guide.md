@@ -39,22 +39,20 @@ Example:
 From the project root, run:
 ```bash
 python -m GAVEL.cli.main canvas-gradebook download \
-  --course-id <COURSE_ID> \
-  --output <OUTPUT_FILE>
+  --course-id <COURSE_ID>
 ```
 
 Example:
 ```bash
 python -m GAVEL.cli.main canvas-gradebook download \
-  --course-id 253450 \
-  --output gradebook.csv
+  --course-id 253450
 ```
 ---
 
 ### 3. Verify the output
 
-- The CLI prints: `Gradebook CSV saved to gradebook.csv`
--  The CSV file is created at the path you specified
+- The CLI prints: `Gradebook for course 253450 saved to <workspace>/courses/<course folder>/original/gradebook.csv`
+-  The course folder is named from the Canvas course code (see `docs/workspace_layout.md`); pass `--course-folder` to choose it yourself
 -  Open the file in Excel or a text editor
 -  Confirm expected student rows and grade columns are present
 
@@ -65,7 +63,9 @@ python -m GAVEL.cli.main canvas-gradebook download \
 | Flag | Required | Description |
 |------|----------|------------|
 | --course-id | Yes | Numeric Canvas course identifier |
-| --output | Yes | Path where the CSV file will be written |
+| `--workspace` | No | Workspace root. Defaults to `DEFAULT_OUTPUT_DIR` from `.env`, else `~/Downloads/GAVEL` |
+| `--course-folder` | See note | Course folder name such as `ser222_25sc_12345`. Canvas commands derive it from `--course-id` when omitted |
+| `--overwrite` | No | Replace files already downloaded into the course folder; without it a second download is refused |
 
 ---
 
@@ -76,7 +76,8 @@ python -m GAVEL.cli.main canvas-gradebook download \
 | course_id must be a valid integer. | Invalid input | Use a numeric course ID |
 | course_id must be greater than zero. | Invalid input | Use a positive course ID |
 | Failed to download gradebook CSV: ... | API/auth issue | Check CANVAS_BASE_URL and CANVAS_TOKEN |
-| CSV file not created | Invalid output path or runtime error | Verify path and rerun |
+| `... was already downloaded ...` | The course folder already holds a gradebook | Delete the course folder, or pass `--overwrite` |
+| `has no ASU course code to name the course folder` | Training or renamed Canvas course | Pass `--course-folder`, e.g. `ser222_25sc_12345` |
 
 ---
 
@@ -94,6 +95,6 @@ All variables go in `IVE/.env`.
 
 ## Notes
 
-- The CSV is written directly to the specified output path.
-- Both `--course-id` and `--output` are required.
-- Output directories must exist prior to running the command.
+- The CSV is written to `original/gradebook.csv` inside the course folder and recorded in `manifest.json`.
+- Only `--course-id` is required; the workspace root comes from `DEFAULT_OUTPUT_DIR`.
+- Folders are created as needed.

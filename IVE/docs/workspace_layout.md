@@ -40,7 +40,7 @@ means zipping the course folder and deleting `original/` first.
 | --- | --- | --- |
 | `ser222` | subject and catalog number, lower case | Canvas course code, or the myASU catalog search |
 | `25sc` | two-digit year, term letter, session letter | Canvas course code `2026FallC-…` or myASU term code `2267` plus the section's session |
-| `12345` | myASU class number (the section) | Canvas course code, or the roster selection |
+| `12345` | myASU class number (the section); any run of digits | Canvas course code, or the roster selection |
 
 Term letters: `s` Spring, `u` Summer, `f` Fall, `w` Winter. The session letter
 is omitted when unknown (`ser222_25s_12345`).
@@ -66,7 +66,7 @@ Written by GAVEL, updated after every download.
 | `gavel_version` | The GAVEL build that last wrote the file. |
 | `modules` | Canvas modules (`id`, `name`) for the course. |
 | `assignments` | One entry per Canvas assignment seen: `canvas_id`, `name`, `module_number`, `has_rubric`, and `due_at`, `points_possible`, `gradescope_name` when known. |
-| `artifacts` | One entry per downloaded file: `kind`, `path` (relative to the course folder, `/` separators), `downloaded_at`, `sha256`, `size_bytes`, `source_id` (quiz or assignment id). |
+| `artifacts` | One entry per downloaded file: `kind`, `path` (relative to the course folder, `/` separators), `downloaded_at`, `sha256`, `size_bytes`, `source_id` (quiz or assignment id), `label` (quiz title or Gradescope assignment name when the path alone does not say). |
 
 Artifact kinds: `roster`, `gradebook`, `consent_form`, `quiz`,
 `rubric_definition`, `rubric_assessments`, `submissions`, `autograder`.
@@ -115,3 +115,21 @@ record(folder, "gradebook", target)  # updates manifest.json
 ```
 
 Use cases take a `CourseFolder`
+## 8. From the GUI and the CLI
+
+The Download page names the course folder from its selections and shows the result
+under the workspace path as `Course folder: courses/ser222_25sc_12345`, or the reason
+it cannot yet. The order is: the selected Canvas course SIS code (with the roster
+class number picking the section of a cross-listed course), then the roster term plus a
+catalog search result. A Canvas id or class number typed by hand is not enough, but a
+course folder name typed into the override field under the workspace path always wins;
+use it for training courses and renamed courses.
+
+Every CLI download command takes `--workspace` (default `DEFAULT_OUTPUT_DIR`),
+`--course-folder` (for example `ser222_25sc_12345`) and `--overwrite`. Canvas commands
+derive the course folder from `--course-id` when `--course-folder` is omitted;
+`roster download` derives it from the term and the looked-up section, and needs
+`--course-folder` in `--class-number` mode.
+
+Gradescope exports are matched to Canvas assignments by name; unmatched ones are kept
+in `original/assignments/_unmatched/` and still recorded in the manifest.
