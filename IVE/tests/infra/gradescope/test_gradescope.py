@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock  #, #patch
+from unittest.mock import MagicMock  # , #patch
 
 from GAVEL.infra.gradescope.http_gradescope_client import GradescopeSession, http_gradescope_client
 
@@ -50,7 +50,8 @@ def test_build_requests_session():
     assert session.headers["X-CSRF-Token"] == "csrf123"
     assert "Mozilla" in session.headers["User-Agent"]
 
-#TODO: fix this test to reflect new download naming
+
+# TODO: fix this test to reflect new download naming
 
 # @patch("GAVEL.infra.gradescope.http_gradescope_client.time.sleep", return_value=None)
 # @patch("GAVEL.infra.gradescope.http_gradescope_client.requests.Session")
