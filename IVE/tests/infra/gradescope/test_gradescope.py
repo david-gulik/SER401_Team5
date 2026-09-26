@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock#, #patch
 
 from GAVEL.infra.gradescope.http_gradescope_client import GradescopeSession, http_gradescope_client
 
