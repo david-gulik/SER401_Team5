@@ -29,3 +29,21 @@ class TestYamlGradescopeReader:
     def test_submission_has_tests(self, submissions: list[GradescopeSubmission]) -> None:
         first = submissions[0]
         assert len(first.tests) > 0
+
+
+def test_a_submission_with_no_tests_reads_as_having_an_empty_test_list(
+    reader: YamlGradescopeReader, tmp_path: Path
+) -> None:
+    path = tmp_path / "no_tests.yml"
+    path.write_text(
+        "submission_1:\n"
+        "  :created_at: 2026-01-01 00:00:00\n"
+        "  :submitters:\n"
+        "  - :sid: '1'\n"
+        "    :email: student@example.com\n"
+        "    :name: Test Student\n"
+        "  :results:\n"
+        "    output: The autograder could not run.\n"
+    )
+    [submission] = reader.read(path)
+    assert submission.tests == []

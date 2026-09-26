@@ -4,15 +4,11 @@ import sys
 from argparse import Namespace
 from pathlib import Path
 
+from GAVEL.app.usecases.anonymize_consent_form import AnonymizeConsentFormUseCase
 from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetRequest,
     AnonymizeCourseDatasetUseCase,
 )
-from GAVEL.infra.json.rubric_assessment_json_reader import (
-    RubricAssessmentJSONReader,
-)
-
-from GAVEL.app.usecases.anonymize_consent_form import AnonymizeConsentFormUseCase
 from GAVEL.app.usecases.anonymize_gradebook import AnonymizeGradebookUseCase
 from GAVEL.app.usecases.anonymize_roster import AnonymizeRosterUseCase
 from GAVEL.app.usecases.anonymize_rubric_assessment import (
@@ -30,6 +26,9 @@ from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
 )
 from GAVEL.infra.csv.canvas_gradebook_csv_reader import LegacyGradebookCSVReader
 from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
+from GAVEL.infra.json.rubric_assessment_json_reader import (
+    RubricAssessmentJSONReader,
+)
 
 
 def handle_anonymize_run(ctx: AppContext, args: Namespace) -> int:

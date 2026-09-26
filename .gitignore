@@ -60,5 +60,11 @@ Desktop.ini
 /data_original
 /data_processed
 
+# Real (anonymized) data files dropped at the repo root for local testing.
+# Root-anchored so it doesn't affect tracked fixtures elsewhere, e.g. IVE/tests/data/.
+/*.csv
+/*.yml
+/*.yaml
+
 # Personal working notes
 /reference/
