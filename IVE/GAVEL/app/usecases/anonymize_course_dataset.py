@@ -120,10 +120,7 @@ class AnonymizeCourseDatasetUseCase:
 
         canvas_to_anon = dict(id_map)
 
-        sis_to_canvas = {
-            entry.sis_id: entry.canvas_id
-            for entry in consent_entries
-        }
+        sis_to_canvas = {entry.sis_id: entry.canvas_id for entry in consent_entries}
 
         consented_canvas_ids = set(consent_result.consented_ids)
 
