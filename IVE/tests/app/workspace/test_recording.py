@@ -9,6 +9,7 @@ from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
 from GAVEL.app.workspace.manifest import load_manifest
 from GAVEL.app.workspace.recording import (
     ArtifactExistsError,
+    artifact_path,
     guard_not_downloaded,
     record,
     relative_posix,
@@ -127,3 +128,27 @@ class TestRecord:
     def test_rejects_target_outside_folder(self, folder: CourseFolder, tmp_path: Path) -> None:
         with pytest.raises(ValueError):
             record(folder, "roster", write(tmp_path / "elsewhere.csv"), now=T0)
+
+
+class TestWorkspaceRelativePaths:
+    def test_autograder_snapshot_is_recorded_relative_to_the_workspace(
+        self, folder: CourseFolder, tmp_path: Path
+    ) -> None:
+        target = write(Workspace(tmp_path).autograder_snapshot(folder.key, 2), b"grader")
+        entry = record(folder, "autograder", target, now=T0)
+        assert entry.path == "autograders/ser222/m2/ser222_25sc_12345/autograder.zip"
+        assert artifact_path(folder, entry) == target
+
+    def test_course_paths_resolve_back_to_the_course_folder(self, folder: CourseFolder) -> None:
+        target = write(folder.original.gradebook_csv)
+        entry = record(folder, "gradebook", target, now=T0)
+        assert artifact_path(folder, entry) == target
+
+    def test_runs_area_is_allowed(self, folder: CourseFolder, tmp_path: Path) -> None:
+        target = write(tmp_path / "runs" / "x" / "run.log", b"log")
+        assert relative_posix(folder, target) == "runs/x/run.log"
+
+    def test_other_workspace_paths_are_rejected(self, folder: CourseFolder, tmp_path: Path) -> None:
+        target = write(tmp_path / "courses" / "other_25sc_1" / "original" / "roster.csv")
+        with pytest.raises(ValueError, match="autograders or runs"):
+            relative_posix(folder, target)

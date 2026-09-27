@@ -48,8 +48,8 @@ def handle_gradescope_download(ctx: AppContext, args: Namespace) -> int:
 
     for artifact in result.artifacts:
         where = (
-            f"assignment {artifact.assignment_id}"
-            if artifact.assignment_id is not None
+            f"module {artifact.module_number}"
+            if artifact.module_number is not None
             else "unmatched"
         )
         print(f"[GRADESCOPE] {artifact.kind} '{artifact.gradescope_name}' -> {where}")

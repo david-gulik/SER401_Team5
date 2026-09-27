@@ -18,7 +18,13 @@ import hashlib
 from pathlib import Path
 
 from GAVEL.app.dtos.canvas_course import CanvasModule
-from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.layout import (
+    ANONYMIZED_DIR,
+    AUTOGRADERS_DIR,
+    ORIGINAL_DIR,
+    RUNS_DIR,
+    CourseFolder,
+)
 from GAVEL.app.workspace.manifest import (
     ArtifactEntry,
     AssignmentEntry,
@@ -47,9 +53,42 @@ class ArtifactExistsError(FileExistsError):
         )
 
 
+COURSE_RELATIVE_ROOTS = (ORIGINAL_DIR, ANONYMIZED_DIR)
+WORKSPACE_RELATIVE_ROOTS = (AUTOGRADERS_DIR, RUNS_DIR)
+
+
 def relative_posix(folder: CourseFolder, target: Path) -> str:
-    """``target`` relative to the course folder, with ``/`` separators."""
-    return target.relative_to(folder.path).as_posix()
+    """The manifest path for ``target``, with ``/`` separators.
+
+    Files inside the course folder are recorded relative to it
+    (``original/...``, ``anonymized/...``). Files in the workspace-level
+    ``autograders/`` and ``runs/`` areas are recorded relative to the workspace
+    root, which their first path segment makes unambiguous.
+    """
+    try:
+        return target.relative_to(folder.path).as_posix()
+    except ValueError:
+        pass
+    try:
+        relative = target.relative_to(folder.workspace_root)
+    except ValueError:
+        raise ValueError(
+            f"{target} is neither inside the course folder {folder.path} nor its workspace "
+            f"{folder.workspace_root}"
+        ) from None
+    if not relative.parts or relative.parts[0] not in WORKSPACE_RELATIVE_ROOTS:
+        raise ValueError(
+            f"{target} is outside the course folder and not under "
+            f"{' or '.join(WORKSPACE_RELATIVE_ROOTS)}/ in the workspace"
+        )
+    return relative.as_posix()
+
+
+def artifact_path(folder: CourseFolder, entry: ArtifactEntry) -> Path:
+    """Inverse of ``relative_posix``: where a manifest entry lives on disk."""
+    first = entry.path.split("/", 1)[0]
+    base = folder.path if first in COURSE_RELATIVE_ROOTS else folder.workspace_root
+    return base / entry.path
 
 
 def sha256_of(path: Path) -> str:

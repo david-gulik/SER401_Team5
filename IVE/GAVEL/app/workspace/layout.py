@@ -16,13 +16,14 @@ The layout, with one course as an example:
     │       │   ├── gradebook.csv
     │       │   ├── consent_form.csv
     │       │   ├── quizzes/<quiz id>.csv
-    │       │   └── assignments/<assignment id>_m<module>/   AssignmentFolder
-    │       │       ├── rubric_definition.json
-    │       │       ├── rubric_assessments.json
-    │       │       ├── submissions.zip
-    │       │       └── autograder.zip
+    │       │   ├── assignments/<assignment id>_m<module>/   AssignmentFolder
+    │       │   │   ├── rubric_definition.json
+    │       │   │   └── rubric_assessments.json
+    │       │   └── submissions/m<module>/                   ModuleSubmissions
+    │       │       ├── submissions.zip                      Gradescope bulk export
+    │       │       └── extracted/                           the same, unzipped
     │       └── anonymized/             DataTree, same shape as original/
-    ├── autograders/
+    ├── autograders/<subject><catalog>/m<module>/<course folder>/autograder.zip
     └── runs/
 
 See ``docs/workspace_layout.md`` for the rules behind each name.
@@ -53,7 +54,9 @@ ASSIGNMENTS_DIR = "assignments"
 
 RUBRIC_DEFINITION_FILE = "rubric_definition.json"
 RUBRIC_ASSESSMENTS_FILE = "rubric_assessments.json"
+SUBMISSIONS_DIR = "submissions"
 SUBMISSIONS_FILE = "submissions.zip"
+EXTRACTED_DIR = "extracted"
 AUTOGRADER_FILE = "autograder.zip"
 
 # myASU term code digit -> folder letter. 2267 is Fall 2026.
@@ -81,6 +84,7 @@ FOLDER_NAME_FORMAT = (
 )
 _MODULE_NUMBER = re.compile(r"^\s*mod(?:ule)?\s*(\d+)\b", re.IGNORECASE)
 _ASSIGNMENT_FOLDER = re.compile(r"^(\d+)(?:_m(\d+))?$")
+_MODULE_FOLDER = re.compile(r"^m(\d+)$")
 
 
 def module_number_from_name(name: str | None) -> int | None:
@@ -294,13 +298,35 @@ class AssignmentFolder:
     def rubric_assessments_json(self) -> Path:
         return self.path / RUBRIC_ASSESSMENTS_FILE
 
+    def exists(self) -> bool:
+        return self.path.is_dir()
+
+
+@dataclass(frozen=True)
+class ModuleSubmissions:
+    """``submissions/m<module>/``: one module's Gradescope bulk export, zipped and extracted.
+
+    Gradescope exports are grouped by module rather than by Canvas assignment
+    because the assignment that carries the rubric and the one Gradescope
+    grades are usually different Canvas assignments in the same module.
+    """
+
+    path: Path
+
     @property
-    def submissions_zip(self) -> Path:
+    def module_number(self) -> int:
+        match = _MODULE_FOLDER.fullmatch(self.path.name)
+        if match is None:
+            raise ValueError(f"{self.path.name!r} is not a module submissions folder name")
+        return int(match[1])
+
+    @property
+    def zip_path(self) -> Path:
         return self.path / SUBMISSIONS_FILE
 
     @property
-    def autograder_zip(self) -> Path:
-        return self.path / AUTOGRADER_FILE
+    def extracted_dir(self) -> Path:
+        return self.path / EXTRACTED_DIR
 
     def exists(self) -> bool:
         return self.path.is_dir()
@@ -332,6 +358,10 @@ class DataTree:
     def assignments_dir(self) -> Path:
         return self.root / ASSIGNMENTS_DIR
 
+    @property
+    def submissions_dir(self) -> Path:
+        return self.root / SUBMISSIONS_DIR
+
     def quiz_csv(self, quiz_id: int) -> Path:
         return self.quizzes_dir / f"{quiz_id}.csv"
 
@@ -357,6 +387,19 @@ class DataTree:
             if child.is_dir() and _ASSIGNMENT_FOLDER.fullmatch(child.name)
         ]
 
+    def module_submissions(self, module_number: int) -> ModuleSubmissions:
+        return ModuleSubmissions(self.submissions_dir / f"m{module_number}")
+
+    def list_module_submissions(self) -> list[ModuleSubmissions]:
+        if not self.submissions_dir.is_dir():
+            return []
+        found = [
+            ModuleSubmissions(child)
+            for child in self.submissions_dir.iterdir()
+            if child.is_dir() and _MODULE_FOLDER.fullmatch(child.name)
+        ]
+        return sorted(found, key=lambda m: m.module_number)
+
     def exists(self) -> bool:
         return self.root.is_dir()
 
@@ -367,6 +410,11 @@ class CourseFolder:
 
     path: Path
     key: CourseKey
+
+    @property
+    def workspace_root(self) -> Path:
+        """The workspace this course folder sits in (``courses/<name>`` is two levels down)."""
+        return self.path.parents[1]
 
     @property
     def manifest_path(self) -> Path:
@@ -405,6 +453,22 @@ class Workspace:
     @property
     def runs_dir(self) -> Path:
         return self.root / RUNS_DIR
+
+    def autograder_snapshot(self, key: CourseKey, module_number: int) -> Path:
+        """Where the Gradescope autograder zip for one module of one offering is kept.
+
+        ``autograders/ser222/m2/ser222_25sc_12345/autograder.zip``. Grouped by
+        course and module so snapshots of the same grader across offerings sit
+        side by side; the module UID mapping the sponsor maintains will replace
+        the ``m<module>`` level once it exists.
+        """
+        return (
+            self.autograders_dir
+            / f"{key.subject.lower()}{key.catalog_number.lower()}"
+            / f"m{module_number}"
+            / key.folder_name
+            / AUTOGRADER_FILE
+        )
 
     def course(self, key: CourseKey) -> CourseFolder:
         return CourseFolder(self.courses_dir / key.folder_name, key)

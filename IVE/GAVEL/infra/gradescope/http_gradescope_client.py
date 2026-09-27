@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import time
-import zipfile
 from dataclasses import dataclass
 
 import requests
@@ -62,10 +61,6 @@ class http_gradescope_client:
     GRADESCOPE_DOMAIN = "www.gradescope.com"
     SESSION_COOKIE_NAME = "_gradescope_session"
     TOKEN_COOKIE_NAME = "token"
-
-    GAVEL_AUTOGRADERS_DOWNLOAD = "GAVEL/autograders"
-    GAVEL_COURSES_FOLDER = "GAVEL/courses"
-    GAVEL_ORIGINAL_ASSIGNMENTS_SUFFIX = "original/assignments"
 
     def __init__(
         self, course_url: str, headless: bool = True, submissions_folder: str | None = None
@@ -276,13 +271,6 @@ class http_gradescope_client:
         course_id = parts[parts.index("courses") + 1]
         return course_id
 
-    def _extract_canvas_course_id(self, url) -> str:
-        """
-        Extracts the Canvas course ID from the course_url variable
-        """
-        parts = url.split("/")
-        return parts[len(parts) - 1]
-
     def _build_requests_session(
         self, gs_session: GradescopeSession, course_id: int | str
     ) -> requests.Session:
@@ -310,144 +298,90 @@ class http_gradescope_client:
 
         return session
 
-    def _extract_SER_course_code(self, filename: str) -> str:
-        """
-        Extracts course code like SER222 or SER334 from any filename format.
-        """
-        match = re.search(r"(?i)\bSER\d{3}", filename).group(0).upper()
-        if not match:
-            log.error(f"Could not find course code in: {filename}")
-            match = "misc"
+    def download_all_assignments(self, username: str, password: str) -> list[str]:
+        """Log in, then save every assignment's bulk export and autograder to submissions_folder.
 
-        return match
-
-    def download_all_assignments(self, username: str, password: str):
+        Files are named ``<assignment name>.zip`` and ``<assignment name>_autograder.zip``
+        (illegal filename characters removed). Where they belong in the workspace is the
+        caller's business: DownloadGradescopeSubmissionsUseCase files them by Canvas
+        assignment. Returns the paths written.
         """
-        Logs in, captures session, and downloads all assignment bulk exports.
-        """
-
         log.info("Downloading all assignments...")
         gs_session, gs_course_id = self.capture_session(username, password)
         session = self._build_requests_session(gs_session, course_id=gs_course_id)
+        os.makedirs(self.submissions_folder, exist_ok=True)
 
         # Fetch assignments list
         resp = session.get(
             f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}"
         )
-        # print(f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}")
         soup = BeautifulSoup(resp.text, "html.parser")
         elements = soup.find_all(
             attrs={"data-assignment-id": True, "aria-describedby": f"course-{gs_course_id}"}
         )
-
         assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
 
-        # for a in assignments:
-        #     print(a, assignments[a])
-
+        written: list[str] = []
         for name, assignment_id in assignments.items():
-            # download autograder also!
-            autograder_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/configure_autograder"
-            resp = session.get(autograder_url)
+            safe_name = remove_illegal_download_characters(name)
+            assignment_url = (
+                f"{self.base_url}{self.courses_suffix}/{gs_course_id}"
+                f"{self.assignments_suffix}/{assignment_id}"
+            )
+
+            # The autograder attached to the assignment, when there is one.
+            resp = session.get(f"{assignment_url}/configure_autograder")
             soup = BeautifulSoup(resp.text, "html.parser")
             link = soup.find("a", string=lambda t: t and "Download Autograder" in t)
-
             if link and ".zip" in link["href"]:
-                href = link["href"]
-                download_name = (href.split("/")[-1]).split("?")[0]
-                course_name = self._extract_SER_course_code(download_name)
-                log.info("Downloading autograder: %s", download_name)
-                autograder_download = session.get(href)
-                os.makedirs(
-                    os.path.join(self.GAVEL_AUTOGRADERS_DOWNLOAD, course_name), exist_ok=True
+                log.info("Downloading autograder for assignment: %s", name)
+                autograder_download = session.get(link["href"])
+                written.append(
+                    self._save(f"{safe_name}_autograder.zip", autograder_download.content)
                 )
-                output_path = f"GAVEL/autograders/{course_name}/{download_name}"
-                with open(output_path, "wb") as f:
-                    f.write(autograder_download.content)
 
-            review_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}{self.review_grades_suffix}"
+            # The bulk export of submissions: reuse an existing export or trigger one.
+            review_url = f"{assignment_url}{self.review_grades_suffix}"
             resp = session.get(review_url)
             soup = BeautifulSoup(resp.text, "html.parser")
-
             link = soup.find("a", class_="js-bulkExportModalDownload")
 
-            # Case 1: Export already exists
             if link and ".zip" in link["href"]:
                 log.info("Downloading assignment: %s", name)
-                zip_resp = session.get(f"{self.base_url}" + link["href"])
-
-                safe_name = remove_illegal_download_characters(name)
-                canvas_id = self._extract_canvas_course_id(self.course_url)
-                output_folder = os.path.join(
-                    self.GAVEL_COURSES_FOLDER, canvas_id, self.GAVEL_ORIGINAL_ASSIGNMENTS_SUFFIX
+                zip_resp = session.get(f"{self.base_url}{link['href']}")
+            else:
+                log.info("Export not created yet; exporting assignment: %s", assignment_id)
+                csrf = soup.find("meta", attrs={"name": "csrf-token"})["content"]
+                session.headers["X-CSRF-Token"] = csrf
+                export_resp = session.post(
+                    f"{assignment_url}/export", headers={"Referer": review_url}
                 )
-                os.makedirs(output_folder, exist_ok=True)
-                output_path = os.path.join(output_folder, canvas_id + " " + safe_name + ".zip")
-                output_path_unzipped = os.path.join(output_folder, canvas_id + " " + safe_name)
-                with open(output_path, "wb") as f:
-                    f.write(zip_resp.content)
+                file_id = export_resp.json()["generated_file_id"]
 
-                # unzip
-                with zipfile.ZipFile(output_path, "r") as zip_ref:
-                    zip_ref.extractall(output_path_unzipped)
+                generated = (
+                    f"{self.base_url}{self.courses_suffix}/{gs_course_id}"
+                    f"{self.generated_files_suffix}/{file_id}"
+                )
+                while True:
+                    progress = session.get(f"{generated}.json").json()["progress"]
+                    if progress == 1.0:
+                        log.info("Export completed!")
+                        break
+                    log.info("Waiting for export... (%s%%)", int(progress * 100))
+                    time.sleep(1.5)
+                zip_resp = session.get(f"{generated}.zip")
 
-                os.remove(output_path)
-
-                log.info("Assignment %s downloaded!", name)
-                continue
-
-            # Case 2: Need to trigger export
-            log.info("Export not created yet; exporting assignment: %s", assignment_id)
-
-            csrf = soup.find("meta", attrs={"name": "csrf-token"})["content"]
-            session.headers["X-CSRF-Token"] = csrf
-
-            export_resp = session.post(
-                f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.assignments_suffix}/{assignment_id}/export",
-                headers={"Referer": review_url},
-            )
-            # print("POST response code: ", export_resp.status_code)
-            data = export_resp.json()
-            file_id = data["generated_file_id"]
-
-            # Polling
-            poll_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.json"
-
-            while True:
-                poll_resp = session.get(poll_url)
-                poll_data = poll_resp.json()
-                progress = poll_data["progress"]
-
-                if progress == 1.0:
-                    log.info("Export completed!")
-                    break
-
-                log.info("Waiting for export... (%s%%)", int(progress * 100))
-                time.sleep(1.5)
-
-            # Download final ZIP
-            zip_url = f"{self.base_url}{self.courses_suffix}/{gs_course_id}{self.generated_files_suffix}/{file_id}.zip"
-            zip_resp = session.get(zip_url)
-
-            safe_name = remove_illegal_download_characters(name)
-            # print(self.submissions_folder, safe_name)
-            output_path = os.path.join(
-                self.submissions_folder, canvas_id + " " + safe_name + ".zip"
-            )
-            output_path_unzipped = os.path.join(output_folder, canvas_id + " " + safe_name)
-
-            with open(output_path, "wb") as f:
-                f.write(zip_resp.content)
-
-            # unzip
-            with zipfile.ZipFile(output_path, "r") as zip_ref:
-                zip_ref.extractall(output_path_unzipped)
-
-            os.remove(output_path)
-
+            written.append(self._save(f"{safe_name}.zip", zip_resp.content))
             log.info("Assignment %s downloaded!", name)
 
         log.info("Download of class %s complete!", gs_course_id)
+        return written
+
+    def _save(self, filename: str, content: bytes) -> str:
+        output_path = os.path.join(self.submissions_folder, filename)
+        with open(output_path, "wb") as f:
+            f.write(content)
+        return output_path
 
 
 def main():

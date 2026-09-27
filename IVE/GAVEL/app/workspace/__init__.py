@@ -14,6 +14,7 @@ from GAVEL.app.workspace.layout import (
     CourseFolder,
     CourseKey,
     DataTree,
+    ModuleSubmissions,
     Workspace,
     module_number_from_name,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "DatasetReaders",
     "ManifestError",
     "MissingArtifactError",
+    "ModuleSubmissions",
     "Workspace",
     "course_key_from_selections",
     "guard_not_downloaded",

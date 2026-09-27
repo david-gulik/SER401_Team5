@@ -69,7 +69,7 @@
             "type": "string",
             "enum": ["roster", "gradebook", "consent_form", "quiz", "rubric_definition", "rubric_assessments", "submissions", "autograder"]
           },
-          "path": { "type": "string", "pattern": "^(original|anonymized)/[^\\\\:]+$" },
+          "path": { "type": "string", "pattern": "^(original|anonymized|autograders|runs)/[^\\\\:]+$", "description": "original/ and anonymized/ paths are relative to the course folder; autograders/ and runs/ paths are relative to the workspace root." },
           "downloaded_at": { "type": "string", "format": "date-time" },
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "size_bytes": { "type": "integer", "minimum": 0 },

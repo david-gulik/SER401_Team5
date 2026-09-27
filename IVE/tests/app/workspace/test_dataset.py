@@ -15,7 +15,7 @@ from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_definition import RubricDefinition
 from GAVEL.app.workspace.dataset import CourseDataset, DatasetReaders, MissingArtifactError
 from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
-from GAVEL.app.workspace.recording import sha256_of
+from GAVEL.app.workspace.recording import artifact_path, sha256_of
 from GAVEL.bootstrap import build_dataset_readers
 
 FOLDER_NAME = "ser222_25sc_12345"
@@ -50,7 +50,7 @@ class TestFixtureIntegrity:
 
     def test_every_manifest_artifact_matches_disk(self, original: CourseDataset) -> None:
         for entry in original.manifest.artifacts:
-            path = original.folder.path / entry.path
+            path = artifact_path(original.folder, entry)
             assert path.is_file(), entry.path
             assert sha256_of(path) == entry.sha256, entry.path
             assert path.stat().st_size == entry.size_bytes, entry.path
@@ -139,34 +139,41 @@ class TestAssignments:
             original.rubric_assessments(1)
 
     def test_gradescope_submissions_missing(self, original: CourseDataset) -> None:
-        with pytest.raises(MissingArtifactError, match="Gradescope"):
-            original.gradescope_submissions(RUBRIC_ASSIGNMENT)
+        with pytest.raises(MissingArtifactError, match="Gradescope submissions for module 4"):
+            original.gradescope_submissions(4)
 
 
-class TestGradescopeZip:
+class TestGradescopeExports:
     """Built in tmp_path: a Gradescope export is a zip with submission_metadata.yml inside."""
 
     @pytest.fixture
     def dataset(self, tmp_path: Path, readers: DatasetReaders, data_dir: Path) -> CourseDataset:
         folder = Workspace(tmp_path).course(CourseKey.parse(FOLDER_NAME))
-        assignment = folder.original.assignment(RUBRIC_ASSIGNMENT, 4)
-        assignment.path.mkdir(parents=True)
-        with zipfile.ZipFile(assignment.submissions_zip, "w") as archive:
+        module = folder.original.module_submissions(4)
+        module.path.mkdir(parents=True)
+        with zipfile.ZipFile(module.zip_path, "w") as archive:
             archive.write(data_dir / "submission_metadata.yml", "export/submission_metadata.yml")
             archive.writestr("export/submission_1/Main.java", "class Main {}")
         return CourseDataset.original(folder, readers)
 
-    def test_reads_metadata_from_zip(self, dataset: CourseDataset) -> None:
-        submissions = dataset.gradescope_submissions(RUBRIC_ASSIGNMENT)
+    def test_reads_metadata_from_the_zip(self, dataset: CourseDataset) -> None:
+        submissions = dataset.gradescope_submissions(4)
         assert len(submissions) > 0
         assert submissions[0].submitter.sid
 
+    def test_prefers_the_extracted_copy(self, dataset: CourseDataset, data_dir: Path) -> None:
+        module = dataset.tree.module_submissions(4)
+        with zipfile.ZipFile(module.zip_path) as archive:
+            archive.extractall(module.extracted_dir)
+        module.zip_path.unlink()
+        assert len(dataset.gradescope_submissions(4)) > 0
+
     def test_zip_without_metadata(self, dataset: CourseDataset) -> None:
-        zip_path = dataset.assignment_folder(RUBRIC_ASSIGNMENT).submissions_zip
+        zip_path = dataset.tree.module_submissions(4).zip_path
         with zipfile.ZipFile(zip_path, "w") as archive:
             archive.writestr("readme.txt", "empty export")
         with pytest.raises(MissingArtifactError, match="submission_metadata.yml"):
-            dataset.gradescope_submissions(RUBRIC_ASSIGNMENT)
+            dataset.gradescope_submissions(4)
 
 
 class TestAnonymizedTree:

@@ -40,18 +40,19 @@ Variables are stored in `IVE.env`.
 
 ## Where the files go
 
-Exports are staged under the course folder and then filed by Canvas assignment
+Exports are staged under the course folder and then filed by module
 (see `docs/workspace_layout.md`):
 
 ```
-<workspace>/courses/<course folder>/original/assignments/<assignment id>_m<module>/submissions.zip
-<workspace>/courses/<course folder>/original/assignments/<assignment id>_m<module>/autograder.zip
+<workspace>/courses/<course folder>/original/submissions/m<module>/submissions.zip
+<workspace>/courses/<course folder>/original/submissions/m<module>/extracted/
+<workspace>/autograders/<subject><catalog>/m<module>/<course folder>/autograder.zip
 ```
 
-A Gradescope assignment is matched to a Canvas assignment by name (case and
-punctuation ignored, a trailing `(Gradescope)` on the Canvas side ignored). Anything
-that cannot be matched is kept in `original/assignments/_unmatched/` and still
-recorded in `manifest.json`, so nothing downloaded is lost.
+The module comes from the Gradescope assignment name (`Module 2: Programming`), or
+failing that from the Canvas assignment with the same name. An export whose module
+cannot be told is kept in `original/submissions/_unmatched/` and still recorded in
+`manifest.json`, so nothing downloaded is lost.
 
 `gradescope download` takes the shared `--workspace`, `--course-folder` and
 `--overwrite` arguments. The course folder is derived from `--course-id` through the

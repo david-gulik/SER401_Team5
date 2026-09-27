@@ -9,6 +9,7 @@ from GAVEL.app.workspace.layout import (
     AssignmentFolder,
     CourseKey,
     DataTree,
+    ModuleSubmissions,
     Workspace,
     assignment_folder_name,
     module_number_from_name,
@@ -233,8 +234,6 @@ class TestPaths:
         assert folder.module_number == 4
         assert folder.rubric_definition_json == folder.path / "rubric_definition.json"
         assert folder.rubric_assessments_json == folder.path / "rubric_assessments.json"
-        assert folder.submissions_zip == folder.path / "submissions.zip"
-        assert folder.autograder_zip == folder.path / "autograder.zip"
 
     def test_assignment_folder_without_module(self, tmp_path: Path) -> None:
         folder = DataTree(tmp_path).assignment(7216983)
@@ -281,3 +280,38 @@ class TestDiscovery:
 
     def test_list_courses_without_root(self, tmp_path: Path) -> None:
         assert Workspace(tmp_path / "nothing").list_courses() == []
+
+
+class TestModuleSubmissions:
+    def test_paths(self, tmp_path: Path) -> None:
+        module = DataTree(tmp_path).module_submissions(4)
+        assert module.path == tmp_path / "submissions" / "m4"
+        assert module.module_number == 4
+        assert module.zip_path == module.path / "submissions.zip"
+        assert module.extracted_dir == module.path / "extracted"
+        assert not module.exists()
+
+    def test_list_is_sorted_by_module_and_ignores_strays(self, tmp_path: Path) -> None:
+        tree = DataTree(tmp_path)
+        for name in ("m10", "m2", "_unmatched", "notes"):
+            (tree.submissions_dir / name).mkdir(parents=True)
+        assert [m.module_number for m in tree.list_module_submissions()] == [2, 10]
+
+    def test_list_without_folder(self, tmp_path: Path) -> None:
+        assert DataTree(tmp_path / "missing").list_module_submissions() == []
+
+    def test_malformed_name(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError):
+            _ = ModuleSubmissions(tmp_path / "_unmatched").module_number
+
+
+class TestWorkspaceAreas:
+    def test_course_folder_knows_its_workspace(self, tmp_path: Path) -> None:
+        folder = Workspace(tmp_path).course(KEY)
+        assert folder.workspace_root == tmp_path
+
+    def test_autograder_snapshot_path(self, tmp_path: Path) -> None:
+        path = Workspace(tmp_path).autograder_snapshot(KEY, 2)
+        assert path == (
+            tmp_path / "autograders" / "ser222" / "m2" / "ser222_25sc_12345" / "autograder.zip"
+        )

@@ -1,11 +1,14 @@
-"""Gradescope bulk exports into ``original/assignments/<id>_m<n>/``.
+"""Gradescope bulk exports into ``original/submissions/m<module>/``.
 
 The Gradescope scraper only knows Gradescope's assignment names and writes
 ``<name>.zip`` and ``<name>_autograder.zip`` into one folder. This use case
-lets it write into a staging folder, then files each zip under the Canvas
-assignment whose name matches. Anything it cannot match goes to
-``assignments/_unmatched/`` and is still recorded in the manifest, so nothing
-downloaded is ever lost.
+lets it write into a staging folder, then files each export by module: the
+assignment Gradescope grades and the one that carries the human rubric are
+usually different Canvas assignments in the same module, so the module is
+what ties submissions to rubric assessments. Submissions are extracted next
+to the zip; autograder zips go to the workspace-level ``autograders/`` area.
+Anything whose module cannot be told goes to ``submissions/_unmatched/`` and
+is still recorded in the manifest, so nothing downloaded is ever lost.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,11 +24,11 @@ from typing import Any
 
 from GAVEL.app.dtos.canvas_course import CanvasAssignment
 from GAVEL.app.ports.canvas_client import CanvasClient
-from GAVEL.app.usecases.download_rubric_assessment import assignment_folder_for
-from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.layout import CourseFolder, Workspace, module_number_from_name
 from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.app.workspace.recording import (
     ArtifactExistsError,
+    artifact_path,
     load_or_create_manifest,
     note_assignment,
     note_course,
@@ -38,6 +42,7 @@ AUTOGRADER_SUFFIX = "_autograder"
 
 _ILLEGAL = re.compile(r'[\\/:*?"<>|]')
 _GRADESCOPE_TAG = re.compile(r"\(\s*gradescope\s*\)", re.IGNORECASE)
+_MODULE_PREFIX = re.compile(r"^\s*mod(?:ule)?\s*\d+\s*[:\-]?\s*", re.IGNORECASE)
 _SPACES = re.compile(r"\s+")
 
 
@@ -52,8 +57,9 @@ def match_gradescope_name(
     """The one Canvas assignment a Gradescope export name refers to, or None.
 
     Tries an exact match first, then the Canvas name with its
-    ``(Gradescope)`` tag removed, then a prefix match either way. Anything
-    ambiguous is None rather than a guess.
+    ``(Gradescope)`` tag removed, then the Canvas name without its leading
+    ``Module N:`` (Gradescope assignments are often named without it), then a
+    prefix match either way. Anything ambiguous is None rather than a guess.
     """
     key = normalise_name(name)
     if not key:
@@ -63,12 +69,30 @@ def match_gradescope_name(
     for rule in (
         lambda canvas: canvas == key,
         lambda canvas: normalise_name(_GRADESCOPE_TAG.sub("", canvas)) == key,
+        lambda canvas: (
+            normalise_name(_MODULE_PREFIX.sub("", _GRADESCOPE_TAG.sub("", canvas))) == key
+        ),
         lambda canvas: canvas.startswith(key) or key.startswith(canvas),
     ):
         hits = [a for a, canvas in candidates if canvas and rule(canvas)]
         if len(hits) == 1:
             return hits[0]
     return None
+
+
+def module_for_export(
+    name: str, assignments: Sequence[CanvasAssignment]
+) -> tuple[int | None, CanvasAssignment | None]:
+    """Which module a Gradescope export belongs to, and the Canvas assignment it names.
+
+    The module number in the Gradescope assignment name wins; otherwise the
+    matching Canvas assignment's name is read for one.
+    """
+    assignment = match_gradescope_name(name, assignments)
+    module = module_number_from_name(name)
+    if module is None and assignment is not None:
+        module = module_number_from_name(assignment.name)
+    return module, assignment
 
 
 @dataclass(frozen=True)
@@ -84,22 +108,23 @@ class GradescopeArtifact:
     gradescope_name: str
     kind: str  # "submissions" | "autograder"
     saved_path: Path
-    assignment_id: int | None  # None when no Canvas assignment matched
+    module_number: int | None  # None when the module could not be told
+    assignment_id: int | None = None  # the Canvas assignment with the same name, when one matched
 
 
 @dataclass(frozen=True)
 class DownloadGradescopeSubmissionsResult:
-    saved_path: Path  # the assignments folder
+    saved_path: Path  # the submissions folder
     artifacts: tuple[GradescopeArtifact, ...]
     message: str
 
     @property
     def matched(self) -> tuple[GradescopeArtifact, ...]:
-        return tuple(a for a in self.artifacts if a.assignment_id is not None)
+        return tuple(a for a in self.artifacts if a.module_number is not None)
 
     @property
     def unmatched(self) -> tuple[GradescopeArtifact, ...]:
-        return tuple(a for a in self.artifacts if a.assignment_id is None)
+        return tuple(a for a in self.artifacts if a.module_number is None)
 
 
 def _env_credentials() -> tuple[str | None, str | None]:
@@ -131,15 +156,18 @@ class DownloadGradescopeSubmissionsUseCase:
 
         folder = request.folder
         tree = folder.original
+        workspace = Workspace(folder.workspace_root)
         if not request.overwrite:
             self._guard_nothing_downloaded_yet(folder)
 
+        assignments_unavailable = False
         try:
             assignments = list(self._canvas_client.list_assignments(request.course_id))
         except Exception:  # noqa: BLE001 - matching is best effort; unmatched is still kept
             assignments = []
+            assignments_unavailable = True
 
-        staging = tree.assignments_dir / STAGING_DIR
+        staging = tree.submissions_dir / STAGING_DIR
         staging.mkdir(parents=True, exist_ok=True)
         client = self._client_factory(
             course_url=f"https://canvas.asu.edu/courses/{request.course_id}",
@@ -156,18 +184,18 @@ class DownloadGradescopeSubmissionsUseCase:
                 name = name[: -len(AUTOGRADER_SUFFIX)]
                 kind = "autograder"
 
-            assignment = match_gradescope_name(name, assignments)
-            if assignment is None:
-                target = tree.assignments_dir / UNMATCHED_DIR / zip_path.name
+            module, assignment = module_for_export(name, assignments)
+            if module is None:
+                target = tree.submissions_dir / UNMATCHED_DIR / zip_path.name
+            elif kind == "autograder":
+                target = workspace.autograder_snapshot(folder.key, module)
             else:
-                assignment_folder = assignment_folder_for(tree, assignment)
-                target = (
-                    assignment_folder.submissions_zip
-                    if kind == "submissions"
-                    else assignment_folder.autograder_zip
-                )
+                target = tree.module_submissions(module).zip_path
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(zip_path), str(target))
+            if module is not None and kind == "submissions":
+                _extract(target, tree.module_submissions(module).extracted_dir)
+
             record(
                 folder,
                 kind,
@@ -181,7 +209,7 @@ class DownloadGradescopeSubmissionsUseCase:
                     AssignmentEntry(
                         canvas_id=assignment.id,
                         name=assignment.name,
-                        module_number=assignment_folder_for(tree, assignment).module_number,
+                        module_number=module,
                         has_rubric=assignment.has_rubric,
                         gradescope_name=name,
                     ),
@@ -191,6 +219,7 @@ class DownloadGradescopeSubmissionsUseCase:
                     gradescope_name=name,
                     kind=kind,
                     saved_path=target,
+                    module_number=module,
                     assignment_id=None if assignment is None else assignment.id,
                 )
             )
@@ -199,17 +228,19 @@ class DownloadGradescopeSubmissionsUseCase:
         note_course(folder, canvas_course_id=request.course_id)
 
         result = DownloadGradescopeSubmissionsResult(
-            saved_path=tree.assignments_dir,
-            artifacts=tuple(artifacts),
-            message="",
+            saved_path=tree.submissions_dir, artifacts=tuple(artifacts), message=""
         )
+        modules = sorted({a.module_number for a in result.matched if a.module_number is not None})
         message = (
-            f"Gradescope submissions for course {request.course_id} saved to "
-            f"{tree.assignments_dir} ({len(result.matched)} matched to Canvas assignments"
+            f"Gradescope exports for course {request.course_id} saved to {tree.submissions_dir} "
+            f"({len(result.matched)} filed under module(s) "
+            f"{', '.join(f'm{m}' for m in modules) or 'none'}"
         )
         if result.unmatched:
             names = ", ".join(sorted({a.gradescope_name for a in result.unmatched}))
             message += f", {len(result.unmatched)} left in {UNMATCHED_DIR}/: {names}"
+        if assignments_unavailable:
+            message += "; the Canvas assignment list could not be fetched"
         message += ")"
         return DownloadGradescopeSubmissionsResult(
             saved_path=result.saved_path, artifacts=result.artifacts, message=message
@@ -222,10 +253,19 @@ class DownloadGradescopeSubmissionsUseCase:
         for kind in ("submissions", "autograder"):
             existing = manifest.artifacts_of_kind(kind)
             if existing:
-                raise ArtifactExistsError(folder, folder.path / existing[0].path)
-        for assignment_folder in folder.original.list_assignments():
-            if assignment_folder.submissions_zip.exists():
-                raise ArtifactExistsError(folder, assignment_folder.submissions_zip)
+                raise ArtifactExistsError(folder, artifact_path(folder, existing[0]))
+        for module in folder.original.list_module_submissions():
+            if module.zip_path.exists():
+                raise ArtifactExistsError(folder, module.zip_path)
+
+
+def _extract(zip_path: Path, destination: Path) -> None:
+    """Unzip an export next to itself so the files are ready for an autograder run."""
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.mkdir(parents=True)
+    with zipfile.ZipFile(zip_path) as archive:
+        archive.extractall(destination)
 
 
 def _remove_if_empty(path: Path) -> None:

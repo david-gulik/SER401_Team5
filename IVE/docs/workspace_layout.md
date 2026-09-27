@@ -18,14 +18,18 @@ This layout was agreed with Dr. Acuña on 2026-09-10.
 │       │   ├── consent_form.csv       # Canvas consent quiz, student analysis export
 │       │   ├── quizzes/
 │       │   │   └── <quiz id>.csv      # other quiz exports, keyed by Canvas quiz id
-│       │   └── assignments/
-│       │       └── <assignment id>_m<module>/     # e.g. 7216983_m4
-│       │           ├── rubric_definition.json     # criteria, ratings, points
-│       │           ├── rubric_assessments.json    # one entry per graded submission
-│       │           ├── submissions.zip            # Gradescope bulk export
-│       │           └── autograder.zip             # Gradescope autograder, when one exists
+│       │   ├── assignments/
+│       │   │   └── <assignment id>_m<module>/     # e.g. 7216983_m4
+│       │   │       ├── rubric_definition.json     # criteria, ratings, points
+│       │   │       └── rubric_assessments.json    # one entry per graded submission
+│       │   └── submissions/
+│       │       ├── m<module>/                     # Gradescope exports, grouped by module
+│       │       │   ├── submissions.zip            # the bulk export as downloaded
+│       │       │   └── extracted/                 # the same, unzipped
+│       │       └── _unmatched/<name>.zip          # exports whose module could not be told
 │       └── anonymized/                # same shape as original/, consented students only, Anon ids
-├── autograders/                       # reserved: imported autograder versions, keyed by module UID
+├── autograders/
+│   └── <subject><catalog>/m<module>/<course folder>/autograder.zip   # Gradescope autograder snapshots
 └── runs/                              # reserved: autograder executions and comparisons
 ```
 
@@ -131,5 +135,10 @@ derive the course folder from `--course-id` when `--course-folder` is omitted;
 `roster download` derives it from the term and the looked-up section, and needs
 `--course-folder` in `--class-number` mode.
 
-Gradescope exports are matched to Canvas assignments by name; unmatched ones are kept
-in `original/assignments/_unmatched/` and still recorded in the manifest.
+Gradescope exports are grouped by the module number in the Gradescope assignment name
+(`Module 2: Programming` goes to `submissions/m2/`), because the assignment that carries
+the rubric and the one Gradescope grades are usually different Canvas assignments in
+the same module. The zip is kept and also extracted next to itself. An export whose
+module cannot be told is kept in `original/submissions/_unmatched/` and still recorded
+in the manifest. Autograder zips go to the workspace-level `autograders/` area; their
+manifest paths are relative to the workspace root and start with `autograders/`.
