@@ -118,6 +118,27 @@ class AnonymizeCourseDatasetUseCase:
 
         id_map = tuple(id_map_result.id_map.items())
 
+        canvas_to_anon = dict(id_map)
+
+        sis_to_canvas = {
+            entry.sis_id: entry.canvas_id
+            for entry in consent_entries
+        }
+
+        consented_canvas_ids = set(consent_result.consented_ids)
+
+        roster_id_map = tuple(
+            (sis_id, canvas_to_anon[canvas_id])
+            for sis_id, canvas_id in sis_to_canvas.items()
+            if canvas_id in canvas_to_anon
+        )
+
+        roster_consented_ids = tuple(
+            sis_id
+            for sis_id, canvas_id in sis_to_canvas.items()
+            if canvas_id in consented_canvas_ids
+        )
+
         consent_form_result = self._anonymize_consent_form_use_case.execute(
             AnonymizeConsentFormRequest(
                 entries=consent_entries,
@@ -160,8 +181,8 @@ class AnonymizeCourseDatasetUseCase:
             roster_result = self._anonymize_roster_use_case.execute(
                 AnonymizeRosterRequest(
                     students=roster_students,
-                    consented_ids=consent_result.consented_ids,
-                    id_map=id_map,
+                    consented_ids=roster_consented_ids,
+                    id_map=roster_id_map,
                 )
             )
 
