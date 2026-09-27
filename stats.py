@@ -9,8 +9,9 @@ __author__ = "Ruben Acuna"
 __copyright__ = "Copyright 2024-25, Ruben Acuna"
 
 import csv
-import numpy as np
 import os
+
+import numpy as np
 import pandas as pd
 from scipy.stats import ttest_ind
 
@@ -134,7 +135,7 @@ if __name__ == "__main__":
     # print(df_grades_ser334_24sc)
     # print(df_grades_ser334_24fc)
 
-    print(f"Assessment\t\t\t\tSection\tn\tMean\tSD\tMin")
+    print("Assessment\t\t\t\tSection\tn\tMean\tSD\tMin")
     perform_two_tailed_test(
         "Module 1: Programming", None, a, df_grades_ser334_24sc, df_grades_ser334_24fc
     )

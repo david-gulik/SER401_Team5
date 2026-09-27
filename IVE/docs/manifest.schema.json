@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/david-gulik/SER401_Team5/IVE/docs/manifest.schema.json",
+  "title": "GAVEL course manifest",
+  "description": "manifest.json at the root of one course folder. Written by GAVEL after every download; see docs/workspace_layout.md.",
+  "type": "object",
+  "required": ["schema_version", "course", "created_at", "updated_at", "modules", "assignments", "artifacts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "course": {
+      "type": "object",
+      "required": ["folder", "subject", "catalog_number", "year", "term", "session", "class_number"],
+      "additionalProperties": false,
+      "properties": {
+        "folder": { "type": "string", "pattern": "^[a-z]{2,4}[0-9]{3}[a-z]?_[0-9]{2}[sufw][a-z]?_[0-9]{5}$" },
+        "subject": { "type": "string", "pattern": "^[A-Z]{2,4}$" },
+        "catalog_number": { "type": "string", "pattern": "^[0-9]{3}[A-Z]?$" },
+        "year": { "type": "integer", "minimum": 2000, "maximum": 2099 },
+        "term": { "type": "string", "enum": ["s", "u", "f", "w"] },
+        "session": { "type": "string", "pattern": "^[a-z]?$" },
+        "class_number": { "type": "string", "pattern": "^[0-9]{5}$" },
+        "term_code": { "type": ["string", "null"], "pattern": "^2[0-9]{2}[1479]$" },
+        "canvas_course_id": { "type": ["integer", "null"] },
+        "canvas_course_name": { "type": ["string", "null"] },
+        "canvas_course_code": { "type": ["string", "null"] }
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "gavel_version": { "type": ["string", "null"] },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" }
+        }
+      }
+    },
+    "assignments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["canvas_id", "name", "module_number", "has_rubric"],
+        "additionalProperties": false,
+        "properties": {
+          "canvas_id": { "type": "integer" },
+          "name": { "type": "string" },
+          "module_number": { "type": ["integer", "null"] },
+          "has_rubric": { "type": "boolean" },
+          "due_at": { "type": ["string", "null"], "format": "date-time" },
+          "points_possible": { "type": ["number", "null"] },
+          "gradescope_name": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "path", "downloaded_at", "sha256", "size_bytes"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["roster", "gradebook", "consent_form", "quiz", "rubric_definition", "rubric_assessments", "submissions", "autograder"]
+          },
+          "path": { "type": "string", "pattern": "^(original|anonymized)/[^\\\\:]+$" },
+          "downloaded_at": { "type": "string", "format": "date-time" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "size_bytes": { "type": "integer", "minimum": 0 },
+          "source_id": { "type": ["integer", "null"] }
+        }
+      }
+    }
+  }
+}

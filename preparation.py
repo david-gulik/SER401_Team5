@@ -21,12 +21,12 @@ __author__ = "Ruben Acuna"
 __copyright__ = "Copyright 2024-25, Ruben Acuna"
 
 import glob
+import json
 import os
 import platform
 import shutil
-import sys
 import subprocess
-import json
+import sys
 import zipfile
 from enum import Enum
 from pathlib import Path

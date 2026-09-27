@@ -1,0 +1,3 @@
+# Fixture course folder: checksums in its manifest.json are computed on LF bytes,
+# so every platform must check it out with LF.
+IVE/tests/data/workspace/** text eol=lf

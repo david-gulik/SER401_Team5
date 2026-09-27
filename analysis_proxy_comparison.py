@@ -34,7 +34,7 @@ def compare_autograder_accuracy(course, canvas_gradebook, class_data, config, se
     key_candidates = [x for x in key_candidates if "EC" not in x]
 
     if len(key_candidates) != 1:
-        raise Exception(f"Issue finding column with grade information.")
+        raise Exception("Issue finding column with grade information.")
     key = key_candidates[0]
 
     # extract grade for each student and update class data
@@ -92,7 +92,7 @@ def load_canvas_gradebook(path_gradebook):
 def generate_grade_table(cd):
 
     # display table of data
-    print(f"Last Name\tOriginal Score\tProxy Score\tabs_error\tAutograder\tProxies")
+    print("Last Name\tOriginal Score\tProxy Score\tabs_error\tAutograder\tProxies")
     for student in cd:
         name_printable = student["last_name"][:5]
 
