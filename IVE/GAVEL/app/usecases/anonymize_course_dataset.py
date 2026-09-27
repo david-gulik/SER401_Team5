@@ -157,11 +157,26 @@ class AnonymizeCourseDatasetUseCase:
         if roster_path.exists():
             roster_students = tuple(self._roster_reader.read(roster_path))
 
+            # The roster "ID" column is the SIS ID, but id_map is keyed by
+            # Canvas ID. The consent form has both, so use it to re-key.
+            canvas_to_anon = dict(id_map)
+            sis_to_canvas = {entry.sis_id: entry.canvas_id for entry in consent_entries}
+            consented = set(consent_result.consented_ids)
+
+            roster_id_map = tuple(
+                (sis_id, canvas_to_anon[canvas_id])
+                for sis_id, canvas_id in sis_to_canvas.items()
+                if canvas_id in canvas_to_anon
+            )
+            roster_consented_ids = tuple(
+                sis_id for sis_id, canvas_id in sis_to_canvas.items() if canvas_id in consented
+            )
+
             roster_result = self._anonymize_roster_use_case.execute(
                 AnonymizeRosterRequest(
                     students=roster_students,
-                    consented_ids=consent_result.consented_ids,
-                    id_map=id_map,
+                    consented_ids=roster_consented_ids,
+                    id_map=roster_id_map,
                 )
             )
 

@@ -67,7 +67,7 @@ def write_roster(snapshot_dir: Path) -> None:
         "ID,Posting ID,First Name,Last Name,Status,Units,"
         "Grade Basis,Program and Plan,Academic Level,ASURITE,"
         "Residency,Zoom Email\n"
-        "100001,100001-001,Test,Student,Enrolled,3,"
+        "9999999999,9999-001,Test,Student,Enrolled,3,"
         "GRD,SER,Senior,teststudent,Resident,test@example.com\n",
         encoding="utf-8",
     )
