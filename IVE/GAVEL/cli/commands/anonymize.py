@@ -4,6 +4,7 @@ import sys
 from argparse import Namespace
 from pathlib import Path
 
+from GAVEL.app.dtos.consent_decision import ConsentStatus
 from GAVEL.app.usecases.anonymize_consent_form import AnonymizeConsentFormUseCase
 from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetRequest,
@@ -79,6 +80,15 @@ def handle_anonymize_run(ctx: AppContext, args: Namespace) -> int:
         return 1
 
     print(f"Anonymized dataset written to {result.output_dir}")
+
+    # Counts only; student names stay out of terminal output.
+    status_counts = ", ".join(
+        f"{sum(1 for d in result.consent_decisions if d.status is status)} "
+        f"{status.value.replace('_', ' ')}"
+        for status in ConsentStatus
+    )
+    print(f"Consent filtering: {status_counts}")
+
     print(
         f"Consent form: "
         f"{result.consent_form.processed_count} processed, "
