@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,12 +8,16 @@ from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentRequest,
     DownloadRubricAssessmentUseCase,
 )
+from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.recording import ArtifactExistsError
+from GAVEL.infra.json.rubric_json import assessments_from_json
 
 
 @dataclass(frozen=True)
 class DownloadAllRubricAssessmentsRequest:
     course_id: int
-    output_dir: Path
+    folder: CourseFolder
+    overwrite: bool = False
 
 
 @dataclass(frozen=True)
@@ -25,9 +28,12 @@ class RubricAssessmentDownloadOutcome:
     assessment_count: int | None
     has_rubric: bool | None
     error: str | None
+    already_downloaded: bool = False
 
     @property
     def status(self) -> str:
+        if self.already_downloaded:
+            return "already_downloaded"
         if self.error is not None:
             return "failed"
         if self.has_rubric is False:
@@ -46,6 +52,10 @@ class DownloadAllRubricAssessmentsResult:
     @property
     def skipped(self) -> tuple[RubricAssessmentDownloadOutcome, ...]:
         return tuple(o for o in self.outcomes if o.status == "skipped")
+
+    @property
+    def already_downloaded(self) -> tuple[RubricAssessmentDownloadOutcome, ...]:
+        return tuple(o for o in self.outcomes if o.status == "already_downloaded")
 
     @property
     def failed(self) -> tuple[RubricAssessmentDownloadOutcome, ...]:
@@ -70,6 +80,10 @@ class DownloadAllRubricAssessmentsUseCase:
     hasn't been graded yet still counts as succeeded (verified via
     DownloadRubricAssessmentResult.definition_saved_path as a safety net,
     in case rubric presence changed between the list call and this one).
+
+    An assignment whose files are already in the course folder is reported
+    as "already_downloaded" and left alone; delete the course folder to
+    refresh it.
     """
 
     def __init__(self, canvas_client: CanvasClient) -> None:
@@ -103,21 +117,24 @@ class DownloadAllRubricAssessmentsUseCase:
                 result = rubric_use_case.execute(
                     DownloadRubricAssessmentRequest(
                         course_id=request.course_id,
-                        assignment_id=assignment.id,
-                        output_dir=request.output_dir,
+                        assignment=assignment,
+                        folder=request.folder,
+                        overwrite=request.overwrite,
                     )
                 )
-                assessments = json.loads(result.saved_path.read_text(encoding="utf-8"))
+            except ArtifactExistsError as exc:
                 outcomes.append(
                     RubricAssessmentDownloadOutcome(
                         assignment_id=assignment.id,
                         assignment_name=assignment.name,
-                        saved_path=result.saved_path,
-                        assessment_count=len(assessments),
-                        has_rubric=result.definition_saved_path is not None,
+                        saved_path=exc.target,
+                        assessment_count=None,
+                        has_rubric=None,
                         error=None,
+                        already_downloaded=True,
                     )
                 )
+                continue
             except Exception as exc:  # noqa: BLE001
                 outcomes.append(
                     RubricAssessmentDownloadOutcome(
@@ -129,5 +146,18 @@ class DownloadAllRubricAssessmentsUseCase:
                         error=str(exc),
                     )
                 )
+                continue
+
+            count = len(assessments_from_json(result.saved_path.read_text(encoding="utf-8")))
+            outcomes.append(
+                RubricAssessmentDownloadOutcome(
+                    assignment_id=assignment.id,
+                    assignment_name=assignment.name,
+                    saved_path=result.saved_path,
+                    assessment_count=count,
+                    has_rubric=result.definition_saved_path is not None,
+                    error=None,
+                )
+            )
 
         return DownloadAllRubricAssessmentsResult(outcomes=tuple(outcomes))

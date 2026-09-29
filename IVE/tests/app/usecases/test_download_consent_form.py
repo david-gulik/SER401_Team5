@@ -17,6 +17,9 @@ from GAVEL.app.usecases.download_consent_form import (
     DownloadConsentFormRequest,
     DownloadConsentFormUseCase,
 )
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
+from GAVEL.app.workspace.manifest import load_manifest
+from GAVEL.app.workspace.recording import ArtifactExistsError
 
 # ---------------------------------------------------------------------------
 # Test data
@@ -100,12 +103,13 @@ def use_case(client: MockCanvasClient) -> DownloadConsentFormUseCase:
 
 
 @pytest.fixture
-def request_(tmp_path: Path) -> DownloadConsentFormRequest:
-    return DownloadConsentFormRequest(
-        course_id=COURSE_ID,
-        quiz_id=QUIZ_ID,
-        output_dir=tmp_path,
-    )
+def folder(tmp_path: Path) -> CourseFolder:
+    return Workspace(tmp_path).course(CourseKey.parse("ser222_25sc_12345"))
+
+
+@pytest.fixture
+def request_(folder: CourseFolder) -> DownloadConsentFormRequest:
+    return DownloadConsentFormRequest(course_id=COURSE_ID, quiz_id=QUIZ_ID, folder=folder)
 
 
 # ---------------------------------------------------------------------------
@@ -118,17 +122,17 @@ class TestHappyPath:
         result = use_case.execute(request_)
         assert result is not None
 
-    def test_output_file_is_created(self, use_case, request_, tmp_path):
+    def test_output_file_is_created(self, use_case, request_, folder):
         use_case.execute(request_)
-        assert (tmp_path / f"consent_form_{COURSE_ID}.csv").exists()
+        assert (folder.original.consent_form_csv).exists()
 
-    def test_output_filename_contains_course_id(self, use_case, request_, tmp_path):
+    def test_output_filename_contains_course_id(self, use_case, request_, folder):
         use_case.execute(request_)
-        assert (tmp_path / f"consent_form_{COURSE_ID}.csv").exists()
+        assert (folder.original.consent_form_csv).exists()
 
-    def test_output_content_matches(self, use_case, request_, tmp_path):
+    def test_output_content_matches(self, use_case, request_, folder):
         use_case.execute(request_)
-        path = tmp_path / f"consent_form_{COURSE_ID}.csv"
+        path = folder.original.consent_form_csv
         assert path.read_bytes() == CONSENT_CSV_BYTES
 
     def test_fetched_with_correct_ids(self, use_case, request_, client):
@@ -139,19 +143,38 @@ class TestHappyPath:
         result = use_case.execute(request_)
         assert str(COURSE_ID) in result.message
 
-    def test_result_saved_path_matches_output_file(self, use_case, request_, tmp_path):
+    def test_result_saved_path_matches_output_file(self, use_case, request_, folder):
         result = use_case.execute(request_)
-        assert result.saved_path == tmp_path / f"consent_form_{COURSE_ID}.csv"
+        assert result.saved_path == folder.original.consent_form_csv
 
-    def test_output_dir_is_created_if_missing(self, use_case, tmp_path):
-        nested = tmp_path / "a" / "b" / "c"
-        request_ = DownloadConsentFormRequest(
-            course_id=COURSE_ID,
-            quiz_id=QUIZ_ID,
-            output_dir=nested,
-        )
+    def test_course_folder_is_created_if_missing(self, use_case, request_, folder):
+        assert not folder.exists()
         use_case.execute(request_)
-        assert nested.exists()
+        assert folder.original.consent_form_csv.exists()
+
+    def test_manifest_records_the_file_and_the_quiz(self, use_case, request_, folder):
+        use_case.execute(request_)
+        manifest = load_manifest(folder.manifest_path)
+        entry = manifest.artifact("original/consent_form.csv")
+        assert entry is not None and entry.kind == "consent_form"
+        assert entry.source_id == QUIZ_ID
+        assert manifest.canvas_course_id == COURSE_ID
+
+    def test_second_download_is_refused(self, use_case, request_, client):
+        use_case.execute(request_)
+        with pytest.raises(ArtifactExistsError, match="already downloaded"):
+            use_case.execute(request_)
+        assert len(client.fetch_quiz_calls) == 1
+
+    def test_overwrite_replaces_the_file(self, use_case, request_, client, folder):
+        use_case.execute(request_)
+        client.consent_csv = b"replaced\n"
+        use_case.execute(
+            DownloadConsentFormRequest(
+                course_id=COURSE_ID, quiz_id=QUIZ_ID, folder=folder, overwrite=True
+            )
+        )
+        assert folder.original.consent_form_csv.read_bytes() == b"replaced\n"
 
 
 # ---------------------------------------------------------------------------
@@ -213,53 +236,53 @@ class TestApiErrors:
 
 
 class TestValidation:
-    def test_raises_for_zero_course_id(self, use_case, tmp_path):
+    def test_raises_for_zero_course_id(self, use_case, folder):
         with pytest.raises(ValueError, match="course_id must be greater than zero"):
             use_case.execute(
                 DownloadConsentFormRequest(
                     course_id=0,
                     quiz_id=QUIZ_ID,
-                    output_dir=tmp_path,
+                    folder=folder,
                 )
             )
 
-    def test_raises_for_negative_course_id(self, use_case, tmp_path):
+    def test_raises_for_negative_course_id(self, use_case, folder):
         with pytest.raises(ValueError, match="course_id must be greater than zero"):
             use_case.execute(
                 DownloadConsentFormRequest(
                     course_id=-1,
                     quiz_id=QUIZ_ID,
-                    output_dir=tmp_path,
+                    folder=folder,
                 )
             )
 
-    def test_raises_for_zero_quiz_id(self, use_case, tmp_path):
+    def test_raises_for_zero_quiz_id(self, use_case, folder):
         with pytest.raises(ValueError, match="quiz_id must be greater than zero"):
             use_case.execute(
                 DownloadConsentFormRequest(
                     course_id=COURSE_ID,
                     quiz_id=0,
-                    output_dir=tmp_path,
+                    folder=folder,
                 )
             )
 
-    def test_raises_for_negative_quiz_id(self, use_case, tmp_path):
+    def test_raises_for_negative_quiz_id(self, use_case, folder):
         with pytest.raises(ValueError, match="quiz_id must be greater than zero"):
             use_case.execute(
                 DownloadConsentFormRequest(
                     course_id=COURSE_ID,
                     quiz_id=-1,
-                    output_dir=tmp_path,
+                    folder=folder,
                 )
             )
 
-    def test_client_not_called_for_invalid_request(self, use_case, tmp_path, client):
+    def test_client_not_called_for_invalid_request(self, use_case, folder, client):
         with pytest.raises(ValueError):
             use_case.execute(
                 DownloadConsentFormRequest(
                     course_id=0,
                     quiz_id=QUIZ_ID,
-                    output_dir=tmp_path,
+                    folder=folder,
                 )
             )
         assert client.fetch_quiz_calls == []

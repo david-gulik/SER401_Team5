@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from GAVEL.app.dtos.canvas_course import CanvasCourseData
+from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourseData
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
 from GAVEL.app.dtos.rubric_definition import (
@@ -18,6 +18,9 @@ from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentRequest,
     DownloadRubricAssessmentUseCase,
 )
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
+from GAVEL.app.workspace.manifest import load_manifest
+from GAVEL.app.workspace.recording import ArtifactExistsError
 
 # ---------------------------------------------------------------------------
 # Test data
@@ -25,6 +28,7 @@ from GAVEL.app.usecases.download_rubric_assessment import (
 
 COURSE_ID = 253450
 ASSIGNMENT_ID = 7216983
+ASSIGNMENT = CanvasAssignment(id=ASSIGNMENT_ID, name="Mod 4: ADJ Problem Set")
 
 RUBRIC_ASSESSMENTS = [
     RubricAssessment(
@@ -140,12 +144,25 @@ def use_case(client: MockCanvasClient) -> DownloadRubricAssessmentUseCase:
 
 
 @pytest.fixture
-def request_(tmp_path: Path) -> DownloadRubricAssessmentRequest:
+def folder(tmp_path: Path) -> CourseFolder:
+    return Workspace(tmp_path).course(CourseKey.parse("ser222_25sc_12345"))
+
+
+@pytest.fixture
+def request_(folder: CourseFolder) -> DownloadRubricAssessmentRequest:
     return DownloadRubricAssessmentRequest(
-        course_id=COURSE_ID,
-        assignment_id=ASSIGNMENT_ID,
-        output_dir=tmp_path,
+        course_id=COURSE_ID, assignment=ASSIGNMENT, folder=folder
     )
+
+
+@pytest.fixture
+def assessments_path(folder: CourseFolder) -> Path:
+    return folder.original.assignment(ASSIGNMENT_ID, 4).rubric_assessments_json
+
+
+@pytest.fixture
+def definition_path(folder: CourseFolder) -> Path:
+    return folder.original.assignment(ASSIGNMENT_ID, 4).rubric_definition_json
 
 
 # ---------------------------------------------------------------------------
@@ -158,37 +175,37 @@ class TestHappyPath:
         result = use_case.execute(request_)
         assert result is not None
 
-    def test_output_file_is_created(self, use_case, request_, tmp_path):
+    def test_output_file_is_created(self, use_case, request_, assessments_path):
         use_case.execute(request_)
-        expected = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        expected = assessments_path
         assert expected.exists()
 
-    def test_output_is_valid_json(self, use_case, request_, tmp_path):
+    def test_output_is_valid_json(self, use_case, request_, assessments_path):
         use_case.execute(request_)
-        path = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        path = assessments_path
         assert isinstance(json.loads(path.read_text()), list)
 
-    def test_output_contains_student_id(self, use_case, request_, tmp_path):
+    def test_output_contains_student_id(self, use_case, request_, assessments_path):
         use_case.execute(request_)
-        path = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        path = assessments_path
         data = json.loads(path.read_text())
         assert all("student_id" in entry for entry in data)
 
-    def test_output_contains_submission_id(self, use_case, request_, tmp_path):
+    def test_output_contains_submission_id(self, use_case, request_, assessments_path):
         use_case.execute(request_)
-        path = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        path = assessments_path
         data = json.loads(path.read_text())
         assert all("submission_id" in entry for entry in data)
 
-    def test_output_contains_criteria(self, use_case, request_, tmp_path):
+    def test_output_contains_criteria(self, use_case, request_, assessments_path):
         use_case.execute(request_)
-        path = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        path = assessments_path
         data = json.loads(path.read_text())
         assert all("criteria" in entry for entry in data)
 
-    def test_correct_number_of_assessments_written(self, use_case, request_, tmp_path):
+    def test_correct_number_of_assessments_written(self, use_case, request_, assessments_path):
         use_case.execute(request_)
-        path = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        path = assessments_path
         data = json.loads(path.read_text())
         assert len(data) == len(RUBRIC_ASSESSMENTS)
 
@@ -204,9 +221,9 @@ class TestHappyPath:
         result = use_case.execute(request_)
         assert str(ASSIGNMENT_ID) in result.message
 
-    def test_result_saved_path_matches_output_file(self, use_case, request_, tmp_path):
+    def test_result_saved_path_matches_output_file(self, use_case, request_, assessments_path):
         result = use_case.execute(request_)
-        expected = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        expected = assessments_path
         assert result.saved_path == expected
 
 
@@ -216,18 +233,20 @@ class TestHappyPath:
 
 
 class TestRubricDefinitionHappyPath:
-    def test_definition_file_is_created(self, use_case, request_, tmp_path):
+    def test_definition_file_is_created(self, use_case, request_, definition_path):
         use_case.execute(request_)
-        expected = tmp_path / f"rubric_definition_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        expected = definition_path
         assert expected.exists()
 
     def test_definition_fetched_with_correct_ids(self, use_case, request_, client):
         use_case.execute(request_)
         assert (COURSE_ID, ASSIGNMENT_ID) in client.fetch_rubric_definition_calls
 
-    def test_definition_json_matches_schema_required_fields(self, use_case, request_, tmp_path):
+    def test_definition_json_matches_schema_required_fields(
+        self, use_case, request_, definition_path
+    ):
         use_case.execute(request_)
-        path = tmp_path / f"rubric_definition_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        path = definition_path
         data = json.loads(path.read_text())
         for field in (
             "rubric_id",
@@ -244,29 +263,31 @@ class TestRubricDefinitionHappyPath:
                 for field in ("id", "description", "long_description", "points"):
                     assert field in rating
 
-    def test_result_includes_definition_saved_path(self, use_case, request_, tmp_path):
+    def test_result_includes_definition_saved_path(self, use_case, request_, definition_path):
         result = use_case.execute(request_)
-        expected = tmp_path / f"rubric_definition_{COURSE_ID}_{ASSIGNMENT_ID}.json"
+        expected = definition_path
         assert result.definition_saved_path == expected
 
 
 class TestNoAssociatedRubric:
     def test_no_definition_file_when_assignment_has_no_rubric(
-        self, use_case, request_, client, tmp_path
+        self, use_case, request_, client, definition_path
     ):
         client.rubric_definition = None
         use_case.execute(request_)
-        assert not (tmp_path / f"rubric_definition_{COURSE_ID}_{ASSIGNMENT_ID}.json").exists()
+        assert not definition_path.exists()
 
     def test_result_definition_saved_path_is_none(self, use_case, request_, client):
         client.rubric_definition = None
         result = use_case.execute(request_)
         assert result.definition_saved_path is None
 
-    def test_assessment_file_still_written(self, use_case, request_, client, tmp_path):
+    def test_assessment_file_still_written(
+        self, use_case, request_, client, tmp_path, assessments_path
+    ):
         client.rubric_definition = None
         use_case.execute(request_)
-        assert (tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json").exists()
+        assert assessments_path.exists()
 
 
 class TestRubricDefinitionApiErrors:
@@ -287,18 +308,20 @@ class TestRubricDefinitionApiErrors:
 
 
 class TestEmptyAssessments:
-    def test_output_is_empty_list_when_no_assessments(self, use_case, request_, client, tmp_path):
-        client.rubric_assessments = []
-        use_case.execute(request_)
-        path = tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json"
-        assert json.loads(path.read_text()) == []
-
-    def test_output_file_still_created_when_no_assessments(
-        self, use_case, request_, client, tmp_path
+    def test_output_is_empty_list_when_no_assessments(
+        self, use_case, request_, client, tmp_path, assessments_path
     ):
         client.rubric_assessments = []
         use_case.execute(request_)
-        assert (tmp_path / f"rubric_assessment_{COURSE_ID}_{ASSIGNMENT_ID}.json").exists()
+        path = assessments_path
+        assert json.loads(path.read_text()) == []
+
+    def test_output_file_still_created_when_no_assessments(
+        self, use_case, request_, client, assessments_path
+    ):
+        client.rubric_assessments = []
+        use_case.execute(request_)
+        assert assessments_path.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -330,53 +353,117 @@ class TestApiErrors:
 
 
 class TestValidation:
-    def test_raises_for_zero_course_id(self, use_case, tmp_path):
+    def test_raises_for_zero_course_id(self, use_case, folder):
         with pytest.raises(ValueError, match="course_id must be greater than zero"):
             use_case.execute(
                 DownloadRubricAssessmentRequest(
                     course_id=0,
-                    assignment_id=ASSIGNMENT_ID,
-                    output_dir=tmp_path,
+                    assignment=ASSIGNMENT,
+                    folder=folder,
                 )
             )
 
-    def test_raises_for_negative_course_id(self, use_case, tmp_path):
+    def test_raises_for_negative_course_id(self, use_case, folder):
         with pytest.raises(ValueError, match="course_id must be greater than zero"):
             use_case.execute(
                 DownloadRubricAssessmentRequest(
                     course_id=-1,
-                    assignment_id=ASSIGNMENT_ID,
-                    output_dir=tmp_path,
+                    assignment=ASSIGNMENT,
+                    folder=folder,
                 )
             )
 
-    def test_raises_for_zero_assignment_id(self, use_case, tmp_path):
+    def test_raises_for_zero_assignment_id(self, use_case, folder):
         with pytest.raises(ValueError, match="assignment_id must be greater than zero"):
             use_case.execute(
                 DownloadRubricAssessmentRequest(
                     course_id=COURSE_ID,
-                    assignment_id=0,
-                    output_dir=tmp_path,
+                    assignment=CanvasAssignment(id=0, name=""),
+                    folder=folder,
                 )
             )
 
-    def test_raises_for_negative_assignment_id(self, use_case, tmp_path):
+    def test_raises_for_negative_assignment_id(self, use_case, folder):
         with pytest.raises(ValueError, match="assignment_id must be greater than zero"):
             use_case.execute(
                 DownloadRubricAssessmentRequest(
                     course_id=COURSE_ID,
-                    assignment_id=-1,
-                    output_dir=tmp_path,
+                    assignment=CanvasAssignment(id=-1, name=""),
+                    folder=folder,
                 )
             )
 
-    def test_client_not_called_for_invalid_request(self, use_case, tmp_path, client):
+    def test_client_not_called_for_invalid_request(self, use_case, folder, client):
         with pytest.raises(ValueError):
             use_case.execute(
                 DownloadRubricAssessmentRequest(
                     course_id=0,
-                    assignment_id=ASSIGNMENT_ID,
-                    output_dir=tmp_path,
+                    assignment=ASSIGNMENT,
+                    folder=folder,
                 )
             )
         assert client.fetch_rubric_calls == []
+
+
+# ---------------------------------------------------------------------------
+# Workspace layout
+# ---------------------------------------------------------------------------
+
+
+class TestWorkspaceLayout:
+    def test_folder_is_tagged_with_the_module_from_the_name(self, use_case, request_, folder):
+        result = use_case.execute(request_)
+        assert result.assignment_folder.name == f"{ASSIGNMENT_ID}_m4"
+        assert result.saved_path.parent == result.assignment_folder.path
+
+    def test_unnamed_assignment_gets_an_untagged_folder(self, use_case, folder):
+        result = use_case.execute(
+            DownloadRubricAssessmentRequest(
+                course_id=COURSE_ID,
+                assignment=CanvasAssignment(id=ASSIGNMENT_ID, name=""),
+                folder=folder,
+            )
+        )
+        assert result.assignment_folder.name == str(ASSIGNMENT_ID)
+
+    def test_existing_folder_for_the_id_is_reused(self, use_case, folder):
+        folder.original.assignment(ASSIGNMENT_ID, 9).path.mkdir(parents=True)
+        result = use_case.execute(
+            DownloadRubricAssessmentRequest(
+                course_id=COURSE_ID,
+                assignment=CanvasAssignment(id=ASSIGNMENT_ID, name=""),
+                folder=folder,
+            )
+        )
+        assert result.assignment_folder.name == f"{ASSIGNMENT_ID}_m9"
+
+    def test_manifest_records_both_files_and_the_assignment(self, use_case, request_, folder):
+        use_case.execute(request_)
+        manifest = load_manifest(folder.manifest_path)
+        paths = {a.path: a for a in manifest.artifacts}
+        assert set(paths) == {
+            f"original/assignments/{ASSIGNMENT_ID}_m4/rubric_assessments.json",
+            f"original/assignments/{ASSIGNMENT_ID}_m4/rubric_definition.json",
+        }
+        assert all(a.source_id == ASSIGNMENT_ID for a in paths.values())
+        entry = manifest.assignment(ASSIGNMENT_ID)
+        assert entry is not None
+        assert entry.name == ASSIGNMENT.name
+        assert entry.module_number == 4
+        assert entry.has_rubric is True
+        assert manifest.canvas_course_id == COURSE_ID
+
+    def test_assignment_without_rubric_is_recorded_as_such(
+        self, use_case, request_, client, folder
+    ):
+        client.rubric_definition = None
+        use_case.execute(request_)
+        manifest = load_manifest(folder.manifest_path)
+        assert manifest.assignment(ASSIGNMENT_ID).has_rubric is False
+        assert manifest.artifacts_of_kind("rubric_definition") == ()
+
+    def test_second_download_is_refused(self, use_case, request_, client):
+        use_case.execute(request_)
+        with pytest.raises(ArtifactExistsError, match="already downloaded"):
+            use_case.execute(request_)
+        assert len(client.fetch_rubric_calls) == 1

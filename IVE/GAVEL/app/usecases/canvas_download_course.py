@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
-from GAVEL.app.dtos.canvas_course import CanvasCourseData
 from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.recording import note_course
 
 
 @dataclass(frozen=True)
 class DownloadCourseDataRequest:
     course_id: int
-    output_dir: Path
+    folder: CourseFolder
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,12 @@ class DownloadCourseDataResult:
 
 
 class DownloadCourseDataUseCase:
+    """Records the Canvas course's name, code and modules in ``manifest.json``.
+
+    There is no separate course file any more: the manifest is where course
+    metadata lives, so this can be re-run to refresh it at any time.
+    """
+
     def __init__(self, canvas_client: CanvasClient) -> None:
         self._canvas_client = canvas_client
 
@@ -28,21 +34,18 @@ class DownloadCourseDataUseCase:
         if request.course_id <= 0:
             raise ValueError("course_id must be greater than zero")
 
-        output_dir = request.output_dir
-        output_dir.mkdir(parents=True, exist_ok=True)
-
         course_data = self._canvas_client.fetch_course_data(request.course_id)
+        note_course(
+            request.folder,
+            canvas_course_id=course_data.course.id,
+            canvas_course_name=course_data.course.name,
+            canvas_course_code=course_data.course.course_code,
+            modules=tuple(course_data.modules),
+        )
 
-        payload = self._serialize_course_data(course_data)
-        file_path = output_dir / f"canvas_course_{course_data.course.id}.json"
-        with file_path.open("w", encoding="utf-8") as fh:
-            json.dump(payload, fh, indent=2)
-
-        message = f"Canvas course '{course_data.course.name}' saved to {file_path}"
-        return DownloadCourseDataResult(saved_path=file_path, message=message)
-
-    def _serialize_course_data(self, data: CanvasCourseData) -> dict:
-        return {
-            "course": asdict(data.course),
-            "modules": [asdict(m) for m in data.modules],
-        }
+        path = request.folder.manifest_path
+        message = (
+            f"Canvas course '{course_data.course.name}' "
+            f"({len(course_data.modules)} modules) recorded in {path}"
+        )
+        return DownloadCourseDataResult(saved_path=path, message=message)

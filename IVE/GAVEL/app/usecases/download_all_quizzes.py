@@ -7,12 +7,20 @@ from GAVEL.app.ports.canvas_client import (
     CanvasClient,
     QuizReportUnavailableError,
 )
+from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.recording import (
+    ArtifactExistsError,
+    guard_not_downloaded,
+    note_course,
+    record,
+)
 
 
 @dataclass(frozen=True)
 class DownloadAllQuizzesRequest:
     course_id: int
-    output_dir: Path
+    folder: CourseFolder
+    overwrite: bool = False
 
 
 @dataclass(frozen=True)
@@ -50,6 +58,12 @@ class DownloadAllQuizzesResult:
 
 
 class DownloadAllQuizzesUseCase:
+    """Saves every quiz's student analysis export as ``original/quizzes/<quiz id>.csv``.
+
+    The quiz title goes on the manifest entry's ``label`` so the folder stays
+    keyed by id. A quiz already in the folder is skipped, not overwritten.
+    """
+
     def __init__(self, canvas_client: CanvasClient) -> None:
         self._canvas_client = canvas_client
 
@@ -60,28 +74,21 @@ class DownloadAllQuizzesUseCase:
         if request.course_id <= 0:
             raise ValueError("course_id must be greater than zero")
 
-        request.output_dir.mkdir(parents=True, exist_ok=True)
-
+        tree = request.folder.original
         quizzes = self._canvas_client.list_quizzes(request.course_id)
 
         outcomes = []
-
         for quiz in quizzes:
+            path = tree.quiz_csv(quiz.id)
             try:
+                guard_not_downloaded(request.folder, path, request.overwrite)
                 csv_bytes = self._canvas_client.fetch_quiz_student_analysis(
                     request.course_id,
                     quiz.id,
                 )
-
-                safe_name = "".join(
-                    c if c.isalnum() or c in ("-", "_") else "_" for c in quiz.name
-                ).strip("_")
-
-                if not safe_name:
-                    safe_name = "quiz"
-
-                path = request.output_dir / f"{safe_name}_{quiz.id}.csv"
+                path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(csv_bytes)
+                record(request.folder, "quiz", path, source_id=quiz.id, label=quiz.name)
 
                 outcomes.append(
                     QuizDownloadOutcome(
@@ -89,6 +96,17 @@ class DownloadAllQuizzesUseCase:
                         quiz_name=quiz.name,
                         saved_path=path,
                         skipped_reason=None,
+                        error=None,
+                    )
+                )
+
+            except ArtifactExistsError as exc:
+                outcomes.append(
+                    QuizDownloadOutcome(
+                        quiz_id=quiz.id,
+                        quiz_name=quiz.name,
+                        saved_path=path,
+                        skipped_reason=str(exc),
                         error=None,
                     )
                 )
@@ -114,5 +132,8 @@ class DownloadAllQuizzesUseCase:
                         error=str(exc),
                     )
                 )
+
+        if any(o.status == "succeeded" for o in outcomes):
+            note_course(request.folder, canvas_course_id=request.course_id)
 
         return DownloadAllQuizzesResult(outcomes=tuple(outcomes))

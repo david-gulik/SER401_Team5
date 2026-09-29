@@ -310,7 +310,8 @@ class AnonymizeCourseDatasetUseCase:
                 skipped_count=1,
             )
 
-        rubric_files = list(assignments_dir.rglob("rubric_assessment_*.json"))
+        # One rubric_assessments.json per assignment folder; see docs/workspace_layout.md.
+        rubric_files = sorted(assignments_dir.rglob("rubric_assessments.json"))
 
         rubric_results = []
 

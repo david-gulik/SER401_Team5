@@ -32,6 +32,7 @@ from GAVEL.app.usecases.download_all_rubric_assessments import (
     DownloadAllRubricAssessmentsRequest,
     DownloadAllRubricAssessmentsUseCase,
 )
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
 
 # ---------------------------------------------------------------------------
 # Test data
@@ -137,8 +138,13 @@ def use_case(client: MockCanvasClient) -> DownloadAllRubricAssessmentsUseCase:
 
 
 @pytest.fixture
-def request_(tmp_path: Path) -> DownloadAllRubricAssessmentsRequest:
-    return DownloadAllRubricAssessmentsRequest(course_id=COURSE_ID, output_dir=tmp_path)
+def folder(tmp_path: Path) -> CourseFolder:
+    return Workspace(tmp_path).course(CourseKey.parse("ser222_25sc_12345"))
+
+
+@pytest.fixture
+def request_(folder: CourseFolder) -> DownloadAllRubricAssessmentsRequest:
+    return DownloadAllRubricAssessmentsRequest(course_id=COURSE_ID, folder=folder)
 
 
 # ---------------------------------------------------------------------------
@@ -165,10 +171,11 @@ class TestHappyPath:
         for path in saved_paths:
             assert path.exists()
 
-    def test_filenames_include_assignment_identifier(self, use_case, request_):
+    def test_folders_are_named_by_assignment_identifier(self, use_case, request_):
         result = use_case.execute(request_)
         for assignment, outcome in zip(ASSIGNMENTS, result.succeeded, strict=True):
-            assert str(assignment.id) in outcome.saved_path.name
+            assert outcome.saved_path.parent.name == str(assignment.id)
+            assert outcome.saved_path.name == "rubric_assessments.json"
 
     def test_all_outcomes_succeeded(self, use_case, request_):
         result = use_case.execute(request_)
@@ -222,7 +229,7 @@ class TestSkipped:
         skipped = result.skipped[0]
         assert skipped.saved_path is None
         assert skipped.error is None
-        assert not any(tmp_path.rglob("*.json"))
+        assert not any(tmp_path.rglob("rubric_*.json"))
 
     def test_skipped_assignment_is_never_fetched(self, use_case, request_, client):
         """Rubric presence must come from the assignment DTO, not from
@@ -254,7 +261,7 @@ class TestSkipped:
         assert len(result.skipped) == len(ASSIGNMENTS)
         assert result.succeeded == ()
         assert result.failed == ()
-        assert not any(tmp_path.rglob("*.json"))
+        assert not any(tmp_path.rglob("rubric_*.json"))
 
     def test_rubric_present_but_ungraded_is_succeeded_not_skipped(self, use_case, request_, client):
         """A rubric-bearing assignment with zero assessments (nobody
@@ -346,15 +353,44 @@ class TestNoAssignments:
 
 
 class TestValidation:
-    def test_raises_for_zero_course_id(self, use_case, tmp_path):
+    def test_raises_for_zero_course_id(self, use_case, folder):
         with pytest.raises(ValueError, match="course_id must be greater than zero"):
-            use_case.execute(DownloadAllRubricAssessmentsRequest(course_id=0, output_dir=tmp_path))
+            use_case.execute(DownloadAllRubricAssessmentsRequest(course_id=0, folder=folder))
 
-    def test_raises_for_negative_course_id(self, use_case, tmp_path):
+    def test_raises_for_negative_course_id(self, use_case, folder):
         with pytest.raises(ValueError, match="course_id must be greater than zero"):
-            use_case.execute(DownloadAllRubricAssessmentsRequest(course_id=-1, output_dir=tmp_path))
+            use_case.execute(DownloadAllRubricAssessmentsRequest(course_id=-1, folder=folder))
 
-    def test_client_not_called_for_invalid_request(self, use_case, tmp_path, client):
+    def test_client_not_called_for_invalid_request(self, use_case, folder, client):
         with pytest.raises(ValueError):
-            use_case.execute(DownloadAllRubricAssessmentsRequest(course_id=0, output_dir=tmp_path))
+            use_case.execute(DownloadAllRubricAssessmentsRequest(course_id=0, folder=folder))
         assert client.fetch_rubric_calls == []
+
+
+# ---------------------------------------------------------------------------
+# Already downloaded
+# ---------------------------------------------------------------------------
+
+
+class TestAlreadyDownloaded:
+    def test_second_run_leaves_files_alone_and_reports_them(self, use_case, request_, client):
+        first = use_case.execute(request_)
+        before = {o.saved_path: o.saved_path.read_bytes() for o in first.succeeded}
+        client.rubric_assessments = []
+
+        second = use_case.execute(request_)
+
+        assert second.succeeded == ()
+        assert second.failed == ()
+        assert [o.assignment_id for o in second.already_downloaded] == [a.id for a in ASSIGNMENTS]
+        assert all(o.status == "already_downloaded" for o in second.already_downloaded)
+        assert {p: p.read_bytes() for p in before} == before
+        assert len(client.fetch_rubric_calls) == len(ASSIGNMENTS)
+
+    def test_overwrite_downloads_again(self, use_case, request_, client, folder):
+        use_case.execute(request_)
+        result = use_case.execute(
+            DownloadAllRubricAssessmentsRequest(course_id=COURSE_ID, folder=folder, overwrite=True)
+        )
+        assert len(result.succeeded) == len(ASSIGNMENTS)
+        assert result.already_downloaded == ()

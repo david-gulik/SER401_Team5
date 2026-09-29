@@ -17,14 +17,24 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.dtos.canvas_course import CanvasModule
+from GAVEL.app.workspace.layout import (
+    ANONYMIZED_DIR,
+    AUTOGRADERS_DIR,
+    ORIGINAL_DIR,
+    RUNS_DIR,
+    CourseFolder,
+)
 from GAVEL.app.workspace.manifest import (
     ArtifactEntry,
+    AssignmentEntry,
     CourseManifest,
     load_manifest,
     new_manifest,
     record_artifact,
+    record_assignment,
     save_manifest,
+    set_course_metadata,
     utc_now_iso,
 )
 
@@ -43,9 +53,42 @@ class ArtifactExistsError(FileExistsError):
         )
 
 
+COURSE_RELATIVE_ROOTS = (ORIGINAL_DIR, ANONYMIZED_DIR)
+WORKSPACE_RELATIVE_ROOTS = (AUTOGRADERS_DIR, RUNS_DIR)
+
+
 def relative_posix(folder: CourseFolder, target: Path) -> str:
-    """``target`` relative to the course folder, with ``/`` separators."""
-    return target.relative_to(folder.path).as_posix()
+    """The manifest path for ``target``, with ``/`` separators.
+
+    Files inside the course folder are recorded relative to it
+    (``original/...``, ``anonymized/...``). Files in the workspace-level
+    ``autograders/`` and ``runs/`` areas are recorded relative to the workspace
+    root, which their first path segment makes unambiguous.
+    """
+    try:
+        return target.relative_to(folder.path).as_posix()
+    except ValueError:
+        pass
+    try:
+        relative = target.relative_to(folder.workspace_root)
+    except ValueError:
+        raise ValueError(
+            f"{target} is neither inside the course folder {folder.path} nor its workspace "
+            f"{folder.workspace_root}"
+        ) from None
+    if not relative.parts or relative.parts[0] not in WORKSPACE_RELATIVE_ROOTS:
+        raise ValueError(
+            f"{target} is outside the course folder and not under "
+            f"{' or '.join(WORKSPACE_RELATIVE_ROOTS)}/ in the workspace"
+        )
+    return relative.as_posix()
+
+
+def artifact_path(folder: CourseFolder, entry: ArtifactEntry) -> Path:
+    """Inverse of ``relative_posix``: where a manifest entry lives on disk."""
+    first = entry.path.split("/", 1)[0]
+    base = folder.path if first in COURSE_RELATIVE_ROOTS else folder.workspace_root
+    return base / entry.path
 
 
 def sha256_of(path: Path) -> str:
@@ -82,6 +125,7 @@ def record(
     target: Path,
     *,
     source_id: int | None = None,
+    label: str | None = None,
     gavel_version: str | None = None,
     now: str | None = None,
 ) -> ArtifactEntry:
@@ -94,8 +138,51 @@ def record(
         sha256=sha256_of(target),
         size_bytes=target.stat().st_size,
         source_id=source_id,
+        label=label,
     )
     manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
     manifest = record_artifact(manifest, entry, now=stamp)
     save_manifest(folder.manifest_path, manifest)
     return entry
+
+
+def note_course(
+    folder: CourseFolder,
+    *,
+    canvas_course_id: int | None = None,
+    canvas_course_name: str | None = None,
+    canvas_course_code: str | None = None,
+    term_code: str | None = None,
+    modules: tuple[CanvasModule, ...] | None = None,
+    gavel_version: str | None = None,
+    now: str | None = None,
+) -> CourseManifest:
+    """Fill in course fields on the manifest and save it. None arguments leave a field alone."""
+    stamp = now or utc_now_iso()
+    manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
+    manifest = set_course_metadata(
+        manifest,
+        canvas_course_id=canvas_course_id,
+        canvas_course_name=canvas_course_name,
+        canvas_course_code=canvas_course_code,
+        term_code=term_code,
+        modules=modules,
+        now=stamp,
+    )
+    save_manifest(folder.manifest_path, manifest)
+    return manifest
+
+
+def note_assignment(
+    folder: CourseFolder,
+    entry: AssignmentEntry,
+    *,
+    gavel_version: str | None = None,
+    now: str | None = None,
+) -> CourseManifest:
+    """Add or replace one assignment entry on the manifest and save it."""
+    stamp = now or utc_now_iso()
+    manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
+    manifest = record_assignment(manifest, entry, now=stamp)
+    save_manifest(folder.manifest_path, manifest)
+    return manifest

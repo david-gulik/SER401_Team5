@@ -2,25 +2,30 @@ from __future__ import annotations
 
 import sys
 from argparse import Namespace
-from pathlib import Path
 
 from GAVEL.app.usecases.download_all_quizzes import (
     DownloadAllQuizzesRequest,
     DownloadAllQuizzesUseCase,
 )
 from GAVEL.app_context import AppContext
+from GAVEL.cli.commands.workspace_args import resolve_course_folder
 
 
 def handle_quiz_analysis_download(ctx: AppContext, args: Namespace) -> int:
     try:
-        print(f"[QUIZ] Downloading student analysis for course={args.course_id}...")
-        output_dir = Path(args.output)
+        course_id = int(args.course_id)
+    except (TypeError, ValueError):
+        print("course_id must be a valid integer.", file=sys.stderr)
+        return 2
 
+    folder = resolve_course_folder(ctx, args, course_id=course_id)
+    if folder is None:
+        return 2
+
+    try:
+        print(f"[QUIZ] Downloading student analysis for course={course_id}...")
         result = DownloadAllQuizzesUseCase(ctx.services.canvas_client).execute(
-            DownloadAllQuizzesRequest(
-                course_id=int(args.course_id),
-                output_dir=output_dir,
-            )
+            DownloadAllQuizzesRequest(course_id=course_id, folder=folder, overwrite=args.overwrite)
         )
 
     except (RuntimeError, ValueError) as exc:

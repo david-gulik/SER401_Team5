@@ -52,6 +52,9 @@ class ArtifactEntry:
     sha256: str
     size_bytes: int
     source_id: int | None = None
+    # Human name of the source when the path alone does not say: quiz title,
+    # Gradescope assignment name.
+    label: str | None = None
 
     def __post_init__(self) -> None:
         if self.kind not in ARTIFACT_KINDS:
@@ -221,6 +224,7 @@ def manifest_to_dict(manifest: CourseManifest) -> dict[str, Any]:
                 "sha256": a.sha256,
                 "size_bytes": a.size_bytes,
                 "source_id": a.source_id,
+                "label": a.label,
             }
             for a in sorted(manifest.artifacts, key=lambda a: a.path)
         ],
@@ -277,6 +281,7 @@ def manifest_from_dict(data: dict[str, Any]) -> CourseManifest:
                     sha256=str(a["sha256"]),
                     size_bytes=int(a["size_bytes"]),
                     source_id=a.get("source_id"),
+                    label=a.get("label"),
                 )
                 for a in data.get("artifacts", [])
             ),

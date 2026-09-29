@@ -137,11 +137,19 @@ class CourseDataset:
             self._require(f"rubric assessments for assignment {assignment_id}", path)
         )
 
-    def gradescope_submissions(self, assignment_id: int) -> list[GradescopeSubmission]:
-        """Submissions from the Gradescope export zip's ``submission_metadata.yml``."""
+    def gradescope_submissions(self, module_number: int) -> list[GradescopeSubmission]:
+        """Submissions for one module, from its extracted export or from the zip."""
+        module = self._tree.module_submissions(module_number)
+        extracted = (
+            next(module.extracted_dir.rglob(GRADESCOPE_METADATA_FILE), None)
+            if (module.extracted_dir.is_dir())
+            else None
+        )
+        if extracted is not None:
+            return self._readers.gradescope.read(extracted)
+
         zip_path = self._require(
-            f"Gradescope submissions for assignment {assignment_id}",
-            self.assignment_folder(assignment_id).submissions_zip,
+            f"Gradescope submissions for module {module_number}", module.zip_path
         )
         with zipfile.ZipFile(zip_path) as archive:
             member = next(
@@ -153,9 +161,9 @@ class CourseDataset:
                     self._tree, f"{GRADESCOPE_METADATA_FILE} inside {zip_path.name}", zip_path
                 )
             with tempfile.TemporaryDirectory() as tmp:
-                extracted = Path(tmp) / GRADESCOPE_METADATA_FILE
-                extracted.write_bytes(archive.read(member))
-                return self._readers.gradescope.read(extracted)
+                extracted_copy = Path(tmp) / GRADESCOPE_METADATA_FILE
+                extracted_copy.write_bytes(archive.read(member))
+                return self._readers.gradescope.read(extracted_copy)
 
     def _require(self, what: str, path: Path) -> Path:
         if not path.exists():

@@ -4,12 +4,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.recording import guard_not_downloaded, note_course, record
 
 
 @dataclass(frozen=True)
 class DownloadGradebookRequest:
     course_id: int
-    output_dir: Path
+    folder: CourseFolder
+    overwrite: bool = False
 
 
 @dataclass(frozen=True)
@@ -19,6 +22,8 @@ class DownloadGradebookResult:
 
 
 class DownloadGradebookUseCase:
+    """Saves the Canvas gradebook export as ``original/gradebook.csv``."""
+
     def __init__(self, canvas_client: CanvasClient) -> None:
         self._canvas_client = canvas_client
 
@@ -26,11 +31,15 @@ class DownloadGradebookUseCase:
         if request.course_id <= 0:
             raise ValueError("course_id must be greater than zero")
 
-        request.output_dir.mkdir(parents=True, exist_ok=True)
+        target = request.folder.original.gradebook_csv
+        guard_not_downloaded(request.folder, target, request.overwrite)
 
         gradebook_bytes = self._canvas_client.fetch_gradebook_csv(request.course_id)
-        path = request.output_dir / f"gradebook_{request.course_id}.csv"
-        path.write_bytes(gradebook_bytes)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(gradebook_bytes)
 
-        message = f"Gradebook for course {request.course_id} saved to {path}"
-        return DownloadGradebookResult(saved_path=path, message=message)
+        record(request.folder, "gradebook", target)
+        note_course(request.folder, canvas_course_id=request.course_id)
+
+        message = f"Gradebook for course {request.course_id} saved to {target}"
+        return DownloadGradebookResult(saved_path=target, message=message)

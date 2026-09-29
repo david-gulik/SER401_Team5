@@ -9,6 +9,7 @@ from GAVEL.app.workspace.layout import (
     AssignmentFolder,
     CourseKey,
     DataTree,
+    ModuleSubmissions,
     Workspace,
     assignment_folder_name,
     module_number_from_name,
@@ -57,7 +58,7 @@ class TestCourseKey:
         "bad",
         [
             "ser222_25xc_12345",  # unknown term letter
-            "ser222_25sc_1234",  # four-digit class number
+            "ser222_25sc_1234a",  # class number with a letter
             "SER222_25sc_12345",  # upper case
             "ser222-25sc-12345",
             "roster_2251_12345.csv",
@@ -75,7 +76,7 @@ class TestCourseKey:
             {"year": 1999},
             {"term": "x"},
             {"session": "cc"},
-            {"class_number": "123456"},
+            {"class_number": "12a45"},
         ],
     )
     def test_constructor_rejects(self, kwargs: dict) -> None:
@@ -93,6 +94,33 @@ class TestCourseKey:
 
     def test_course_label(self) -> None:
         assert KEY.course_label == "SER 222"
+
+    @pytest.mark.parametrize("class_number", ["1", "1234", "12345", "123456789"])
+    def test_class_number_may_be_any_run_of_digits(self, class_number: str) -> None:
+        key = CourseKey("SER", "222", 2025, "s", "c", class_number)
+        assert key.folder_name == f"ser222_25sc_{class_number}"
+        assert CourseKey.parse(key.folder_name) == key
+
+    @pytest.mark.parametrize(
+        ("bad", "expected"),
+        [
+            ("", "expected <subject>"),
+            ("SER222_25sc_12345", "must be all lower case, try 'ser222_25sc_12345'"),
+            ("ser222-25sc-12345", "three parts joined by underscores"),
+            ("ser222_25sc", "got 2 part(s)"),
+            ("s222_25sc_12345", "first part must be the subject"),
+            ("ser22_25sc_12345", "first part must be the subject"),
+            ("ser222_25xc_12345", "term letter (s Spring, u Summer, f Fall, w Winter)"),
+            ("ser222_2025sc_12345", "second part must be the two-digit year"),
+            ("ser222_25sc_1234a", "third part must be the class number, digits only"),
+        ],
+    )
+    def test_parse_says_which_part_failed(self, bad: str, expected: str) -> None:
+        with pytest.raises(ValueError) as excinfo:
+            CourseKey.parse(bad)
+        message = str(excinfo.value)
+        assert message.startswith(f"{bad!r} is not a valid course folder name")
+        assert expected in message
 
 
 class TestFromCanvasCourseCode:
@@ -206,8 +234,6 @@ class TestPaths:
         assert folder.module_number == 4
         assert folder.rubric_definition_json == folder.path / "rubric_definition.json"
         assert folder.rubric_assessments_json == folder.path / "rubric_assessments.json"
-        assert folder.submissions_zip == folder.path / "submissions.zip"
-        assert folder.autograder_zip == folder.path / "autograder.zip"
 
     def test_assignment_folder_without_module(self, tmp_path: Path) -> None:
         folder = DataTree(tmp_path).assignment(7216983)
@@ -254,3 +280,38 @@ class TestDiscovery:
 
     def test_list_courses_without_root(self, tmp_path: Path) -> None:
         assert Workspace(tmp_path / "nothing").list_courses() == []
+
+
+class TestModuleSubmissions:
+    def test_paths(self, tmp_path: Path) -> None:
+        module = DataTree(tmp_path).module_submissions(4)
+        assert module.path == tmp_path / "submissions" / "m4"
+        assert module.module_number == 4
+        assert module.zip_path == module.path / "submissions.zip"
+        assert module.extracted_dir == module.path / "extracted"
+        assert not module.exists()
+
+    def test_list_is_sorted_by_module_and_ignores_strays(self, tmp_path: Path) -> None:
+        tree = DataTree(tmp_path)
+        for name in ("m10", "m2", "_unmatched", "notes"):
+            (tree.submissions_dir / name).mkdir(parents=True)
+        assert [m.module_number for m in tree.list_module_submissions()] == [2, 10]
+
+    def test_list_without_folder(self, tmp_path: Path) -> None:
+        assert DataTree(tmp_path / "missing").list_module_submissions() == []
+
+    def test_malformed_name(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError):
+            _ = ModuleSubmissions(tmp_path / "_unmatched").module_number
+
+
+class TestWorkspaceAreas:
+    def test_course_folder_knows_its_workspace(self, tmp_path: Path) -> None:
+        folder = Workspace(tmp_path).course(KEY)
+        assert folder.workspace_root == tmp_path
+
+    def test_autograder_snapshot_path(self, tmp_path: Path) -> None:
+        path = Workspace(tmp_path).autograder_snapshot(KEY, 2)
+        assert path == (
+            tmp_path / "autograders" / "ser222" / "m2" / "ser222_25sc_12345" / "autograder.zip"
+        )

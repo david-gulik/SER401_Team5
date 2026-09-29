@@ -24,6 +24,7 @@ from GAVEL.cli.commands.rubric_assessment import (
     handle_rubric_assessment_download,
     handle_rubric_assessment_download_all,
 )
+from GAVEL.cli.commands.workspace_args import add_workspace_arguments
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger
 from GAVEL.theme.context import ThemeContext
@@ -51,11 +52,7 @@ def _build_parser() -> argparse.ArgumentParser:
     download_parser.add_argument(
         "--course-id", required=True, help="Canvas course numeric identifier"
     )
-    download_parser.add_argument(
-        "--output-dir",
-        required=True,
-        help="Directory where the JSON course data will be written",
-    )
+    add_workspace_arguments(download_parser)
     download_parser.set_defaults(handler=handle_canvas_course_download)
 
     dataset_parser = canvas_subparsers.add_parser(
@@ -74,11 +71,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default="",
         help="Comma-separated assignment IDs (e.g. 1,2,3)",
     )
-    dataset_parser.add_argument(
-        "--output-dir",
-        required=True,
-        help="Directory where dataset will be written",
-    )
+    add_workspace_arguments(dataset_parser)
 
     dataset_parser.set_defaults(handler=handle_canvas_course_dataset_download)
 
@@ -91,9 +84,7 @@ def _build_parser() -> argparse.ArgumentParser:
     gradebook_download_parser.add_argument(
         "--course-id", required=True, help="Canvas course numeric identifier"
     )
-    gradebook_download_parser.add_argument(
-        "--output", required=True, help="Path where the CSV file will be written"
-    )
+    add_workspace_arguments(gradebook_download_parser)
     gradebook_download_parser.set_defaults(handler=handle_canvas_gradebook_download)
 
     # -- roster commands ----------------------------------------------------
@@ -113,7 +104,7 @@ def _build_parser() -> argparse.ArgumentParser:
     roster_dl.add_argument(
         "--info-only", action="store_true", help="Show class info only, skip download"
     )
-    roster_dl.add_argument("--output", "-o", help="Save CSV to this file (default: stdout)")
+    add_workspace_arguments(roster_dl)
     roster_dl.set_defaults(handler=handle_roster_download)
 
     # quiz commands
@@ -130,12 +121,7 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Canvas course numeric identifier",
     )
-    quiz_dl.add_argument(
-        "--output",
-        "-o",
-        required=True,
-        help="Directory where quiz analysis CSV files will be written",
-    )
+    add_workspace_arguments(quiz_dl)
     quiz_dl.set_defaults(handler=handle_quiz_analysis_download)
 
     # rubric commands
@@ -150,9 +136,7 @@ def _build_parser() -> argparse.ArgumentParser:
     rubric_dl.add_argument(
         "--assignment-id", required=True, help="Canvas assignment numeric identifier"
     )
-    rubric_dl.add_argument(
-        "--output", "-o", required=True, help="Directory where the JSON file will be written"
-    )
+    add_workspace_arguments(rubric_dl)
     rubric_dl.set_defaults(handler=handle_rubric_assessment_download)
 
     # rubric download-all
@@ -162,9 +146,7 @@ def _build_parser() -> argparse.ArgumentParser:
     rubric_dl_all.add_argument(
         "--course-id", required=True, help="Canvas course numeric identifier"
     )
-    rubric_dl_all.add_argument(
-        "--output", "-o", required=True, help="Directory where the JSON files will be written"
-    )
+    add_workspace_arguments(rubric_dl_all)
     rubric_dl_all.set_defaults(handler=handle_rubric_assessment_download_all)
 
     # consent form commands
@@ -175,9 +157,7 @@ def _build_parser() -> argparse.ArgumentParser:
     consent_dl = consent_subparsers.add_parser("download", help="Download consent form CSV")
     consent_dl.add_argument("--course-id", required=True, help="Canvas course numeric identifier")
     consent_dl.add_argument("--quiz-id", required=True, help="Canvas quiz numeric identifier")
-    consent_dl.add_argument(
-        "--output", "-o", required=True, help="Directory where the CSV file will be written"
-    )
+    add_workspace_arguments(consent_dl)
     consent_dl.set_defaults(handler=handle_consent_form_download)
 
     # Gradescope downloader parser
@@ -195,6 +175,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show Chrome instead of running headless",
     )
+    add_workspace_arguments(gradescope_dl)
     gradescope_dl.set_defaults(handler=handle_gradescope_download)
 
     # proxy-grade commands

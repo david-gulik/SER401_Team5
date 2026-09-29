@@ -4,7 +4,7 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFormLayout,
@@ -29,6 +29,7 @@ from GAVEL.pages.download.viewmodel import (
     RUBRIC_DOWNLOAD,
     DownloadUiState,
     DownloadViewModel,
+    FocusCourseFolder,
     ShowError,
     ShowInfo,
     assignment_ids_error,
@@ -99,6 +100,12 @@ class DownloadTab(ScrollableTab):
         self._rendering = False
         self._render_pending = False
         self._reverting_course = False
+        # Focus handling while a download runs; see _render.
+        self._was_busy = False
+        self._focus_to_restore: QWidget | None = None
+        self._focus_anchor = QWidget(self)
+        self._focus_anchor.setFixedSize(0, 0)
+        self._focus_anchor.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self._build_widgets()
         self._connect_signals()
@@ -150,6 +157,11 @@ class DownloadTab(ScrollableTab):
         """Banner shown when the roster class is not in the Canvas course. Exposed for tests."""
         return self._section_mismatch_warning
 
+    @property
+    def course_folder_input(self) -> QLineEdit:
+        """The optional course folder override under the workspace path."""
+        return self._course_folder_input
+
     def download_button(self, name: str) -> QPushButton:
         """The primary button for a download name such as ROSTER_DOWNLOAD. Exposed for tests."""
         return self._download_buttons[name][0]
@@ -174,9 +186,19 @@ class DownloadTab(ScrollableTab):
         self._reset_path_btn.setToolTip(
             "Reset to the default output folder configured in Settings → Environment."
         )
-        self._output_path_hint = QLabel("All downloads will be saved to this location.")
+        self._output_path_hint = QLabel(
+            "Workspace root. Each course is saved under courses/<course folder>/ inside it. "
+            "The folder is named from your selections; type a name below to override it."
+        )
         self._output_path_hint.setProperty("role", "text_muted")
         self._output_path_hint.setWordWrap(True)
+        self._course_folder_input = QLineEdit()
+        self._course_folder_input.setPlaceholderText(
+            "Course folder override, e.g. ser222_25sc_12345 (leave blank to name it automatically)"
+        )
+        self._course_folder_label = QLabel("")
+        self._course_folder_label.setProperty("role", "text_muted")
+        self._course_folder_label.setWordWrap(True)
 
         # myASU - Step 1: one input, term list or term code, never both
         self._term_picker = ComboPicker(
@@ -390,6 +412,7 @@ class DownloadTab(ScrollableTab):
         self._download_all_quizzes_btn.clicked.connect(self._vm.download_all_quizzes)
 
         self._output_path.textEdited.connect(self._vm.set_output_dir)
+        self._course_folder_input.textEdited.connect(self._vm.set_manual_course_folder)
         self._browse_path_btn.clicked.connect(self._on_browse_output_path)
         self._reset_path_btn.clicked.connect(self._vm.reset_output_dir)
 
@@ -421,6 +444,8 @@ class DownloadTab(ScrollableTab):
 
         output_controls.add_widget(row)
         output_controls.add_widget(self._output_path_hint)
+        output_controls.add_widget(self._course_folder_input)
+        output_controls.add_widget(self._course_folder_label)
 
         card.add_row(output_controls)
         return card
@@ -652,6 +677,7 @@ class DownloadTab(ScrollableTab):
 
     def _render(self, state: DownloadUiState) -> None:
         self._busy_bar.setVisible(state.is_busy)
+        self._park_focus_while_busy(state.is_busy)
 
         if self._output_path.text() != state.output_dir:
             self._output_path.blockSignals(True)
@@ -659,6 +685,19 @@ class DownloadTab(ScrollableTab):
                 self._output_path.setText(state.output_dir)
             finally:
                 self._output_path.blockSignals(False)
+
+        if self._course_folder_input.text() != state.manual_course_folder:
+            self._course_folder_input.blockSignals(True)
+            try:
+                self._course_folder_input.setText(state.manual_course_folder)
+            finally:
+                self._course_folder_input.blockSignals(False)
+
+        folder_name = state.course_folder_name
+        if folder_name:
+            self._course_folder_label.setText(f"Course folder: {folder_name}")
+        else:
+            self._course_folder_label.setText(f"Course folder: {state.course_folder_error}")
 
         self._roster_warning.setVisible(not state.roster_configured)
         self._term_input.set_picker_available(
@@ -762,8 +801,36 @@ class DownloadTab(ScrollableTab):
             self._last_saved_label.clear()
             self._last_saved_label.hide()
 
+        self._restore_focus_when_idle(state.is_busy)
+
+    def _park_focus_while_busy(self, busy: bool) -> None:
+        """Hold focus on an invisible anchor while buttons are disabled.
+
+        Disabling the widget that has focus makes Qt move focus to the next
+        widget in tab order, and the scroll area then jumps to it. Parking the
+        focus first keeps the page still; _restore_focus_when_idle puts it
+        back on the button the user pressed once the download ends.
+        """
+        if busy and not self._was_busy:
+            focused = self.focusWidget()
+            if focused is not None and focused is not self._focus_anchor:
+                self._focus_to_restore = focused
+                self._focus_anchor.setFocus(Qt.FocusReason.OtherFocusReason)
+        self._was_busy = busy
+
+    def _restore_focus_when_idle(self, busy: bool) -> None:
+        if busy or self._focus_to_restore is None:
+            return
+        widget, self._focus_to_restore = self._focus_to_restore, None
+        if widget.isEnabled() and widget.isVisible():
+            widget.setFocus(Qt.FocusReason.OtherFocusReason)
+
     def _handle_event(self, event: object) -> None:
         if isinstance(event, ShowError):
             QMessageBox.critical(self, "Roster Download", event.message)
         elif isinstance(event, ShowInfo):
             QMessageBox.information(self, "Roster Download", event.message)
+        elif isinstance(event, FocusCourseFolder):
+            self._scroll.ensureWidgetVisible(self._course_folder_input)
+            self._course_folder_input.setFocus(Qt.FocusReason.OtherFocusReason)
+            self._course_folder_input.selectAll()
