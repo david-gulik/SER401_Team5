@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+
 def strip_gradescope_comments(assignment_in: str) -> str:
     """
     Method for taking in a C or Java file and stripping it of comments for privacy purposes
@@ -144,6 +145,7 @@ class AnonymizeGradescopeSubmissionsRequest:
     """
     Request object for anonymizing Gradescope submissions.
     """
+
     input_folder: str
     output_folder: str
 
@@ -153,6 +155,7 @@ class AnonymizeGradescopeSubmissionsResult:
     """
     Result object containing counts of processed/skipped files and output folder location.
     """
+
     processed_count: int
     skipped_count: int
     output_folder: str
@@ -163,7 +166,9 @@ class AnonymizeGradescopeSubmissionsUseCase:
     Use case for anonymizing Gradescope submissions
     """
 
-    def execute(self, request: AnonymizeGradescopeSubmissionsRequest) -> AnonymizeGradescopeSubmissionsResult:
+    def execute(
+        self, request: AnonymizeGradescopeSubmissionsRequest
+    ) -> AnonymizeGradescopeSubmissionsResult:
         input_path = Path(request.input_folder)
         output_path = Path(request.output_folder)
 
@@ -204,5 +209,5 @@ class AnonymizeGradescopeSubmissionsUseCase:
         return AnonymizeGradescopeSubmissionsResult(
             processed_count=processed_count,
             skipped_count=skipped_count,
-            output_folder=str(output_path)
+            output_folder=str(output_path),
         )
