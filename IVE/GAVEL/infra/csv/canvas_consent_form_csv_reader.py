@@ -37,6 +37,7 @@ class CanvasConsentFormCSVReader(ConsentFormReader):
             for row in reader:
                 entries.append(
                     ConsentFormEntry(
+                        canvas_id=int(row["id"]),
                         sis_id=int(row["sis_id"]),
                         lms_name=row["name"].strip(),
                         attempt=int(row["attempt"]),

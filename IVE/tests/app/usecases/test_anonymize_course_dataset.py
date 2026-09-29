@@ -52,8 +52,8 @@ def write_consent_form(snapshot_dir: Path) -> None:
     consent_path = original_dir / "consent_form.csv"
 
     consent_path.write_text(
-        "sis_id,name,attempt,leave blank if your name is correct,Do you consent\n"
-        "100001,Test Student,1,Test Student,True\n",
+        "id,sis_id,name,attempt,leave blank if your name is correct,Do you consent\n"
+        "100001,9999999999,Test Student,1,Test Student,True\n",
         encoding="utf-8",
     )
 
@@ -65,7 +65,7 @@ def write_roster(snapshot_dir: Path) -> None:
         "ID,Posting ID,First Name,Last Name,Status,Units,"
         "Grade Basis,Program and Plan,Academic Level,ASURITE,"
         "Residency,Zoom Email\n"
-        "100001,100001-001,Test,Student,Enrolled,3,"
+        "9999999999,9999999999-001,Test,Student,Enrolled,3,"
         "GRD,SER,Senior,teststudent,Resident,test@example.com\n",
         encoding="utf-8",
     )

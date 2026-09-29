@@ -9,6 +9,7 @@ from GAVEL.app.usecases.proxy_grade.mappings.registry import MAPPINGS
 from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_canvas_client, build_roster_client
+from GAVEL.cli.commands.anonymize import handle_anonymize_run
 from GAVEL.cli.commands.canvas_course import handle_canvas_course_download
 from GAVEL.cli.commands.canvas_course_dataset import (
     handle_canvas_course_dataset_download,
@@ -229,6 +230,28 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output", "-o", required=True, help="Path where the JSON report will be written"
     )
     proxy_grade_report.set_defaults(handler=handle_proxy_grade_report)
+
+    # anonymize commands
+    anonymize_parser = subparsers.add_parser(
+        "anonymize",
+        help="Anonymize a downloaded course dataset",
+    )
+    anonymize_subparsers = anonymize_parser.add_subparsers(
+        dest="anonymize_command",
+        required=True,
+    )
+
+    anonymize_run = anonymize_subparsers.add_parser(
+        "run",
+        help="Run the anonymization pipeline on a dataset",
+    )
+    anonymize_run.add_argument(
+        "--dataset-dir",
+        required=True,
+        help="Path to the downloaded course snapshot directory",
+    )
+
+    anonymize_run.set_defaults(handler=handle_anonymize_run)
 
     return parser
 

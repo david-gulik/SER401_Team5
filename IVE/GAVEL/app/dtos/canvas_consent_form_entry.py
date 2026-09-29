@@ -5,6 +5,7 @@ from dataclasses import dataclass
 class ConsentFormEntry:
     """Immutable record of one consent form submission attempt."""
 
+    canvas_id: int
     sis_id: int
     # student display name as it appears in Canvas
     lms_name: str
