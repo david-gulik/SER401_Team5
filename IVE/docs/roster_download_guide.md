@@ -209,14 +209,37 @@ mode a class number alone cannot name it, so `--course-folder` is required.
 > Skip this section if using `ROSTER_AUTH_METHOD=cookies`.
 
 - [ ] A Chrome browser window opens automatically
-- [ ] Log in with your ASU credentials on the CAS login page
-- [ ] Complete Duo MFA when prompted
-- [ ] Wait for the `[AUTH] Authentication successful` message in the terminal
+- [ ] If a sign-in page appears, log in with your ASU credentials on the CAS login page (filled in for you when `CANVAS_USERNAME` and `CANVAS_PASSWORD` are set in `.env`)
+- [ ] Complete Duo MFA if prompted
+- [ ] Wait for the `[AUTH] Roster session ready.` message in the terminal
 - [ ] The browser minimizes , do not close it until the download finishes
 
 The tool performs **one** browser login and reuses the session for both the catalog API token and the roster download. You will **not** be prompted for a second Duo push in the same session.
 
 > If the session expires (default TTL: 10 minutes), the tool will attempt a **silent refresh** using the existing CAS session before falling back to a full re-login.
+
+#### Staying signed in
+
+The roster download and the Gradescope download share one login browser:
+
+- **Within one run of the app**, the first download that needs an ASU login performs it and the browser stays open (minimized) afterwards. Later downloads reuse it, so "Download All" in the GUI asks for Duo once at most. The browser closes when the app or the CLI command exits. If you close it yourself, the next download opens a new one.
+- **Between runs**, the browser's ASU and Duo cookies are saved when a download finishes and put back the next time a browser is started. The tool also answers Duo's "Is this your device?" question with "Yes, this is my device", so Duo can remember the browser. How long that skips the login is decided by ASU's session and Duo policies, not by this tool. When the saved login is no longer accepted, the normal sign-in page appears and you log in as before.
+
+The saved login is a file of cookies in your user profile, outside the project folder:
+
+| OS | Location |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\GAVEL\asu_login_cookies.json` |
+| macOS | `~/Library/Application Support/GAVEL/asu_login_cookies.json` |
+| Linux | `~/.local/state/GAVEL/asu_login_cookies.json` |
+
+Treat that file like a logged-in browser: anyone who can read it can act as you on ASU sites until the cookies expire. To delete it:
+
+```bash
+python -m GAVEL.cli.main asu-login forget
+```
+
+On a shared computer, set `ASU_LOGIN_REMEMBER=false` in `.env`. Nothing is saved, any existing saved login is deleted on the next start, and Duo is told the device is shared.
 
 ---
 
@@ -249,6 +272,9 @@ The tool performs **one** browser login and reuses the session for both the cata
 | --- | --- | --- |
 | `ROSTER_AUTH_METHOD not set; roster features disabled` | Missing env var | Set `ROSTER_AUTH_METHOD` in `.env` |
 | `Authentication timed out or browser closed` | Duo MFA took too long | Increase `ROSTER_MFA_TIMEOUT` in `.env` |
+| `Could not obtain catalog token` or `Timed out ... waiting for the ASU login to finish` | The login was not completed in time, or the saved credentials were rejected | Finish the login in the browser window; check `CANVAS_USERNAME` / `CANVAS_PASSWORD`; increase `ROSTER_MFA_TIMEOUT` |
+| `The ASU catalog rejected the login token (HTTP 401)` | `ROSTER_TOKEN` in `.env` has expired | Remove `ROSTER_TOKEN` to sign in through the browser, or paste a new token |
+| Asked to log in on every run even with `ASU_LOGIN_REMEMBER=true` | The saved login expired, or ASU's Duo policy does not remember browsers for long | Nothing to fix; run `asu-login forget` and log in once more if the saved login seems stuck |
 | `Received HTML instead of CSV` | Insufficient permissions or bad term/class | Verify faculty access; confirm term and class number with `--info-only` |
 | `Session expired or invalid. Re-authentication required` | MyASU cookies expired | Re-run the command; a fresh browser login will be triggered |
 
@@ -262,7 +288,8 @@ All variables go in `IVE/.env`.
 | --- | --- | --- |
 | `ROSTER_AUTH_METHOD` | _(none)_ | Auth method to use. Must be `selenium` or `cookies`. Roster features are disabled if unset. |
 | `ROSTER_TOKEN` | _(none)_ | Pre-existing catalog API JWT. If set, skips the catalog token fetch step during auth entirely. |
-| `ROSTER_MFA_TIMEOUT` | `120` | Seconds to wait for you to complete CAS login and Duo MFA in the browser before timing out. |
+| `ASU_LOGIN_REMEMBER` | `true` | `true` keeps the browser's ASU login between runs (see [Staying signed in](#staying-signed-in)). `false` signs in fresh each run and deletes any saved login. |
+| `ROSTER_MFA_TIMEOUT` | `120` | Seconds to wait for you to complete CAS login and Duo MFA in the browser before timing out. Also applies to the Gradescope download's login. |
 | `ROSTER_SESSION_TTL` | `600` | Seconds before the cached session is considered expired. After expiry, the tool attempts a silent refresh before prompting for a full re-login. |
 | `ROSTER_HTTP_TIMEOUT` | `30` | Seconds to wait for each HTTP request (CSV download, catalog API calls). |
 | `ROSTER_PAGE_LOAD_TIMEOUT` | `30` | Seconds to wait for the browser to land on the expected domain after a navigation. |

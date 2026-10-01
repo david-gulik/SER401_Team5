@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QApplication, QSplashScreen
 
 from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
-from GAVEL.bootstrap import build_canvas_client, build_roster_client
+from GAVEL.bootstrap import build_asu_browser, build_canvas_client, build_roster_client
 from GAVEL.core.main_window import MainWindow
 from GAVEL.core.page_registry import PageRegistry
 from GAVEL.pages.analytics.page import AnalyticsPage  # noqa: F401
@@ -55,8 +55,11 @@ def main() -> None:
     logger = AppLogger()
 
     canvas_client = build_canvas_client(config_service.get(), logger)
-    roster_client = build_roster_client(config_service.get(), logger)
-    services = AppServices.build(canvas_client, roster_client, logger)
+    asu_browser = build_asu_browser(config_service.get(), logger)
+    roster_client = build_roster_client(config_service.get(), logger, asu_browser)
+    services = AppServices.build(canvas_client, roster_client, logger, asu_browser=asu_browser)
+    # The login browser stays open between downloads; close it with the app.
+    app.aboutToQuit.connect(asu_browser.close)
 
     ctx = AppContext(
         theme=theme,

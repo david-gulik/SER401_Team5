@@ -137,10 +137,13 @@ class DownloadGradescopeSubmissionsUseCase:
         canvas_client: CanvasClient,
         client_factory: Callable[..., Any] = http_gradescope_client,
         credentials: Callable[[], tuple[str | None, str | None]] = _env_credentials,
+        browser: Any = None,
     ) -> None:
+        """``browser`` is the app's shared login browser; without it the scraper opens its own."""
         self._canvas_client = canvas_client
         self._client_factory = client_factory
         self._credentials = credentials
+        self._browser = browser
 
     def execute(
         self, request: DownloadGradescopeSubmissionsRequest
@@ -169,11 +172,14 @@ class DownloadGradescopeSubmissionsUseCase:
 
         staging = tree.submissions_dir / STAGING_DIR
         staging.mkdir(parents=True, exist_ok=True)
-        client = self._client_factory(
-            course_url=f"https://canvas.asu.edu/courses/{request.course_id}",
-            headless=request.headless,
-            submissions_folder=str(staging),
-        )
+        client_options: dict[str, Any] = {
+            "course_url": f"https://canvas.asu.edu/courses/{request.course_id}",
+            "headless": request.headless,
+            "submissions_folder": str(staging),
+        }
+        if self._browser is not None:
+            client_options["browser"] = self._browser
+        client = self._client_factory(**client_options)
         client.download_all_assignments(username=username, password=password)
 
         artifacts: list[GradescopeArtifact] = []

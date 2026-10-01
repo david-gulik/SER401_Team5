@@ -27,7 +27,9 @@ def handle_gradescope_download(ctx: AppContext, args: Namespace) -> int:
         return 2
 
     try:
-        result = DownloadGradescopeSubmissionsUseCase(ctx.services.canvas_client).execute(
+        result = DownloadGradescopeSubmissionsUseCase(
+            ctx.services.canvas_client, browser=ctx.services.asu_browser
+        ).execute(
             DownloadGradescopeSubmissionsRequest(
                 course_id=course_id,
                 folder=folder,

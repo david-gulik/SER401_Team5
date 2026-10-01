@@ -223,6 +223,19 @@ class TestFiling:
         assert str(COURSE_ID) in scraper.kwargs["course_url"]
         assert not staging.exists()
 
+    def test_shared_login_browser_is_handed_to_the_scraper(self, canvas, folder):
+        scraper = FakeScraper({"Module 3 Programming": export_zip("x")})
+        browser = object()
+        DownloadGradescopeSubmissionsUseCase(
+            canvas, client_factory=scraper, credentials=lambda: ("user", "pw"), browser=browser
+        ).execute(DownloadGradescopeSubmissionsRequest(course_id=COURSE_ID, folder=folder))
+        assert scraper.kwargs["browser"] is browser
+
+    def test_scraper_opens_its_own_browser_when_none_is_shared(self, canvas, folder):
+        scraper = FakeScraper({"Module 3 Programming": export_zip("x")})
+        run(canvas, folder, scraper)
+        assert "browser" not in scraper.kwargs
+
     def test_unreachable_assignment_list_still_files_by_module(self, folder):
         class NoList(FakeCanvasClient):
             def list_assignments(self, course_id: int) -> list[CanvasAssignment]:
