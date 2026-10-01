@@ -33,7 +33,7 @@ def _submission(passing: set[str]) -> GradescopeSubmission:
 
 def test_the_mapping_covers_nine_criteria() -> None:
     assert len(SER334_M3.criteria) == 9
-    assert len(_ALL_TEST_NAMES) == 51  # 54 with the three disabled tests enabled
+    assert len(_ALL_TEST_NAMES) == 51
 
 
 def test_all_tests_passing_earns_full_marks() -> None:

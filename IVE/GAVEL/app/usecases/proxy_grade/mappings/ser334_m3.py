@@ -60,9 +60,6 @@ _NAMES = {
     "14.2": "14.2) Image Scaling 2",
     "14.3": "14.3) Image Scaling 3",
     "16.1": "16.1) Program argument parsing",
-    # "7.2": "7.2) Image -- Resize, pixel data",
-    # "7.4": "7.4) Image -- Resize, pixel data",
-    # "14.4": "14.4) Image Scaling 4",
 }
 
 
@@ -149,37 +146,9 @@ SER334_M3 = ProxyGradeMapping(
         Criterion(
             "image scaling",
             (
-                Tier(
-                    5.0,
-                    all_of=_t(
-                        "7.1",
-                        # "7.2",
-                        "7.3",
-                        # "7.4",
-                        "14.1",
-                        "14.2",
-                        "14.3",
-                        # "14.4",
-                    ),
-                ),
-                Tier(
-                    2.5,
-                    all_of=_t(
-                        "7.1",
-                        # "7.2",
-                        "14.1",
-                        "14.2",
-                    ),
-                ),
-                Tier(
-                    2.5,
-                    all_of=_t(
-                        "7.3",
-                        # "7.4",
-                        "14.3",
-                        # "14.4",
-                    ),
-                ),
+                Tier(5.0, all_of=_t("7.1", "7.3", "14.1", "14.2", "14.3")),
+                Tier(2.5, all_of=_t("7.1", "14.1", "14.2")),
+                Tier(2.5, all_of=_t("7.3", "14.3")),
             ),
         ),
     ),
