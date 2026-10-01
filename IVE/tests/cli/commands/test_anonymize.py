@@ -87,7 +87,7 @@ def write_rubric(snapshot_dir: Path) -> None:
     assignment_dir = snapshot_dir / "original" / "assignments" / "7216983_m1"
     assignment_dir.mkdir(parents=True, exist_ok=True)
 
-    (assignment_dir / "rubric_assessment_12345_7216983.json").write_text(
+    (assignment_dir / "rubric_assessments.json").write_text(
         json.dumps(
             [
                 {
@@ -140,9 +140,5 @@ def test_successful_run_returns_0_and_prints_summary(
     assert (snapshot_dir / "anonymized" / "gradebook.csv").exists()
 
     assert (
-        snapshot_dir
-        / "anonymized"
-        / "assignments"
-        / "7216983_m1"
-        / "rubric_assessment_12345_7216983.json"
+        snapshot_dir / "anonymized" / "assignments" / "7216983_m1" / "rubric_assessments.json"
     ).exists()
