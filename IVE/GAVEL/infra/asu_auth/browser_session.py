@@ -115,12 +115,14 @@ class AsuBrowserSession:
         driver_factory: Callable[[bool], Any] = create_chrome_driver,
         credentials: Callable[[], Credentials | None] = env_credentials,
         poll_interval: float = 1.0,
+        page_load_timeout: int = 60,
     ) -> None:
         self._store = cookie_store
         self._mfa_timeout = mfa_timeout
         self._driver_factory = driver_factory
         self._credentials = credentials
         self._poll_interval = poll_interval
+        self._page_load_timeout = page_load_timeout
 
         self._lock = threading.RLock()
         self._driver: Any = None
@@ -292,6 +294,13 @@ class AsuBrowserSession:
         self._driver = self._driver_factory(headless)
         self._headless = headless
         self._hidden_rect = None
+
+        # A page that keeps redirecting never finishes loading. Without a
+        # limit, a navigation would wait on it for minutes instead of failing.
+        try:
+            self._driver.set_page_load_timeout(self._page_load_timeout)
+        except BROWSER_ERRORS as exc:
+            logger.debug("Could not set the page load limit: %s", exc)
 
         if not self._exit_hook_registered:
             atexit.register(self.close)

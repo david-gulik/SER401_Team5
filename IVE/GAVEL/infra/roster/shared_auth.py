@@ -18,6 +18,7 @@ import threading
 import time
 
 import requests
+from selenium.common.exceptions import TimeoutException
 
 from GAVEL.infra.asu_auth.browser_session import AsuBrowserSession, host_of
 from GAVEL.services.config_service import RosterConfig
@@ -94,6 +95,19 @@ class SharedAuthProvider:
         """Obtain catalog token + roster cookies, logging in only if the browser must."""
         self._keepalive_stop.set()
 
+        try:
+            self._sign_in()
+        except TimeoutException as exc:
+            raise RuntimeError(
+                "An ASU page did not finish loading during sign-in. "
+                "Check the connection and try again."
+            ) from exc
+
+        self._authenticated_at = time.time()
+        self._signed_in_before = True
+        self._restart_keepalive()
+
+    def _sign_in(self) -> None:
         with self._browser.use() as driver:
             # Phase 1: catalog API token
             if self._browser.has_credentials:
@@ -116,10 +130,6 @@ class SharedAuthProvider:
             print("[AUTH] Navigating to MyASU for roster cookies...")
             self._roster_session = self._obtain_roster_session(driver)
             print("[AUTH] Roster session ready.")
-
-        self._authenticated_at = time.time()
-        self._signed_in_before = True
-        self._restart_keepalive()
 
     def _try_silent_refresh(self) -> bool:
         """Attempt to refresh credentials using the existing CAS session.
@@ -157,8 +167,9 @@ class SharedAuthProvider:
                     timeout=self._cfg.page_load_timeout,
                 )
 
-                # Clear the old token so we know if we get a fresh one.
-                driver.execute_script(f"sessionStorage.removeItem('{SS_TOKEN_KEY}');")
+                # Empty the tab so the token read below is a fresh one and the
+                # catalog page finds nothing left over from the last login.
+                self._clear_catalog_tab(driver)
 
                 # Seed fresh PKCE parameters.
                 verifier = generate_code_verifier()
@@ -287,9 +298,9 @@ class SharedAuthProvider:
             timeout=self._cfg.page_load_timeout,
         )
 
-        # 2. Drop any token left in this tab by an earlier login (the browser
-        #    is reused), then seed PKCE params into sessionStorage.
-        driver.execute_script(f"sessionStorage.removeItem('{SS_TOKEN_KEY}');")
+        # 2. Empty what an earlier login left in this tab (the browser is
+        #    reused), then seed PKCE params into sessionStorage.
+        self._clear_catalog_tab(driver)
 
         verifier = generate_code_verifier()
         challenge = compute_code_challenge(verifier)
@@ -424,6 +435,21 @@ class SharedAuthProvider:
         return self._transfer_cookies(driver)
 
     # -- Helpers ------------------------------------------------------------
+
+    @staticmethod
+    def _clear_catalog_tab(driver) -> None:
+        """Wipe everything the catalog site stored in this tab during an earlier login.
+
+        Call it while the browser is on the catalog domain, before asking for
+        a token. The catalog page keeps its token alongside details of the
+        signed-in user. If it loads with a new token while those details are
+        still there, it discards the token and sends itself back to the ASU
+        login. A signed-in browser is returned at once with another code, so
+        the two bounce back and forth and no token is ever left to read. An
+        empty tab is what the page sees on a first visit, which it handles
+        cleanly.
+        """
+        driver.execute_script("sessionStorage.clear();")
 
     @staticmethod
     def _read_session_storage(driver, key: str) -> str | None:

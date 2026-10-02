@@ -48,6 +48,7 @@ class FakeDriver:
         self.rect = {"x": 10, "y": 10, "width": 1200, "height": 900}
         self.minimized = False
         self.quit_calls = 0
+        self.page_load_timeout: float | None = None
         self.dead = False
         self.death_error: Exception = WebDriverException("invalid session id")
         self.switch_to = SimpleNamespace(window=self._switch_window)
@@ -106,6 +107,9 @@ class FakeDriver:
 
     def get_window_rect(self) -> dict:
         return dict(self.rect)
+
+    def set_page_load_timeout(self, seconds: float) -> None:
+        self.page_load_timeout = seconds
 
     def minimize_window(self) -> None:
         self.minimized = True

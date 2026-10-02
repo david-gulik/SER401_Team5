@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 import pytest
+from selenium.common.exceptions import TimeoutException
 
 from GAVEL.infra.roster import shared_auth
 from GAVEL.infra.roster.shared_auth import SharedAuthProvider
@@ -37,10 +38,15 @@ class ScriptedDriver:
         self.visited: list[str] = []
         self.storage: dict[str, str] = {}
         self._exchanging = False
+        self.never_finishes_loading = False
+        self.storage_at_login: list[dict[str, str]] = []
 
     def get(self, url: str) -> None:
         self.visited.append(url)
+        if self.never_finishes_loading and "/oauth2/" in url:
+            raise TimeoutException("timeout: Timed out receiving message from renderer")
         if "/oauth2/" in url:
+            self.storage_at_login.append(dict(self.storage))
             self._pending = [*self._login_pages, BACK_ON_CATALOG_URL]
             self._url = self._pending.pop(0)
         else:
@@ -57,6 +63,9 @@ class ScriptedDriver:
         return url
 
     def execute_script(self, script: str):
+        if script == "sessionStorage.clear();":
+            self.storage.clear()
+            return None
         if script.startswith("sessionStorage.removeItem"):
             self.storage.pop(script.split("'")[1], None)
             return None
@@ -154,6 +163,56 @@ def test_token_left_in_the_tab_by_an_earlier_login_is_not_reused() -> None:
         assert provider.obtain_token() == NEW_TOKEN
     finally:
         provider.close()
+
+
+LEFT_BY_THE_CATALOG_PAGE = {
+    TOKEN_KEY: STALE_TOKEN,
+    "catalog.ss.name": "Bailey",
+    "catalog.jwt.refresh.token": "refresh",
+    "catalog.jwt.expiration": "Wed Sep 30 2026 18:53:00",
+}
+PKCE_KEYS = {"catalog.serviceauth.codeVerifier", "catalog.serviceauth.state"}
+
+
+def test_full_login_starts_from_an_empty_catalog_tab() -> None:
+    """Leftover user details make the catalog page discard its token and redirect forever."""
+    driver = ScriptedDriver(login_pages=[])
+    driver.storage.update(LEFT_BY_THE_CATALOG_PAGE)
+    provider, _ = make_provider(driver)
+
+    try:
+        provider.ensure_authenticated()
+    finally:
+        provider.close()
+
+    assert set(driver.storage_at_login[0]) == PKCE_KEYS
+
+
+def test_quiet_refresh_starts_from_an_empty_catalog_tab() -> None:
+    driver = ScriptedDriver(login_pages=[])
+    provider, _ = make_provider(driver)
+    provider.ensure_authenticated()
+    provider.close()
+    driver.storage.update(LEFT_BY_THE_CATALOG_PAGE)
+
+    try:
+        provider.ensure_authenticated()
+    finally:
+        provider.close()
+
+    assert any("/passive/" in url for url in driver.visited)
+    assert set(driver.storage_at_login[-1]) == PKCE_KEYS
+
+
+def test_a_page_that_never_finishes_loading_is_reported_plainly() -> None:
+    driver = ScriptedDriver(login_pages=[])
+    driver.never_finishes_loading = True
+    provider, _ = make_provider(driver)
+
+    with pytest.raises(RuntimeError, match="did not finish loading"):
+        provider.ensure_authenticated()
+
+    assert provider.is_valid is False
 
 
 def test_close_releases_the_roster_session_but_not_the_browser() -> None:

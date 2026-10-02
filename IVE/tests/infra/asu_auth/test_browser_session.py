@@ -52,6 +52,13 @@ class TestOneBrowser:
         assert factory.made == []
         assert session.is_open is False
 
+    def test_page_loads_are_given_a_time_limit(self, factory) -> None:
+        """A page stuck in a redirect loop must fail, not hang the download."""
+        session = AsuBrowserSession(driver_factory=factory, page_load_timeout=45)
+
+        with session.use() as driver:
+            assert driver.page_load_timeout == 45
+
     def test_every_use_gets_the_same_browser(self, factory) -> None:
         session = make_session(factory)
 
