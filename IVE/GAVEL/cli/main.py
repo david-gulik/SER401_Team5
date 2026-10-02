@@ -8,8 +8,9 @@ from pathlib import Path
 from GAVEL.app.usecases.proxy_grade.mappings.registry import MAPPINGS
 from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
-from GAVEL.bootstrap import build_canvas_client, build_roster_client
+from GAVEL.bootstrap import build_asu_browser, build_canvas_client, build_roster_client
 from GAVEL.cli.commands.anonymize import handle_anonymize_run
+from GAVEL.cli.commands.asu_login import handle_asu_login_forget
 from GAVEL.cli.commands.canvas_course import handle_canvas_course_download
 from GAVEL.cli.commands.canvas_course_dataset import (
     handle_canvas_course_dataset_download,
@@ -38,7 +39,12 @@ def main(argv: list[str] | None = None) -> int:
     ctx = _build_app_context()
 
     handler: Callable[[AppContext, argparse.Namespace], int] = args.handler
-    return handler(ctx, args)
+    try:
+        return handler(ctx, args)
+    finally:
+        # The login browser outlives individual downloads; the command owns its end.
+        if ctx.services.asu_browser is not None:
+            ctx.services.asu_browser.close()
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -234,6 +240,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
     anonymize_run.set_defaults(handler=handle_anonymize_run)
 
+    # ASU login commands
+    asu_login_parser = subparsers.add_parser("asu-login", help="Saved ASU login operations")
+    asu_login_subparsers = asu_login_parser.add_subparsers(dest="asu_login_command", required=True)
+
+    asu_login_forget = asu_login_subparsers.add_parser(
+        "forget",
+        help="Delete the saved ASU login so the next download signs in again",
+    )
+    asu_login_forget.set_defaults(handler=handle_asu_login_forget)
+
     return parser
 
 
@@ -247,8 +263,9 @@ def _build_app_context() -> AppContext:
     logger = AppLogger(name="GAVEL.cli")
 
     canvas_client = build_canvas_client(config_service.get(), logger)
-    roster_client = build_roster_client(config_service.get(), logger)
-    services = AppServices.build(canvas_client, roster_client, logger)
+    asu_browser = build_asu_browser(config_service.get(), logger)
+    roster_client = build_roster_client(config_service.get(), logger, asu_browser)
+    services = AppServices.build(canvas_client, roster_client, logger, asu_browser=asu_browser)
 
     return AppContext(
         theme=theme,

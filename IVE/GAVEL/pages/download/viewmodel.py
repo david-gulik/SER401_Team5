@@ -302,10 +302,14 @@ class DownloadViewModel(QObject):
         default_output_dir: Path,
         logger: AppLogger,
         roster_configured: bool,
+        asu_browser: object | None = None,
     ) -> None:
         super().__init__()
         self._client = roster_client
         self._canvas_client = canvas_client
+        # Shared login browser, handed to the Gradescope download so it reuses
+        # the login the roster download (or an earlier run) already made.
+        self._asu_browser = asu_browser
         self._default_output_dir = default_output_dir
         self._logger = logger
         self._roster_configured = roster_configured
@@ -667,9 +671,9 @@ class DownloadViewModel(QObject):
 
         self._set_busy(f"Downloading Gradescope submissions for course {course_id}...")
         try:
-            result = DownloadGradescopeSubmissionsUseCase(self._canvas_client).execute(
-                DownloadGradescopeSubmissionsRequest(course_id=course_id, folder=folder)
-            )
+            result = DownloadGradescopeSubmissionsUseCase(
+                self._canvas_client, browser=self._asu_browser
+            ).execute(DownloadGradescopeSubmissionsRequest(course_id=course_id, folder=folder))
         except Exception as exc:  # noqa: BLE001
             self._report_download_failure("Gradescope submissions download failed", exc)
             return
@@ -972,6 +976,7 @@ class DownloadViewModel(QObject):
         self._set_busy("Downloading all data...")
         roster_client = self._client
         canvas_client = self._canvas_client
+        asu_browser = self._asu_browser
 
         def work() -> _DownloadAllResult:
             successes: list[str] = []
@@ -1014,7 +1019,7 @@ class DownloadViewModel(QObject):
             step(
                 GRADESCOPE_DOWNLOAD,
                 lambda: (
-                    DownloadGradescopeSubmissionsUseCase(canvas_client)
+                    DownloadGradescopeSubmissionsUseCase(canvas_client, browser=asu_browser)
                     .execute(
                         DownloadGradescopeSubmissionsRequest(course_id=course_id, folder=folder)
                     )

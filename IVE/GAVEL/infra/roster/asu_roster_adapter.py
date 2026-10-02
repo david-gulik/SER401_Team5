@@ -4,6 +4,7 @@ from collections.abc import Sequence
 
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
 from GAVEL.app.ports.roster_client import RosterClient
+from GAVEL.infra.asu_auth.browser_session import AsuBrowserSession
 from GAVEL.infra.roster.catalog_api import (
     CatalogApiClassResolver,
     ManualTokenProvider,
@@ -61,9 +62,10 @@ class ASURosterClient(RosterClient):
 
 def build_selenium_roster_client(
     roster_cfg: RosterConfig,
+    browser: AsuBrowserSession,
 ) -> ASURosterClient:
-    """Build a roster client with shared Selenium auth (one login for both)."""
-    shared_auth = SharedAuthProvider(roster_cfg=roster_cfg)
+    """Build a roster client that signs in through the app's shared login browser."""
+    shared_auth = SharedAuthProvider(roster_cfg=roster_cfg, browser=browser)
 
     if roster_cfg.token:
         resolver = CatalogApiClassResolver(

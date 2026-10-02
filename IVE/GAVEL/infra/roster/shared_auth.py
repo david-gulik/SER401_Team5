@@ -1,43 +1,42 @@
 """
-Shared authentication provider for ASU services.
+Shared authentication provider for ASU roster services.
 
-Opens a single Selenium browser to authenticate once via CAS + Duo MFA,
-then obtains both:
+Uses the app's shared login browser to get through CAS + Duo MFA once, then
+obtains both:
   1. A catalog API JWT (from catalog.apps.asu.edu sessionStorage)
   2. Roster download cookies (from webapp4.asu.edu)
 
-The browser is kept alive after initial auth so that credentials can be
-silently refreshed without requiring the user to log in again.
+The browser belongs to the app, not to this provider: it stays open after the
+roster work is done so other features (and later roster downloads) find it
+already signed in.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 
 import requests
+from selenium.common.exceptions import TimeoutException
 
+from GAVEL.infra.asu_auth.browser_session import AsuBrowserSession, host_of
 from GAVEL.services.config_service import RosterConfig
 
 logger = logging.getLogger(__name__)
 
 
 class SharedAuthProvider:
-    """Single Selenium session for both catalog API token and roster cookies.
+    """Catalog API token and roster cookies from one login in the shared browser."""
 
-    The browser persists after initial login so the CAS session can be reused
-    for silent token refreshes and roster cookie renewal.
-    """
-
-    def __init__(self, roster_cfg: RosterConfig) -> None:
+    def __init__(self, roster_cfg: RosterConfig, browser: AsuBrowserSession) -> None:
         self._cfg = roster_cfg
+        self._browser = browser
 
         self._catalog_token: str | None = None
         self._roster_session: requests.Session | None = None
         self._authenticated_at: float | None = None
-        self._driver = None
+        self._signed_in_before = False  # this provider has completed a login in the browser
         self._keepalive_stop = threading.Event()
 
     # -- Public API ---------------------------------------------------------
@@ -52,8 +51,12 @@ class SharedAuthProvider:
         """Authenticate if cached credentials are missing or expired."""
         if self.is_valid:
             return
-        # Try a silent refresh before forcing a full re-login.
-        if self._driver is not None and self._try_silent_refresh():
+        # Try a silent refresh before forcing a full re-login. Only worth it
+        # once a login has succeeded here: in a browser that was never signed
+        # in, the silent attempt just waits out its timeout before the real
+        # sign-in page is shown.
+        if self._signed_in_before and self._browser.is_open and self._try_silent_refresh():
+            self._restart_keepalive()
             return
         self._authenticate()
 
@@ -75,67 +78,66 @@ class SharedAuthProvider:
         self._authenticated_at = None
 
     def close(self) -> None:
-        """Release the browser and cached roster HTTP session."""
+        """Release the cached roster HTTP session and token.
+
+        The shared browser is left running; whoever owns it closes it when the
+        app exits.
+        """
         self._keepalive_stop.set()
         if self._roster_session:
             self._roster_session.close()
             self._roster_session = None
-        self._quit_driver()
         self._authenticated_at = None
 
     # -- Internals ----------------------------------------------------------
 
     def _authenticate(self) -> None:
-        """Open one browser, obtain catalog token + roster cookies."""
-        # Clean up any previous driver before starting fresh.
+        """Obtain catalog token + roster cookies, logging in only if the browser must."""
         self._keepalive_stop.set()
-        self._quit_driver()
 
-        self._driver = self._create_driver()
         try:
+            self._sign_in()
+        except TimeoutException as exc:
+            raise RuntimeError(
+                "An ASU page did not finish loading during sign-in. "
+                "Check the connection and try again."
+            ) from exc
+
+        self._authenticated_at = time.time()
+        self._signed_in_before = True
+        self._restart_keepalive()
+
+    def _sign_in(self) -> None:
+        with self._browser.use() as driver:
             # Phase 1: catalog API token
-            if self._canvas_credentials():
+            if self._browser.has_credentials:
                 print(
-                    "[AUTH] Browser opened. Auto-filling Canvas credentials; "
-                    f"approve the Duo prompt on your device (timeout: {self._cfg.mfa_timeout}s)."
+                    "[AUTH] Browser ready. Canvas credentials are filled in automatically; "
+                    "approve the Duo prompt on your device if one appears "
+                    f"(timeout: {self._cfg.mfa_timeout}s)."
                 )
             else:
                 print(
-                    f"[AUTH] Browser opened. Complete CAS login and Duo MFA.\n"
+                    f"[AUTH] Browser ready. If a sign-in page appears, complete CAS login "
+                    f"and Duo MFA.\n"
                     f"[AUTH] Tip: set CANVAS_USERNAME and CANVAS_PASSWORD in .env to auto-fill.\n"
                     f"[AUTH] Waiting up to {self._cfg.mfa_timeout}s..."
                 )
-            self._catalog_token = self._obtain_catalog_token(self._driver)
+            self._catalog_token = self._obtain_catalog_token(driver)
             print("[AUTH] Catalog API token acquired.")
 
             # Phase 2: roster cookies (CAS session already active — no second MFA)
             print("[AUTH] Navigating to MyASU for roster cookies...")
-            self._roster_session = self._obtain_roster_session(self._driver)
+            self._roster_session = self._obtain_roster_session(driver)
             print("[AUTH] Roster session ready.")
-
-            self._authenticated_at = time.time()
-
-            # Minimize the browser window now that MFA is done.
-            try:
-                self._driver.minimize_window()
-            except Exception:
-                pass
-
-            # Start background keepalive for the roster session.
-            self._keepalive_stop = threading.Event()
-            self._start_keepalive()
-
-        except Exception:
-            # Only quit the driver on failure; on success we keep it alive.
-            self._quit_driver()
-            raise
 
     def _try_silent_refresh(self) -> bool:
         """Attempt to refresh credentials using the existing CAS session.
 
         Uses the passive serviceauth endpoint — if the CAS session in the
         browser is still valid, this returns a new JWT without any user
-        interaction.  Also re-transfers roster cookies from the browser.
+        interaction.  Roster cookies are then collected from MyASU again,
+        which the same CAS session lets through without a prompt.
 
         Returns True if refresh succeeded, False otherwise.
         """
@@ -148,82 +150,82 @@ class SharedAuthProvider:
             generate_code_verifier,
         )
 
-        driver = self._driver
-        if driver is None:
-            return False
-
         logger.info("Attempting silent token refresh...")
 
         try:
-            config = ServiceAuthConfig()
-            SS_TOKEN_KEY = "catalog.jwt.token"
-            catalog_domain = "catalog.apps.asu.edu"
+            with self._browser.use(show=False) as driver:
+                config = ServiceAuthConfig()
+                SS_TOKEN_KEY = "catalog.jwt.token"
+                catalog_domain = "catalog.apps.asu.edu"
 
-            # Navigate to a lightweight page on the catalog domain to access
-            # sessionStorage.
-            driver.get("https://catalog.apps.asu.edu/favicon.ico")
-            self._wait_for_domain(
-                driver,
-                catalog_domain,
-                timeout=self._cfg.page_load_timeout,
-            )
+                # Navigate to a lightweight page on the catalog domain to access
+                # sessionStorage.
+                driver.get("https://catalog.apps.asu.edu/favicon.ico")
+                self._wait_for_domain(
+                    driver,
+                    catalog_domain,
+                    timeout=self._cfg.page_load_timeout,
+                )
 
-            # Clear the old token so we know if we get a fresh one.
-            driver.execute_script(f"sessionStorage.removeItem('{SS_TOKEN_KEY}');")
+                # Empty the tab so the token read below is a fresh one and the
+                # catalog page finds nothing left over from the last login.
+                self._clear_catalog_tab(driver)
 
-            # Seed fresh PKCE parameters.
-            verifier = generate_code_verifier()
-            challenge = compute_code_challenge(verifier)
-            state = _secrets.token_urlsafe(16)
+                # Seed fresh PKCE parameters.
+                verifier = generate_code_verifier()
+                challenge = compute_code_challenge(verifier)
+                state = _secrets.token_urlsafe(16)
 
-            driver.execute_script(
-                f"sessionStorage.setItem('catalog.serviceauth.codeVerifier', '{verifier}');"
-            )
-            driver.execute_script(
-                f"sessionStorage.setItem('catalog.serviceauth.state', '{state}');"
-            )
+                driver.execute_script(
+                    f"sessionStorage.setItem('catalog.serviceauth.codeVerifier', '{verifier}');"
+                )
+                driver.execute_script(
+                    f"sessionStorage.setItem('catalog.serviceauth.state', '{state}');"
+                )
 
-            # Use the *passive* allow URL — this will silently redirect back
-            # if the CAS session is still valid, or fail without prompting.
-            allow_params = {
-                "response_type": "code",
-                "client_id": config.client_id,
-                "redirect_uri": config.redirect_uri,
-                "state": state,
-                "code_challenge_method": "S256",
-                "code_challenge": challenge,
-                "scope": " ".join(config.scopes),
-            }
-            passive_url = f"{config.passive_allow_url}?{urlencode(allow_params)}"
+                # Use the *passive* allow URL — this will silently redirect back
+                # if the CAS session is still valid, or fail without prompting.
+                allow_params = {
+                    "response_type": "code",
+                    "client_id": config.client_id,
+                    "redirect_uri": config.redirect_uri,
+                    "state": state,
+                    "code_challenge_method": "S256",
+                    "code_challenge": challenge,
+                    "scope": " ".join(config.scopes),
+                }
+                passive_url = f"{config.passive_allow_url}?{urlencode(allow_params)}"
 
-            driver.get(passive_url)
+                driver.get(passive_url)
 
-            # Wait for the redirect back to the catalog domain with a token.
-            deadline = time.time() + self._cfg.page_load_timeout
-            while time.time() < deadline:
-                try:
-                    current = driver.current_url
-                except Exception:
-                    return False
+                # Wait for the redirect back to the catalog domain with a token.
+                deadline = time.time() + self._cfg.page_load_timeout
+                while time.time() < deadline:
+                    try:
+                        current = driver.current_url
+                    except Exception:
+                        return False
 
-                if catalog_domain in current:
-                    # Give the SPA a moment to exchange the code for a JWT.
-                    for _ in range(self._cfg.token_exchange_timeout):
-                        token = self._read_session_storage(driver, SS_TOKEN_KEY)
-                        if token:
-                            self._catalog_token = token
-                            # Re-transfer roster cookies from the browser
-                            # in case they were rotated.
-                            self._roster_session = self._transfer_cookies(driver)
-                            self._authenticated_at = time.time()
-                            logger.info("Silent token refresh succeeded.")
-                            print("[AUTH] Session refreshed silently.")
-                            return True
-                        time.sleep(1)
-                    # Timed out waiting for the token exchange.
-                    return False
+                    if host_of(current) == catalog_domain:
+                        # Give the SPA a moment to exchange the code for a JWT.
+                        for _ in range(self._cfg.token_exchange_timeout):
+                            token = self._read_session_storage(driver, SS_TOKEN_KEY)
+                            if token:
+                                # Roster cookies belong to the MyASU site, so
+                                # they have to be read while the browser is
+                                # there, not from the catalog page.
+                                roster_session = self._obtain_roster_session(driver)
+                                self._catalog_token = token
+                                self._roster_session = roster_session
+                                self._authenticated_at = time.time()
+                                logger.info("Silent token refresh succeeded.")
+                                print("[AUTH] Session refreshed silently.")
+                                return True
+                            time.sleep(1)
+                        # Timed out waiting for the token exchange.
+                        return False
 
-                time.sleep(0.5)
+                    time.sleep(0.5)
 
         except Exception as exc:
             logger.debug("Silent refresh failed: %s", exc)
@@ -232,12 +234,19 @@ class SharedAuthProvider:
 
     # -- Keepalive ----------------------------------------------------------
 
+    def _restart_keepalive(self) -> None:
+        """Stop any running keepalive and start one for the current roster session."""
+        self._keepalive_stop.set()
+        self._keepalive_stop = threading.Event()
+        self._start_keepalive()
+
     def _start_keepalive(self) -> None:
         """Ping MyASU periodically to prevent roster session timeout."""
         interval = max(self._cfg.session_ttl // 3, 30)
+        stop = self._keepalive_stop
 
         def _ping() -> None:
-            while not self._keepalive_stop.wait(timeout=interval):
+            while not stop.wait(timeout=interval):
                 try:
                     session = self._roster_session
                     if session is None:
@@ -289,7 +298,10 @@ class SharedAuthProvider:
             timeout=self._cfg.page_load_timeout,
         )
 
-        # 2. Seed PKCE params into sessionStorage.
+        # 2. Empty what an earlier login left in this tab (the browser is
+        #    reused), then seed PKCE params into sessionStorage.
+        self._clear_catalog_tab(driver)
+
         verifier = generate_code_verifier()
         challenge = compute_code_challenge(verifier)
         state = _secrets.token_urlsafe(16)
@@ -301,6 +313,7 @@ class SharedAuthProvider:
 
         # 3. Jump straight to the serviceauth login — goes to CAS
         #    immediately instead of waiting for the SPA to detect no auth.
+        #    A browser that is already signed in comes straight back.
         allow_params = {
             "response_type": "code",
             "client_id": config.client_id,
@@ -315,8 +328,10 @@ class SharedAuthProvider:
         print("[AUTH] Redirecting to CAS login...")
         driver.get(allow_url)
 
-        # 4. Wait for user to complete CAS + Duo MFA and land back on
-        #    the catalog domain.  The full MFA timeout applies here.
+        # 4. Wait for the browser to land back on the catalog domain, helping
+        #    any CAS + Duo login along.  The full MFA timeout applies here.
+        #    The host is compared, not the whole URL: the CAS page's address
+        #    contains the catalog domain in its query string.
         deadline = time.time() + self._cfg.mfa_timeout
         last_printed = ""
         token = None
@@ -332,10 +347,9 @@ class SharedAuthProvider:
                 print(f"[AUTH] Current URL: {display}")
                 last_printed = current
 
-            self._fill_cas_credentials_if_present(driver)
-            self._dismiss_duo_trusted_device_if_present(driver)
+            self._browser.assist_login(driver)
 
-            if catalog_domain in current:
+            if host_of(current) == catalog_domain:
                 # SPA received ?code= and should exchange it for a JWT.
                 for _ in range(self._cfg.token_exchange_timeout):
                     token = self._read_session_storage(driver, SS_TOKEN_KEY)
@@ -367,7 +381,7 @@ class SharedAuthProvider:
         deadline = _time.time() + timeout
         while _time.time() < deadline:
             try:
-                if domain in driver.current_url:
+                if host_of(driver.current_url) == domain:
                     return
             except Exception:
                 return
@@ -396,16 +410,18 @@ class SharedAuthProvider:
                 print(f"[AUTH] Current URL: {display}")
                 last_printed_url = current
 
-            if myasu_domain in current and "cas/login" not in current:
+            if host_of(current) == myasu_domain:
                 time.sleep(3)
                 try:
                     final_url = driver.current_url
                 except Exception:
                     break
 
-                if myasu_domain in final_url and "cas/login" not in final_url:
+                if host_of(final_url) == myasu_domain:
                     authenticated = True
                     break
+            else:
+                self._browser.assist_login(driver)
 
             time.sleep(1)
 
@@ -421,93 +437,19 @@ class SharedAuthProvider:
     # -- Helpers ------------------------------------------------------------
 
     @staticmethod
-    def _create_driver():
-        from selenium import webdriver
+    def _clear_catalog_tab(driver) -> None:
+        """Wipe everything the catalog site stored in this tab during an earlier login.
 
-        options = webdriver.ChromeOptions()
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        return webdriver.Chrome(options=options)
-
-    @staticmethod
-    def _canvas_credentials() -> tuple[str, str] | None:
-        username = os.getenv("CANVAS_USERNAME")
-        password = os.getenv("CANVAS_PASSWORD")
-        if username and password:
-            return username, password
-        return None
-
-    @classmethod
-    def _fill_cas_credentials_if_present(cls, driver) -> bool:
-        """Auto-submit the CAS form using CANVAS_USERNAME / CANVAS_PASSWORD.
-
-        No-op if creds aren't set, the page isn't CAS, the form isn't ready,
-        or the username field is already populated (avoids resubmitting while
-        the redirect is in flight).
+        Call it while the browser is on the catalog domain, before asking for
+        a token. The catalog page keeps its token alongside details of the
+        signed-in user. If it loads with a new token while those details are
+        still there, it discards the token and sends itself back to the ASU
+        login. A signed-in browser is returned at once with another code, so
+        the two bounce back and forth and no token is ever left to read. An
+        empty tab is what the page sees on a first visit, which it handles
+        cleanly.
         """
-        creds = cls._canvas_credentials()
-        if creds is None:
-            return False
-        try:
-            if "weblogin.asu.edu" not in driver.current_url:
-                return False
-        except Exception:
-            return False
-
-        from selenium.common.exceptions import (
-            NoSuchElementException,
-            WebDriverException,
-        )
-        from selenium.webdriver.common.by import By
-
-        try:
-            user_field = driver.find_element(By.ID, "username")
-            pass_field = driver.find_element(By.ID, "password")
-        except (NoSuchElementException, WebDriverException):
-            return False
-
-        try:
-            if user_field.get_attribute("value"):
-                return False
-            user_field.send_keys(creds[0])
-            pass_field.send_keys(creds[1])
-            driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
-        except WebDriverException as exc:
-            logger.debug("CAS auto-fill failed: %s", exc)
-            return False
-
-        print("[AUTH] Auto-filled CAS credentials.")
-        return True
-
-    @staticmethod
-    def _dismiss_duo_trusted_device_if_present(driver) -> None:
-        """Click 'No, other people use this device' on the Duo prompt if shown."""
-        from selenium.common.exceptions import WebDriverException
-        from selenium.webdriver.common.by import By
-
-        try:
-            elements = driver.find_elements(
-                By.XPATH,
-                "//*[contains(text(), 'No, other people use this device')]",
-            )
-        except WebDriverException:
-            return
-        if not elements:
-            return
-        try:
-            elements[0].click()
-            print("[AUTH] Dismissed Duo trusted-device prompt.")
-        except WebDriverException:
-            pass
-
-    def _quit_driver(self) -> None:
-        """Safely quit the stored Selenium driver."""
-        if self._driver is not None:
-            try:
-                self._driver.quit()
-            except Exception:
-                pass
-            self._driver = None
+        driver.execute_script("sessionStorage.clear();")
 
     @staticmethod
     def _read_session_storage(driver, key: str) -> str | None:

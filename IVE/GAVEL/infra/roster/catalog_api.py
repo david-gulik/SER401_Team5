@@ -228,6 +228,12 @@ class ServiceAuthTokenProvider:
 class ManualTokenProvider:
     """Token provider that accepts a pre-existing Bearer token."""
 
+    # Shown when the catalog API rejects the token; this provider cannot get a new one.
+    expired_hint = (
+        "ROSTER_TOKEN in .env has expired or is not valid. Remove it to sign in "
+        "through the browser instead, or replace it with a new token."
+    )
+
     def __init__(self, token: str):
         self._token = token
 
@@ -326,9 +332,19 @@ class CatalogApiClassResolver:
 
         if response.status_code == 401:
             logger.info("Got 401, refreshing token and retrying.")
+            # A provider that caches its login would hand the same expired
+            # token straight back; tell it to sign in again first.
+            invalidate = getattr(self._token_provider, "invalidate", None)
+            if callable(invalidate):
+                invalidate()
             self._token = None
             self._ensure_token()
             response = self._session.get(url, timeout=self._http_timeout)
+
+        if response.status_code == 401:
+            self._token = None
+            hint = getattr(self._token_provider, "expired_hint", "Sign in to ASU again and retry.")
+            raise RuntimeError(f"The ASU catalog rejected the login token (HTTP 401). {hint}")
 
         if response.status_code != 200:
             raise RuntimeError(

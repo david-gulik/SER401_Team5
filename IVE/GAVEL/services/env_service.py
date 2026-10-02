@@ -66,6 +66,20 @@ ENV_SCHEMA: tuple[EnvVarSpec, ...] = (
         kind="secret",
         help="Canvas password; only required by flows that use password auth.",
     ),
+    # -- ASU Login -----------------------------------------------------------
+    EnvVarSpec(
+        name="ASU_LOGIN_REMEMBER",
+        group="ASU Login",
+        label="Remember login",
+        kind="dropdown",
+        options=("true", "false"),
+        default="true",
+        help=(
+            "true keeps the browser's ASU login between runs, so Duo is asked for less "
+            "often. false signs in fresh each time the app starts and deletes any saved "
+            "login; use it on a shared computer."
+        ),
+    ),
     # -- ASU Roster ----------------------------------------------------------
     EnvVarSpec(
         name="ROSTER_AUTH_METHOD",
@@ -98,7 +112,10 @@ ENV_SCHEMA: tuple[EnvVarSpec, ...] = (
         label="MFA timeout (s)",
         kind="int",
         default="120",
-        help="Time the user has to complete CAS + Duo MFA in the browser.",
+        help=(
+            "Time the user has to complete CAS + Duo MFA in the browser. "
+            "Applies to every download that signs in to ASU."
+        ),
     ),
     EnvVarSpec(
         name="ROSTER_SESSION_TTL",

@@ -18,8 +18,10 @@ From your GAVEL folder, run
 `python3 app/ports/gradescope_client.py [courseID]`
 
 from the Terminal. The [courseID] variable is the six-digit number assigned to the course on Canvas. 
-You will be prompted via Chrome to log in to Canvas, and authenticate via Duo. (#TODO: Implement Duo persistence to 
-avoid repeated downloads.) The gradescope_client will download the bulk submission export to the given folder.
+If Chrome is not already signed in to ASU, you will be prompted to log in to Canvas and authenticate via Duo.
+The login is shared with the roster download and remembered between runs; see "Staying signed in" in 
+`docs/roster_download_guide.md` for how that works and how to turn it off.
+The gradescope_client will download the bulk submission export to the given folder.
 
 ## Example
 

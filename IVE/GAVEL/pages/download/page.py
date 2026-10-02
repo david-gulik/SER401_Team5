@@ -32,6 +32,7 @@ class DownloadPage(BasePage):
             default_output_dir=output_dir,
             logger=ctx.logger,
             roster_configured=roster_configured,
+            asu_browser=ctx.services.asu_browser,
         )
 
         tab = DownloadTab(ctx.theme, vm)
