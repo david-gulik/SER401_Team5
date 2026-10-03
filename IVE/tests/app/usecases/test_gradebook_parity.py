@@ -20,8 +20,8 @@ def test_gradebook_matches_palantir_except_canvas_id_divergence():
 
     request = AnonymizeGradebookRequest(
         gradebook=original,
-        consented_ids=(309780,),
-        id_map=((309780, 4242),),
+        consented_ids=(100001,),
+        id_map=((100001, 4242),),
     )
 
     result = use_case.execute(request)
