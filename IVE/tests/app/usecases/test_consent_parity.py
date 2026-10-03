@@ -9,7 +9,6 @@ from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
     CanvasConsentFormCSVReader,
 )
 
-
 FIXTURE_DIR = Path(__file__).parents[2] / "data" / "parity" / "consent"
 
 
@@ -18,11 +17,7 @@ def test_consent_matches_palantir_except_revocation_divergence():
     entries = tuple(reader.read(FIXTURE_DIR / "consent_form.csv"))
 
     palantir_consented_sis_ids = set(
-        json.loads(
-            (FIXTURE_DIR / "consent_golden.json").read_text(
-                encoding="utf-8"
-            )
-        )
+        json.loads((FIXTURE_DIR / "consent_golden.json").read_text(encoding="utf-8"))
     )
 
     use_case = DownselectConsentedStudentsUseCase()
@@ -35,15 +30,9 @@ def test_consent_matches_palantir_except_revocation_divergence():
 
     # GAVEL returns Canvas IDs, Palantir returns SIS IDs.
     # Convert GAVEL's result to SIS IDs so we can compare students.
-    canvas_to_sis = {
-        entry.canvas_id: entry.sis_id
-        for entry in entries
-    }
+    canvas_to_sis = {entry.canvas_id: entry.sis_id for entry in entries}
 
-    gavel_consented_sis_ids = {
-        canvas_to_sis[canvas_id]
-        for canvas_id in result.consented_ids
-    }
+    gavel_consented_sis_ids = {canvas_to_sis[canvas_id] for canvas_id in result.consented_ids}
 
     # Normal consent case agrees in both implementations.
     assert 9000000002 in palantir_consented_sis_ids

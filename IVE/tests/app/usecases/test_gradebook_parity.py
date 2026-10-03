@@ -6,7 +6,6 @@ from GAVEL.app.usecases.anonymize_gradebook import (
 )
 from GAVEL.infra.csv.canvas_gradebook_csv_reader import LegacyGradebookCSVReader
 
-
 FIXTURE_DIR = Path(__file__).parents[2] / "data" / "parity" / "gradebook"
 
 

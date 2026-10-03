@@ -1,12 +1,12 @@
 from pathlib import Path
 
 import pandas as pd
+
 from GAVEL.app.usecases.anonymize_roster import (
     AnonymizeRosterRequest,
     AnonymizeRosterUseCase,
 )
 from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
-
 
 FIXTURE_DIR = Path(__file__).parents[2] / "data" / "parity" / "roster"
 
