@@ -26,7 +26,11 @@ _GRADEBOOK_COLUMN = "Module 2: Programming (123456)"
 
 
 def _submission(
-    sid: str, email: str, passing: set[str], names: list[str] | None = None
+    sid: str,
+    email: str,
+    passing: set[str],
+    names: list[str] | None = None,
+    output: str | None = None,
 ) -> GradescopeSubmission:
     tests = [
         GradescopeTestScore(
@@ -41,6 +45,7 @@ def _submission(
         submitter=GradescopeSubmitter(sid=sid, email=email, name="Test Student"),
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         tests=tests,
+        output=output,
     )
 
 
@@ -187,3 +192,137 @@ def test_submission_missing_a_mapped_test_is_reported_and_the_run_continues(tmp_
     assert len(result.failed_submissions) == 1
     assert result.failed_submissions[0].submission_id == "3"
     assert result.failed_submissions[0].missing_tests == ("Test B", "Test C")
+
+
+def test_a_submission_with_no_tests_and_an_explained_output_scores_zero(tmp_path: Path) -> None:
+    submissions_dir = tmp_path / "submissions"
+    submissions_dir.mkdir()
+    yaml_path = submissions_dir / "student4.yml"
+    yaml_path.write_text("placeholder")
+
+    submission = _submission(
+        "4",
+        "student4@asu.edu",
+        set(),
+        names=[],
+        output="Could not find a struct in your code named courseNode.",
+    )
+    gradebook = _gradebook(
+        [
+            GradebookStudentRow(
+                student_name="Student Four",
+                canvas_id=4,
+                sis_login_id="student4",
+                section="001",
+                assignment_scores={_GRADEBOOK_COLUMN: 1.0},
+            )
+        ]
+    )
+
+    use_case = GenerateSignedErrorReportUseCase(
+        gradescope_reader=FakeGradescopeReader({yaml_path: [submission]}),
+        gradebook_reader=FakeGradebookReader(gradebook),
+    )
+
+    result = use_case.execute(
+        GenerateSignedErrorReportRequest(
+            submissions_dir=submissions_dir,
+            mapping=_MAPPING,
+            gradebook_path=tmp_path / "gradebook.csv",
+            gradebook_column=_GRADEBOOK_COLUMN,
+            output_path=tmp_path / "report.json",
+        )
+    )
+
+    assert result.failed_submissions == ()
+    assert len(result.rows) == 1
+    assert result.rows[0].proxy_score == 0.0
+    assert result.rows[0].signed_error == 1.0
+
+
+def test_a_submission_with_no_tests_and_the_autograder_crashed_message_is_excluded(
+    tmp_path: Path,
+) -> None:
+    submissions_dir = tmp_path / "submissions"
+    submissions_dir.mkdir()
+    yaml_path = submissions_dir / "student5.yml"
+    yaml_path.write_text("placeholder")
+
+    submission = _submission(
+        "5",
+        "student5@asu.edu",
+        set(),
+        names=[],
+        output=(
+            "The autograder failed to execute correctly. Contact your course "
+            "staff for help in debugging this issue."
+        ),
+    )
+    gradebook = _gradebook(
+        [
+            GradebookStudentRow(
+                student_name="Student Five",
+                canvas_id=5,
+                sis_login_id="student5",
+                section="001",
+                assignment_scores={_GRADEBOOK_COLUMN: 1.0},
+            )
+        ]
+    )
+
+    use_case = GenerateSignedErrorReportUseCase(
+        gradescope_reader=FakeGradescopeReader({yaml_path: [submission]}),
+        gradebook_reader=FakeGradebookReader(gradebook),
+    )
+
+    result = use_case.execute(
+        GenerateSignedErrorReportRequest(
+            submissions_dir=submissions_dir,
+            mapping=_MAPPING,
+            gradebook_path=tmp_path / "gradebook.csv",
+            gradebook_column=_GRADEBOOK_COLUMN,
+            output_path=tmp_path / "report.json",
+        )
+    )
+
+    assert result.rows == ()
+    assert len(result.failed_submissions) == 1
+    assert result.failed_submissions[0].submission_id == "5"
+
+
+def test_a_submission_with_no_tests_and_no_output_is_excluded(tmp_path: Path) -> None:
+    submissions_dir = tmp_path / "submissions"
+    submissions_dir.mkdir()
+    yaml_path = submissions_dir / "student6.yml"
+    yaml_path.write_text("placeholder")
+
+    submission = _submission("6", "student6@asu.edu", set(), names=[])
+    gradebook = _gradebook(
+        [
+            GradebookStudentRow(
+                student_name="Student Six",
+                canvas_id=6,
+                sis_login_id="student6",
+                section="001",
+                assignment_scores={_GRADEBOOK_COLUMN: 1.0},
+            )
+        ]
+    )
+
+    use_case = GenerateSignedErrorReportUseCase(
+        gradescope_reader=FakeGradescopeReader({yaml_path: [submission]}),
+        gradebook_reader=FakeGradebookReader(gradebook),
+    )
+
+    result = use_case.execute(
+        GenerateSignedErrorReportRequest(
+            submissions_dir=submissions_dir,
+            mapping=_MAPPING,
+            gradebook_path=tmp_path / "gradebook.csv",
+            gradebook_column=_GRADEBOOK_COLUMN,
+            output_path=tmp_path / "report.json",
+        )
+    )
+
+    assert result.rows == ()
+    assert len(result.failed_submissions) == 1

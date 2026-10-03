@@ -59,9 +59,7 @@ _NAMES = {
     "14.1": "14.1) Image Scaling 1",
     "14.2": "14.2) Image Scaling 2",
     "14.3": "14.3) Image Scaling 3",
-    # "7.2": "7.2) Image -- Resize, pixel data",
-    # "7.4": "7.4) Image -- Resize, pixel data",
-    # "14.4": "14.4) Image Scaling 4",
+    "16.1": "16.1) Program argument parsing",
 }
 
 
@@ -92,11 +90,17 @@ SER334_M3 = ProxyGradeMapping(
         Criterion(
             "input and output file names",
             (
-                Tier(4.0, all_of=_t("9.1", "9.2", "9.3")),
+                Tier(4.0, all_of=_t("9.1", "9.2", "9.3", "16.1")),
                 Tier(2.0, any_of=_t("9.1", "9.2", "9.3"), at_least=2),
             ),
         ),
-        Criterion("input validation", (Tier(4.0, all_of=_t("10.1")),)),
+        Criterion(
+            "input validation",
+            (
+                Tier(4.0, all_of=_t("10.1", "16.1")),
+                Tier(2.0, all_of=_t("10.1")),
+            ),
+        ),
         Criterion(
             "filter: color shift",
             (
@@ -142,37 +146,9 @@ SER334_M3 = ProxyGradeMapping(
         Criterion(
             "image scaling",
             (
-                Tier(
-                    5.0,
-                    all_of=_t(
-                        "7.1",
-                        # "7.2",
-                        "7.3",
-                        # "7.4",
-                        "14.1",
-                        "14.2",
-                        "14.3",
-                        # "14.4",
-                    ),
-                ),
-                Tier(
-                    2.5,
-                    all_of=_t(
-                        "7.1",
-                        # "7.2",
-                        "14.1",
-                        "14.2",
-                    ),
-                ),
-                Tier(
-                    2.5,
-                    all_of=_t(
-                        "7.3",
-                        # "7.4",
-                        "14.3",
-                        # "14.4",
-                    ),
-                ),
+                Tier(5.0, all_of=_t("7.1", "7.3", "14.1", "14.2", "14.3")),
+                Tier(2.5, all_of=_t("7.1", "14.1", "14.2")),
+                Tier(2.5, all_of=_t("7.3", "14.3")),
             ),
         ),
     ),

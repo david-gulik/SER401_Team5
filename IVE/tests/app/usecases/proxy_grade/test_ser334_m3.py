@@ -33,7 +33,7 @@ def _submission(passing: set[str]) -> GradescopeSubmission:
 
 def test_the_mapping_covers_nine_criteria() -> None:
     assert len(SER334_M3.criteria) == 9
-    assert len(_ALL_TEST_NAMES) == 50  # 53 with the three disabled tests enabled
+    assert len(_ALL_TEST_NAMES) == 51
 
 
 def test_all_tests_passing_earns_full_marks() -> None:
@@ -62,8 +62,10 @@ _TIER_CASES = [
     (1, ["2.1", "2.2", "2.3", "2.4", "2.5", "3.1", "3.2", "3.3", "3.4"], 4.0),
     (2, ["9.1"], 0.0),
     (2, ["9.1", "9.3"], 2.0),
-    (2, ["9.1", "9.2", "9.3"], 4.0),
-    (3, ["10.1"], 4.0),
+    (2, ["9.1", "9.2", "9.3"], 2.0),
+    (2, ["9.1", "9.2", "9.3", "16.1"], 4.0),
+    (3, ["10.1"], 2.0),
+    (3, ["10.1", "16.1"], 4.0),
     (4, ["5.1", "5.2", "5.3"], 2.5),
     (4, ["5.1", "5.2", "5.4", "5.5", "10.2", "10.4"], 2.5),
     (4, ["5.1", "5.2"], 0.0),
