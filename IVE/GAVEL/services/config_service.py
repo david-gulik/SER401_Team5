@@ -30,11 +30,26 @@ class RosterConfig:
 
 
 @dataclass(frozen=True)
+class AsuLoginConfig:
+    remember: bool = True  # keep the browser's ASU login between runs of the app
+
+
+@dataclass(frozen=True)
 class AppConfig:
     environment: str = "DEV"
     version: str = "0.1.0"
     canvas: CanvasConfig = field(default_factory=CanvasConfig)
     roster: RosterConfig = field(default_factory=RosterConfig)
+    asu_login: AsuLoginConfig = field(default_factory=AsuLoginConfig)
+
+
+_FALSE_WORDS = frozenset({"false", "0", "no", "off"})
+
+
+def _as_bool(value: str | None, default: bool) -> bool:
+    if value is None or not value.strip():
+        return default
+    return value.strip().lower() not in _FALSE_WORDS
 
 
 class ConfigService:
@@ -77,7 +92,10 @@ class ConfigService:
             page_load_timeout=int(source.get("ROSTER_PAGE_LOAD_TIMEOUT", "30")),
             token_exchange_timeout=int(source.get("ROSTER_TOKEN_EXCHANGE_TIMEOUT", "30")),
         )
-        return AppConfig(canvas=canvas_cfg, roster=roster_cfg)
+        asu_login_cfg = AsuLoginConfig(
+            remember=_as_bool(source.get("ASU_LOGIN_REMEMBER"), default=True),
+        )
+        return AppConfig(canvas=canvas_cfg, roster=roster_cfg, asu_login=asu_login_cfg)
 
     def _resolve_source(self) -> Mapping[str, str]:
         if self._env_override is not None:

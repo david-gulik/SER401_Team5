@@ -7,12 +7,12 @@ from dataclasses import dataclass
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
+from GAVEL.infra.asu_auth.browser_session import BROWSER_ERRORS, AsuBrowserSession, host_of
 from GAVEL.services.env_service import SCHEMA_DEFAULTS
 
 # -------------------------
@@ -56,6 +56,10 @@ def remove_illegal_download_characters(name: str) -> str:
 class http_gradescope_client:
     """
     ASU-specific Canvas → CAS → Duo → Canvas → Gradescope bridge.
+
+    The ASU login itself is done by the shared login browser when one is
+    passed in, so a login made earlier (by another download, or in a previous
+    run of the app) is reused instead of repeated.
     """
 
     GRADESCOPE_DOMAIN = "www.gradescope.com"
@@ -63,14 +67,19 @@ class http_gradescope_client:
     TOKEN_COOKIE_NAME = "token"
 
     def __init__(
-        self, course_url: str, headless: bool = True, submissions_folder: str | None = None
+        self,
+        course_url: str,
+        headless: bool = True,
+        submissions_folder: str | None = None,
+        browser: AsuBrowserSession | None = None,
     ):
 
         load_dotenv()
 
         self.course_url = course_url
         self.headless = headless
-        self._driver: webdriver.Chrome | None = None  # noqa:
+        self._browser = browser
+        self._driver = None  # the borrowed browser, only while capture_session runs
 
         self.base_url = _env_or_default("GRADESCOPE_BASE_URL")
         self.courses_suffix = _env_or_default("GRADESCOPE_COURSES_SUFFIX")
@@ -107,67 +116,10 @@ class http_gradescope_client:
             )
 
     # -------------------------
-    # Driver
-    # -------------------------
-
-    def _build_driver(self) -> webdriver.Chrome:
-        log.info("Logging on to Canvas/Gradescope...")
-        log.debug("Building Chrome driver... (headless=%s)", self.headless)
-
-        options = webdriver.ChromeOptions()
-        if self.headless:
-            options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-
-        return webdriver.Chrome(options=options)
-
-    def _handle_duo(self, wait: WebDriverWait):
-        """
-        Clicks:
-          - "No, other people use this device"
-        """
-
-        log.debug("Checking for Duo Prompt...")
-
-        try:
-            no_btn = wait.until(
-                ec.element_to_be_clickable(
-                    (By.XPATH, "//*[contains(text(), 'No, other people use this device')]")
-                )
-            )
-            log.debug("Clicking 'No, other people use this device'...")
-            no_btn.click()
-        except TimeoutException:
-            log.warning("No trusted device prompt detected.")
-
-    # -------------------------
-    # CAS Login
-    # -------------------------
-
-    def _handle_cas_login(self, wait: WebDriverWait, username: str, password: str):
-        if "weblogin.asu.edu" not in self._driver.current_url:
-            log.error("ERROR: URL not configured correctly.")
-            return
-
-        log.debug("Performing CAS login...")
-
-        user_field = wait.until(ec.presence_of_element_located((By.ID, "username")))
-        pass_field = self._driver.find_element(By.ID, "password")
-
-        user_field.send_keys(username)
-        pass_field.send_keys(password)
-
-        log.debug("Submitting CAS login form...")
-        self._driver.find_element(By.CSS_SELECTOR, "button[type='submit']").click()
-        self._handle_duo(wait)
-        log.debug("CAS login + Duo complete.")
-
-    # -------------------------
     # Canvas → Gradescope
     # -------------------------
 
-    def _open_gradescope_from_course_nav(self, wait: WebDriverWait):
+    def _open_gradescope_from_course_nav(self, wait: WebDriverWait, starting_tabs: list[str]):
         log.debug("Waiting for Canvas course nav to load...")
         wait.until(ec.presence_of_element_located((By.ID, "section-tabs")))
 
@@ -178,11 +130,22 @@ class http_gradescope_client:
         nav_link.click()
 
         log.debug("Waiting for new Gradescope tab...")
-        wait.until(lambda d: len(d.window_handles) > 1)
+        wait.until(lambda d: any(h not in starting_tabs for h in d.window_handles))
 
-        handles = self._driver.window_handles
-        self._driver.switch_to.window(handles[-1])
+        new_tab = next(h for h in self._driver.window_handles if h not in starting_tabs)
+        self._driver.switch_to.window(new_tab)
         log.debug("Switched to Gradescope tab...")
+
+    def _close_extra_tabs(self, starting_tabs: list[str], home_tab: str) -> None:
+        """Leave the shared browser as it was found: one tab, focused."""
+        try:
+            for handle in self._driver.window_handles:
+                if handle not in starting_tabs:
+                    self._driver.switch_to.window(handle)
+                    self._driver.close()
+            self._driver.switch_to.window(home_tab)
+        except BROWSER_ERRORS as exc:
+            log.debug("Could not tidy up browser tabs: %s", exc)
 
     # -------------------------
     # Extract Cookies
@@ -215,26 +178,47 @@ class http_gradescope_client:
     def capture_session(
         self, username: str, password: str, timeout: int = 40
     ) -> tuple[GradescopeSession, str]:
-        self._driver = self._build_driver()
-        wait = WebDriverWait(self._driver, timeout)
+        """Reach Gradescope through Canvas and return its session and course ID.
+
+        With a shared login browser the ASU login happens only if that browser
+        is not signed in already. Without one, a private browser is opened
+        for this call and closed afterwards.
+        """
+        browser = self._browser or AsuBrowserSession()
+        try:
+            with browser.use(headless=self.headless) as driver:
+                self._driver = driver
+                try:
+                    return self._capture(browser, username, password, timeout)
+                finally:
+                    self._driver = None
+        finally:
+            if browser is not self._browser:
+                browser.close()
+
+    def _capture(
+        self, browser: AsuBrowserSession, username: str, password: str, timeout: int
+    ) -> tuple[GradescopeSession, str]:
+        driver = self._driver
+        wait = WebDriverWait(driver, timeout)
+        starting_tabs = list(driver.window_handles)
+        home_tab = driver.current_window_handle
 
         try:
             log.debug("Navigating to Canvas course: %s", self.course_url)
-            self._driver.get(self.course_url)
-            time.sleep(1)
+            driver.get(self.course_url)
 
-            # CAS login if redirected
-            if "weblogin.asu.edu" in self._driver.current_url:
-                self._handle_cas_login(wait, username, password)
-
-            wait.until(ec.presence_of_element_located((By.ID, "section-tabs")))
+            # Lands on the course page straight away when already signed in;
+            # otherwise CAS + Duo happen here.
+            credentials = (username, password) if username and password else None
+            browser.wait_for_login(driver, self._on_canvas_course_page, credentials=credentials)
 
             # Click Gradescope
-            self._open_gradescope_from_course_nav(wait)
+            self._open_gradescope_from_course_nav(wait, starting_tabs)
 
             # Wait for Gradescope
             log.debug("Waiting for Gradescope to load...")
-            wait.until(lambda d: self.GRADESCOPE_DOMAIN in d.current_url)
+            wait.until(lambda d: host_of(d.current_url) == self.GRADESCOPE_DOMAIN)
 
             time.sleep(2)
 
@@ -244,14 +228,17 @@ class http_gradescope_client:
             return self._extract_session(), gs_course_id
 
         except TimeoutException as e:
-            log.error("Timed out during SSO flow at URL: %s", self._driver.current_url)
+            log.error("Timed out during SSO flow at URL: %s", driver.current_url)
             raise RuntimeError(
-                f"Timed out during SSO flow. Current URL: {self._driver.current_url}"
+                f"Timed out during SSO flow. Current URL: {driver.current_url}"
             ) from e
 
         finally:
-            log.debug("Cookies extracted! Closing browser...")
-            self._driver.quit()
+            self._close_extra_tabs(starting_tabs, home_tab)
+
+    @staticmethod
+    def _on_canvas_course_page(driver) -> bool:
+        return bool(driver.find_elements(By.ID, "section-tabs"))
 
     def _extract_gradescope_course_id(self) -> str:
         """
