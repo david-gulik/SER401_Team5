@@ -47,3 +47,4 @@ def test_a_submission_with_no_tests_reads_as_having_an_empty_test_list(
     )
     [submission] = reader.read(path)
     assert submission.tests == []
+    assert submission.output == "The autograder could not run."

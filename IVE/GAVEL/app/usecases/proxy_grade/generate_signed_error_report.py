@@ -12,12 +12,19 @@ from pathlib import Path
 from typing import Protocol
 
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
+from GAVEL.app.dtos.gradescope import GradescopeSubmission
 from GAVEL.app.dtos.proxy_grade_mapping import ProxyGradeMapping
 from GAVEL.app.ports.gradescope_reader import GradescopeReader
 from GAVEL.app.usecases.proxy_grade.compute_proxy_grade import (
     MissingTestResultsError,
     compute_proxy_grade,
 )
+
+# Gradescope's own message when the autograder process itself crashes or
+# times out, distinct from a message an assignment's own autograder writes
+# about the submission it was given. Used to tell those apart when every
+# test the mapping refers to is missing from a submission's results.
+_AUTOGRADER_CRASHED_MESSAGE = "The autograder failed to execute correctly."
 
 
 class GradebookCSVReader(Protocol):
@@ -71,6 +78,21 @@ def _student_key(email: str) -> str:
     return email.split("@")[0].strip().lower()
 
 
+def _no_tests_ran_on_the_submitted_code(
+    submission: GradescopeSubmission, exc: MissingTestResultsError, mapping: ProxyGradeMapping
+) -> bool:
+    """A submission scores 0 rather than being excluded when every test the
+    mapping refers to is missing and the autograder's own output explains why,
+    as opposed to Gradescope's generic message for when the autograder process
+    itself crashed or timed out.
+    """
+    if len(exc.missing) != len(mapping.test_names()):
+        return False
+    if not submission.output:
+        return False
+    return _AUTOGRADER_CRASHED_MESSAGE not in submission.output
+
+
 class GenerateSignedErrorReportUseCase:
     def __init__(
         self,
@@ -106,20 +128,25 @@ class GenerateSignedErrorReportUseCase:
 
                 try:
                     proxy_result = compute_proxy_grade(submission, request.mapping)
+                    proxy_score = proxy_result.total_score
                 except MissingTestResultsError as exc:
-                    failed.append(
-                        FailedSubmission(
-                            submission_id=submission.submitter.sid or submission.submission_key,
-                            missing_tests=exc.missing,
+                    if _no_tests_ran_on_the_submitted_code(submission, exc, request.mapping):
+                        proxy_score = 0.0
+                    else:
+                        failed.append(
+                            FailedSubmission(
+                                submission_id=submission.submitter.sid or submission.submission_key,
+                                missing_tests=exc.missing,
+                            )
                         )
-                    )
-                    continue
+                        continue
+
                 rows.append(
                     SubmissionSignedError(
                         student_identifier=login,
                         human_score=human_score,
-                        proxy_score=proxy_result.total_score,
-                        signed_error=human_score - proxy_result.total_score,
+                        proxy_score=proxy_score,
+                        signed_error=human_score - proxy_score,
                     )
                 )
 
