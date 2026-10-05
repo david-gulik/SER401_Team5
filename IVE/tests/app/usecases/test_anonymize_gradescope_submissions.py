@@ -78,7 +78,7 @@ def test_usecase_skips_non_code_files(tmp_path):
 
     assert result.processed_count == 0
     assert result.skipped_count == 2
-    assert Path(result.output_folder).exists()
+    assert not output_dir.exists()
 
 
 def test_usecase_recurses_directories(tmp_path):
