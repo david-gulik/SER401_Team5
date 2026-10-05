@@ -90,56 +90,6 @@ def strip_gradescope_comments(assignment_in: str) -> str:
     return "".join(out)
 
 
-# REFACTORED TO INCLUDE PROCESSED AND SKIPPED COUNTS
-
-# def anonymize_gradescope_submissions(input_folder: str, output_folder: str):
-#     """
-#     Method for scanning input_folder for Java/C files, stripping out comments, and writing anonymized
-#     versions to output_folder with '_anon' suffixes.
-#     """
-#     input_folder = Path(input_folder)
-#     output_folder = Path(output_folder)
-#
-#     # Create output folder if it doesn't exist
-#     output_folder.mkdir(parents=True, exist_ok=True)
-#
-#     file_extensions = {".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp"}
-#
-#     if not input_folder.exists():
-#         raise FileNotFoundError(f"Input folder does not exist: {input_folder}")
-#
-#     # for each file, if either the file is NOT a file (that is, a folder, shortcut, etc.), OR if the file is
-#     # not a Java or C/C++ file, skip it
-#     for path in input_folder.rglob("*"):
-#         if not path.is_file():
-#             continue
-#         if path.suffix.lower() not in file_extensions:
-#             continue
-#
-#         # Read text from file
-#         try:
-#             text = path.read_text(encoding="utf-8")
-#         except UnicodeDecodeError:
-#             text = path.read_text(encoding="latin-1")
-#
-#         # Strip comments
-#         cleaned = strip_gradescope_comments(text)
-#
-#         # Add _anon suffix to filename, create output path using provided folder
-#         rel = path.relative_to(input_folder)
-#         anon_name = rel.with_name(rel.stem + "_anon" + rel.suffix)
-#         out_path = output_folder / anon_name
-#
-#         # Ensure directory exists
-#         out_path.parent.mkdir(parents=True, exist_ok=True)
-#
-#         # Write anonymized file
-#         out_path.write_text(cleaned, encoding="utf-8")
-#
-#         print(f"Gradescope Submissions Processed: {path} -> {out_path}")
-#
-
-
 @dataclass(frozen=True)
 class AnonymizeGradescopeSubmissionsRequest:
     """
