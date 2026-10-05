@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from GAVEL.app.usecases.anonymize_gradescope_submissions import (
     AnonymizeGradescopeSubmissionsRequest,
     AnonymizeGradescopeSubmissionsUseCase,
