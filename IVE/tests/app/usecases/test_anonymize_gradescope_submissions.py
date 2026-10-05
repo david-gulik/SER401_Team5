@@ -1,11 +1,9 @@
-import os
 from pathlib import Path
-import pytest
 
 from GAVEL.app.usecases.anonymize_gradescope_submissions import (
     AnonymizeGradescopeSubmissionsRequest,
     AnonymizeGradescopeSubmissionsUseCase,
-    strip_gradescope_comments
+    strip_gradescope_comments,
 )
 
 
@@ -24,10 +22,10 @@ def test_strip_gradescope_comments_basic():
 
 
 def test_strip_gradescope_comments_preserves_strings():
-    src = r'''
+    src = r"""
     char *s = "/* not a comment */";
     char *t = "// also not a comment";
-    '''
+    """
     cleaned = strip_gradescope_comments(src)
 
     assert "/* not a comment */" in cleaned
