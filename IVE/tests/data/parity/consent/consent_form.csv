@@ -1,0 +1,5 @@
+name,id,sis_id,section,section_id,section_sis_id,submitted,attempt,"29684859: Name:
+(leave blank if you do not consent)",0.0,29684860: Do you consent to be included in the study?,0.0,n correct,n incorrect,score
+Test Student,100001,9000000001,TEST-SECTION-001,500001,TEST-SECTION-001_main,2026-10-03 12:00:00 UTC,1,Test Student,0.0,True,0.0,2,0,0.0
+Test Student,100001,9000000001,TEST-SECTION-001,500001,TEST-SECTION-001_main,2026-10-03 12:05:00 UTC,2,Test Student,0.0,False,0.0,2,0,0.0
+Sample Data,100002,9000000002,TEST-SECTION-001,500001,TEST-SECTION-001_main,2026-10-03 12:10:00 UTC,1,Sample Data,0.0,True,0.0,2,0,0.0

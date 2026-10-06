@@ -330,6 +330,7 @@ class AnonymizeCourseDatasetUseCase:
                     assessments=assessments,
                     consented_ids=consent_result.consented_ids,
                     id_map=id_map,
+                    seed=request.seed,
                 )
             )
 
