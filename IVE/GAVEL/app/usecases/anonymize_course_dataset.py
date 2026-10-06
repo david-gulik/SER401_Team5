@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from GAVEL.app.dtos.consent_decision import ConsentDecision
 from GAVEL.app.usecases.anonymize_consent_form import (
     AnonymizeConsentFormRequest,
     AnonymizeConsentFormUseCase,
@@ -59,6 +60,9 @@ class AnonymizeCourseDatasetResult:
     roster: ArtifactReport
     gradebook: ArtifactReport
     rubric_assessment: ArtifactReport
+    # Why each student was kept or left out, including roster students who
+    # never submitted the consent form.
+    consent_decisions: tuple[ConsentDecision, ...]
 
 
 class AnonymizeCourseDatasetUseCase:
@@ -103,9 +107,14 @@ class AnonymizeCourseDatasetUseCase:
 
         consent_entries = tuple(self._consent_form_reader.read(str(consent_form_path)))
 
+        roster_students = (
+            tuple(self._roster_reader.read(roster_path)) if roster_path.exists() else None
+        )
+
         consent_result = self._downselect_use_case.execute(
             DownselectConsentedStudentsRequest(
                 entries=consent_entries,
+                roster=roster_students or (),
             )
         )
 
@@ -172,9 +181,7 @@ class AnonymizeCourseDatasetUseCase:
                         entry.consented,
                     ]
                 )
-        if roster_path.exists():
-            roster_students = tuple(self._roster_reader.read(roster_path))
-
+        if roster_students is not None:
             roster_result = self._anonymize_roster_use_case.execute(
                 AnonymizeRosterRequest(
                     students=roster_students,
@@ -378,4 +385,5 @@ class AnonymizeCourseDatasetUseCase:
                 skipped_count=rubric_skipped,
                 excluded_count=rubric_excluded,
             ),
+            consent_decisions=consent_result.decisions,
         )
