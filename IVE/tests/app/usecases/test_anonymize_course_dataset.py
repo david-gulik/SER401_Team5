@@ -231,3 +231,52 @@ class TestFullPipeline:
         assert result.roster.processed_count == 1
         assert result.gradebook.processed_count == 1
         assert result.rubric_assessment.processed_count == 1
+
+    def test_rubric_is_anonymized_and_preserves_assessment_data(
+            self,
+            use_case,
+            tmp_path: Path,
+    ):
+        write_consent_form(tmp_path)
+        write_rubric(tmp_path)
+
+        request = AnonymizeCourseDatasetRequest(
+            snapshot_dir=tmp_path,
+            seed=42,
+        )
+
+        result = use_case.execute(request)
+
+        rubric_output = (
+                tmp_path
+                / "anonymized"
+                / "assignments"
+                / "7216983_m1"
+                / "rubric_assessments.json"
+        )
+
+        assert rubric_output.exists()
+
+        rubric_data = json.loads(
+            rubric_output.read_text(encoding="utf-8")
+        )
+
+        assert len(rubric_data) == 1
+
+        rubric_entry = rubric_data[0]
+
+        assert rubric_entry["student_id"] != 100001
+        assert rubric_entry["submission_id"] != 9001
+
+        assert (
+                rubric_entry["submission_id"]
+                == 300000000 + rubric_entry["student_id"]
+        )
+
+        assert rubric_entry["criteria"][0]["criterion_id"] == "crit_1"
+        assert rubric_entry["criteria"][0]["points"] == 4.0
+        assert rubric_entry["criteria"][0]["comments"] == "Good work"
+
+        assert result.rubric_assessment.processed_count == 1
+        assert result.rubric_assessment.skipped_count == 0
+        assert result.rubric_assessment.excluded_count == 0
