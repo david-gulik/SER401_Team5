@@ -19,8 +19,8 @@ SER334_M2 = ProxyGradeMapping(
         Criterion(
             "memory leaks",
             (
-                Tier(2.0, all_of=("Memory Allocation 3", "Memory Allocation 4")),
-                Tier(1.0, all_of=("Memory Allocation 3",)),
+                Tier(2.0, all_of=("Memory Allocation 2", "Memory Allocation 3")),
+                Tier(1.0, all_of=("Memory Allocation 2",)),
             ),
         ),
         Criterion(
@@ -33,10 +33,7 @@ SER334_M2 = ProxyGradeMapping(
         ),
         Criterion(
             "course_insert::memory",
-            (
-                Tier(2.0, all_of=("Memory Allocation 1", "Memory Allocation 2")),
-                Tier(1.0, all_of=("Memory Allocation 1",)),
-            ),
+            (Tier(2.0, all_of=("Memory Allocation 1",)),),
         ),
         Criterion("schedule_print", (Tier(2.0, all_of=("Schedule Print",)),)),
         Criterion(
@@ -50,14 +47,8 @@ SER334_M2 = ProxyGradeMapping(
         Criterion(
             "course_drop::memory",
             (
-                Tier(
-                    2.0,
-                    all_of=(
-                        "Memory Allocation 5",
-                        # "Memory Allocation 6",  # disabled for now
-                    ),
-                ),
-                Tier(1.0, all_of=("Memory Allocation 5",)),
+                Tier(2.0, all_of=("Memory Allocation 4", "Memory Allocation 5")),
+                Tier(1.0, all_of=("Memory Allocation 4",)),
             ),
         ),
         Criterion(

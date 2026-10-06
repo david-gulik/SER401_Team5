@@ -100,7 +100,7 @@ class TestConsentedStudentIncluded:
 
     def test_submission_id_is_replaced_with_synthetic_id(self, use_case, request_single_consented):
         result = use_case.execute(request_single_consented)
-        assert result.assessments[0].submission_id == int("30000" + str(ANON_ID_CONSENTED))
+        assert result.assessments[0].submission_id == 300000000 + ANON_ID_CONSENTED
 
     def test_real_submission_id_is_not_present(self, use_case, request_single_consented):
         result = use_case.execute(request_single_consented)
@@ -291,3 +291,46 @@ class TestOutputTypes:
     def test_result_entries_are_rubric_assessments(self, use_case, request_single_consented):
         result = use_case.execute(request_single_consented)
         assert all(isinstance(a, RubricAssessment) for a in result.assessments)
+
+
+class TestDeterministicShuffle:
+    def test_same_seed_produces_same_output(self, use_case):
+        second_assessment = RubricAssessment(
+            student_id=REAL_ID_NOT_CONSENTED,
+            submission_id=9002,
+            criteria=(CRITERION,),
+        )
+
+        request = AnonymizeRubricAssessmentRequest(
+            assessments=(ASSESSMENT_CONSENTED, second_assessment),
+            consented_ids=(REAL_ID_CONSENTED, REAL_ID_NOT_CONSENTED),
+            id_map=ID_MAP,
+            seed=42,
+        )
+
+        first = use_case.execute(request)
+        second = use_case.execute(request)
+
+        assert first.assessments == second.assessments
+
+
+class TestSubmissionIdGeneration:
+    def test_submission_ids_are_unique(self, use_case):
+        second_assessment = RubricAssessment(
+            student_id=REAL_ID_NOT_CONSENTED,
+            submission_id=9002,
+            criteria=(CRITERION,),
+        )
+
+        request = AnonymizeRubricAssessmentRequest(
+            assessments=(ASSESSMENT_CONSENTED, second_assessment),
+            consented_ids=(REAL_ID_CONSENTED, REAL_ID_NOT_CONSENTED),
+            id_map=ID_MAP,
+            seed=42,
+        )
+
+        result = use_case.execute(request)
+
+        submission_ids = [assessment.submission_id for assessment in result.assessments]
+
+        assert len(submission_ids) == len(set(submission_ids))

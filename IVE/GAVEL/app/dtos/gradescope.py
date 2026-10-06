@@ -25,3 +25,4 @@ class GradescopeSubmission:
     submitter: GradescopeSubmitter
     created_at: datetime
     tests: list[GradescopeTestScore]
+    output: str | None = None

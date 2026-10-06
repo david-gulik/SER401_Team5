@@ -39,6 +39,7 @@ class YamlGradescopeReader(GradescopeReader):
                     submitter=submitter,
                     created_at=submission_obj[":created_at"],
                     tests=tests,
+                    output=submission_obj.get(":results", {}).get("output"),
                 )
             )
 

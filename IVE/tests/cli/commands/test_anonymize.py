@@ -67,7 +67,7 @@ def write_roster(snapshot_dir: Path) -> None:
         "ID,Posting ID,First Name,Last Name,Status,Units,"
         "Grade Basis,Program and Plan,Academic Level,ASURITE,"
         "Residency,Zoom Email\n"
-        "100001,100001-001,Test,Student,Enrolled,3,"
+        "9999999999,9999999999-001,Test,Student,Enrolled,3,"
         "GRD,SER,Senior,teststudent,Resident,test@example.com\n",
         encoding="utf-8",
     )
@@ -130,6 +130,9 @@ def test_successful_run_returns_0_and_prints_summary(
 
     assert result == 0
     assert "Anonymized dataset written to" in captured.out
+    assert (
+        "Consent filtering: 1 included, 0 declined, 0 name blank, 0 possible typo, 0 name mismatch, 0 no response"
+    ) in captured.out
     assert "Consent form:" in captured.out
     assert "Roster:" in captured.out
     assert "Gradebook:" in captured.out

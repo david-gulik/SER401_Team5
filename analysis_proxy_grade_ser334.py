@@ -34,10 +34,10 @@ def compute_proxies_m2_24sc(data):
 
     # 2) memory leaks [2pts]
     t2_1 = was_test_passed_by_name(
-        data, "Memory Allocation 3"
+        data, "Memory Allocation 2"
     )  # 7.3) Memory Allocation 3 [Hint: Frees all Memory on close.]
     t2_2 = was_test_passed_by_name(
-        data, "Memory Allocation 4"
+        data, "Memory Allocation 3"
     )  # 7.4) Memory Allocation 4 [Hint: Frees Correct Memory addresses on close.]
 
     if t2_1 and t2_2:
@@ -85,13 +85,11 @@ def compute_proxies_m2_24sc(data):
     t4_1 = was_test_passed_by_name(
         data, "Memory Allocation 1"
     )  # 7.1) Memory Allocation 1 [Hint: Uses Malloc when creating courses.]
-    t4_2 = was_test_passed_by_name(
-        data, "Memory Allocation 2"
-    )  # 7.2) Memory Allocation 2 [Hint: Frees memory from creating a course.]
-    if t4_1 and t4_2:
+    # t4_2 = was_test_passed_by_name(data, "Memory Allocation 2")  # 7.2) Memory Allocation 2 [Hint: Frees memory from creating a course.]
+    if t4_1:
         proxies += [2.0]
-    elif t4_1:
-        proxies += [1.0]
+    # elif t4_1: # TODO: can we recover partial credit here?
+    #    proxies += [1.0]
     else:
         proxies += [0.0]
 
@@ -131,10 +129,10 @@ def compute_proxies_m2_24sc(data):
 
     # 7) course_drop::memory [2pts]
     t7_1 = was_test_passed_by_name(
-        data, "Memory Allocation 5"
+        data, "Memory Allocation 4"
     )  # 7.4) Memory Allocation 5 [Hint: Frees Memory when removing courses.]
     t7_2 = was_test_passed_by_name(
-        data, "Memory Allocation 6"
+        data, "Memory Allocation 5"
     )  # 7.5) Memory Allocation 6 [Hint: Frees Correct Memory addresses when removing courses.]
 
     if t7_1 and t7_2:
@@ -207,11 +205,11 @@ def compute_proxies_m3_24fc(data):
     # 2) Pixels IO (4pts)
     numPassed = 0
     t2_1 = was_test_passed_by_name(
-        data, "2.1)"
+        data, "2.1) DIB"
     )  # 2.1) DIB Headers IO [Hint: incorrectly sized DIB header struct (change this to pixel struct size check)]
 
     t2_2 = was_test_passed_by_name(
-        data, "2.2)"
+        data, "2.2) Reading"
     )  # "2.2) Reading pixels single row [Hint: Case when padding is needed]"
 
     t2_3 = was_test_passed_by_name(
@@ -227,11 +225,11 @@ def compute_proxies_m3_24fc(data):
     )  # "2.5) Reading pixels many rows [Hint: Case when padding is not needed]"
 
     t3_1 = was_test_passed_by_name(
-        data, "3.1)"
+        data, "3.1) Write"
     )  # "3.1) Write pixels single row [Hint: Case when padding is needed]"
 
     t3_2 = was_test_passed_by_name(
-        data, "3.2)"
+        data, "3.2) Write"
     )  # "3.2) Write pixels single row [Hint: Case when padding is not needed]"
 
     t3_3 = was_test_passed_by_name(
@@ -282,7 +280,11 @@ def compute_proxies_m3_24fc(data):
         data, "9.3)"
     )  # "9.3) Program Input 3 [Hint: Input File Does not Exist.]"
 
-    if t9_1 and t9_2 and t9_3:
+    t16_1 = was_test_passed_by_name(
+        data, "16.1)"
+    )  # "16.1) Program argument parsing [Hint: handle all permutations of argument ordering] ]"
+
+    if t9_1 and t9_2 and t9_3 and t16_1:
         proxies += [4.0]
     elif (t9_1 and t9_2) or (t9_1 and t9_3) or (t9_2 and t9_3):
         proxies += [2.0]
@@ -294,34 +296,36 @@ def compute_proxies_m3_24fc(data):
         data, "10.1)"
     )  # "10.1) Program Input 4 [Hint: Color Arguments.]"
 
-    if t10_1:
+    if t10_1 and t16_1:
         proxies += [4.0]
+    elif t10_1:
+        proxies += [2.0]
     else:
         proxies += [0.0]
 
     # 5) Filter: Color Shift (5pts)
     t5_1 = was_test_passed_by_name(
-        data, "5.1)"
+        data, "5.1) Color"
     )  # "5.1) Color shift - Divisible by 4, shfiting 0. [Hint no changes to pixels]"
 
     t5_2 = was_test_passed_by_name(
-        data, "5.2)"
+        data, "5.2) Color"
     )  # "5.2) Color shift - Divisible by 4, shfiting positive. [Hint: Clamping and positive shifts]"
 
     t5_3 = was_test_passed_by_name(
-        data, "5.3)"
+        data, "5.3) Color"
     )  # "5.3) Color shift - Divisible by 4, shfiting negative. [Hint: Clamping and negative shifts]"
 
     t5_4 = was_test_passed_by_name(
-        data, "5.4)"
+        data, "5.4) Color"
     )  # "5.4) Color shift - Non-Divisible by 4, shfiting 0. [Hint no changes to pixels]"
 
     t5_5 = was_test_passed_by_name(
-        data, "5.5)"
+        data, "5.5) Color"
     )  # "5.5) Color shift - Non-Divisible by 4, shfiting positive. [Hint: Clamping and positive shifts]"
 
     t5_6 = was_test_passed_by_name(
-        data, "5.6)"
+        data, "5.6) Color"
     )  # "5.6) Color shift - Non-Divisible by 4, shfiting negative. [Hint: Clamping and negative shifts]"
 
     t10_1 = was_test_passed_by_name(
@@ -415,15 +419,15 @@ def compute_proxies_m3_24fc(data):
     )  # "8.3) Image destroy [Hint: Underlying pixel array should not be deallocated...]"
 
     t4_1 = was_test_passed_by_name(
-        data, "4.1)"
+        data, "4.1) Image --"
     )  # "4.1) Image -- getWidth [Hint: Case when padding is not needed]"
 
     t4_2 = was_test_passed_by_name(
-        data, "4.2)"
+        data, "4.2) Image --"
     )  # "4.2) Image -- getWidth [Hint: Case when there is padding present"
 
     t4_3 = was_test_passed_by_name(
-        data, "4.3)"
+        data, "4.3) Image --"
     )  # "4.3) Image -- getHeight [Hint: Case when there is no padding present]"
 
     t4_4 = was_test_passed_by_name(
@@ -490,8 +494,8 @@ def compute_proxies_m3_24fc(data):
 
     # 8) Filter: Grayscale (5pts)
     t6_1 = was_test_passed_by_name(
-        data, "6.1)"
-    )  # "6.1) Image_BW divisble by 4 [Hint: basic functionality]"
+        data, "6.1) Grayscale"
+    )  # "6.1) Grayscale Filter - Divisible by 4 [Hint: Basic functionality]"
 
     t6_2 = was_test_passed_by_name(
         data, "6.2)"
@@ -525,17 +529,13 @@ def compute_proxies_m3_24fc(data):
         data, "7.1)"
     )  # "7.1) Image -- Resize, number of pixels [Hint: scaling up]"
 
-    t7_2 = was_test_passed_by_name(
-        data, "7.2)"
-    )  # "7.2) Image -- Resize, pixel data [Hint: scaling up]"
+    # t7_2 = was_test_passed_by_name(data, "7.2)") # "7.2) Image -- Resize, pixel data [Hint: scaling up]"
 
     t7_3 = was_test_passed_by_name(
         data, "7.3)"
     )  # "7.3) Image -- Resize, number of pixels [Hint: scaling down]"
 
-    t7_4 = was_test_passed_by_name(
-        data, "7.4)"
-    )  # "7.4) Image -- Resize, pixel data [Hint: scaling down]"
+    # t7_4 = was_test_passed_by_name(data, "7.4)") # "7.4) Image -- Resize, pixel data [Hint: scaling down]"
 
     t14_1 = was_test_passed_by_name(
         data, "14.1)"
@@ -549,16 +549,17 @@ def compute_proxies_m3_24fc(data):
         data, "14.3)"
     )  # "14.3) Image Scaling 3 [Hint: Scaled down image has correct image size.]"
 
-    t14_4 = was_test_passed_by_name(
-        data, "14.4)"
-    )  # "14.4) Image Scaling 4 [Hint: Scaled down image has correct pixel array.]"
+    # t14_4 = was_test_passed_by_name(data, "14.4)") # "14.4) Image Scaling 4 [Hint: Scaled down image has correct pixel array.]"
 
-    if t7_1 and t7_2 and t7_3 and t7_4 and t14_1 and t14_2 and t14_3 and t14_4:
+    if t7_1 and t7_3 and t14_1 and t14_2 and t14_3:
         proxies += [5.0]
-    elif (t7_1 and t7_2 and t14_1 and t14_2) or (t7_3 and t7_4 and t14_3 and t14_4):
+    elif (t7_1 and t14_1 and t14_2) or (t7_3 and t14_3):
         proxies += [2.5]
     else:
         proxies += [0.0]
+
+    # NOTE: the original rubric and assignment PDF (last used spring 2024) did not specify any specific requirements
+    #       relating to memory management. Consequently, the 15.x series of unit tests are uncleared in this mapping.
 
     total_score_proxy = sum([ps for ps in proxies if ps])
 
@@ -591,7 +592,7 @@ def compute_proxies_m9_25fc(data):
         proxies += [0.0]
 
     # 2) SJF: Simulation
-    # Full credit if display and simulate, half if just simulate
+    # Full credit if display and simulate, half if just display
 
     t2_1 = was_test_passed_by_name(data, "SJF Test Display Ticks")
     t2_2 = was_test_passed_by_name(data, "SJF Test Simulate Ticks")
@@ -634,7 +635,7 @@ def compute_proxies_m9_25fc(data):
         proxies += [0.0]
 
     # 5) SJFL: Simulation
-    # Full credit if display and simulate, half if just simulate
+    # Full credit if display and simulate, half if just display
 
     t3_1 = was_test_passed_by_name(data, "SJFL Test Display Ticks")
     t3_2 = was_test_passed_by_name(data, "SJFL Test Simulate Ticks")
@@ -676,6 +677,10 @@ def compute_proxies_m9_25fc(data):
         proxies += [2.0]
     else:
         proxies += [0.0]
+
+    total_score_proxy = sum([ps for ps in proxies if ps])
+
+    return proxies, total_score_proxy
 
 
 def compute_proxies_m6_25fc(data):
