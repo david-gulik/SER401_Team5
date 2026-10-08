@@ -45,12 +45,14 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_scroll_area(t),
         _qss_scrollbar(t),
         _qss_tooltip(t),
+        _qss_menu(t),
         _qss_splitter(t),
         _qss_nav_drawer(t),
         _qss_surface_card(t),
         _qss_status_pill(t),
         _qss_status_banner(t),
         _qss_input_mode_toggle(t),
+        _qss_tree_view(t),
     ]
     return "\n\n".join(sections)
 
@@ -521,6 +523,35 @@ def _qss_tooltip(t: ThemeTokens) -> str:
     """
 
 
+def _qss_menu(t: ThemeTokens) -> str:
+    """Popup menus (right-click menus)."""
+    c = t.color
+    r_sm = int(t.shape["radius_sm"])
+    sp_xs = t.sp(4)
+    sp_sm = t.sp(8)
+    sp_md = t.sp(16)
+    return f"""
+    QMenu {{
+        background-color: {c["panel_bg"]};
+        color: {c["text"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_sm)};
+        padding: {_px(sp_xs)} 0;
+    }}
+    QMenu::item {{
+        background-color: transparent;
+        padding: {_px(sp_sm)} {_px(sp_md)};
+    }}
+    QMenu::item:selected {{
+        background-color: {c["selection_bg"]};
+        color: {c["selection_text"]};
+    }}
+    QMenu::item:disabled {{
+        color: {c["input_placeholder"]};
+    }}
+    """
+
+
 def _qss_splitter(t: ThemeTokens) -> str:
     c = t.color
     return f"""
@@ -748,6 +779,13 @@ def _qss_status_banner(t: ThemeTokens) -> str:
         border-radius: {_px(r_sm)};
         padding: {_px(sp_sm)} {_px(sp_md)};
     }}
+    QLabel[role="caution"] {{
+        background-color: {c["surface"]};
+        color: {c["status_caution"]};
+        border: 1px solid {c["status_caution"]};
+        border-radius: {_px(r_sm)};
+        padding: {_px(sp_sm)} {_px(sp_md)};
+    }}
     """
 
 
@@ -789,6 +827,9 @@ def _qss_input_mode_toggle(t: ThemeTokens) -> str:
         border-top-left-radius: {_px(r_sm)};
         border-bottom-left-radius: {_px(r_sm)};
     }}
+    QPushButton[role="segment"][segment_pos="middle"] {{
+        border-left: none;
+    }}
     QPushButton[role="segment"][segment_pos="last"] {{
         border-top-right-radius: {_px(r_sm)};
         border-bottom-right-radius: {_px(r_sm)};
@@ -827,5 +868,48 @@ def _qss_input_mode_toggle(t: ThemeTokens) -> str:
     }}
     QLabel[role="readout_value"] {{
         color: {c["text"]};
+    }}
+    """
+
+
+def _qss_tree_view(t: ThemeTokens) -> str:
+    """Tree views (the Sanitize course list).
+
+    Repeated under each surface frame, after ``_qss_surface_card``, so the
+    tree keeps its own background instead of the frames' transparency rule.
+    """
+    c = t.color
+    r_md = int(t.shape["radius_md"])
+    sp_xs = t.sp(4)
+    sp_sm = t.sp(8)
+    sp_md = t.sp(16)
+    frames = (
+        'QFrame[role="app_bg"]',
+        'QFrame[role="panel_bg"]',
+        'QFrame[role="surface"]',
+    )
+
+    def under_frames(selector: str) -> str:
+        return ",\n    ".join([selector, *(f"{frame} {selector}" for frame in frames)])
+
+    return f"""
+    {under_frames("QTreeView")} {{
+        background-color: {c["surface"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_md)};
+        outline: 0;
+    }}
+    QTreeView::item {{
+        padding: {_px(sp_xs)} {_px(sp_md)} {_px(sp_xs)} 0;
+    }}
+    QTreeView::item:selected {{
+        background-color: {c["selection_bg"]};
+    }}
+    {under_frames("QHeaderView::section")} {{
+        background-color: {c["surface"]};
+        color: {c["text_secondary"]};
+        border: none;
+        border-bottom: 1px solid {c["border"]};
+        padding: {_px(sp_xs)} {_px(sp_sm)};
     }}
     """
