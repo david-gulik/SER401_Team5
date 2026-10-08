@@ -31,6 +31,7 @@ from GAVEL.app.dtos.course_summary import (
 )
 from GAVEL.app.workspace.layout import ANONYMIZED_DIR, ORIGINAL_DIR
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.sanitize.consent_review import ConsentReviewCard
 from GAVEL.pages.sanitize.viewmodel import (
     CourseFilter,
     SanitizeUiState,
@@ -181,6 +182,8 @@ class SanitizeTab(ScrollableTab):
         self._connect_signals()
 
         self.add_section(self._build_courses_card())
+        self._consent_card = ConsentReviewCard(theme, vm)
+        self.add_section(self._consent_card)
         self.add_stretch()
 
         self._vm.state_changed.connect(self.render)
@@ -189,6 +192,10 @@ class SanitizeTab(ScrollableTab):
     @property
     def course_tree(self) -> QTreeWidget:
         return self._tree
+
+    @property
+    def consent_card(self) -> ConsentReviewCard:
+        return self._consent_card
 
     @property
     def workspace_input(self) -> QLineEdit:
@@ -391,6 +398,8 @@ class SanitizeTab(ScrollableTab):
         if selected is not None:
             critical = selected.status is AnonymizationStatus.NO_CONSENT_FORM
             _set_role(self._banner, "warning" if critical else "caution")
+
+        self._consent_card.render(state)
 
     def _rebuild_tree(self, courses: tuple[CourseSummary, ...]) -> None:
         colors = self._theme.tokens.color

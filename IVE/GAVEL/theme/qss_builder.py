@@ -53,6 +53,7 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_status_banner(t),
         _qss_input_mode_toggle(t),
         _qss_tree_view(t),
+        _qss_tile(t),
     ]
     return "\n\n".join(sections)
 
@@ -873,10 +874,10 @@ def _qss_input_mode_toggle(t: ThemeTokens) -> str:
 
 
 def _qss_tree_view(t: ThemeTokens) -> str:
-    """Tree views (the Sanitize course list).
+    """Tree and table views (the Sanitize course list and consent table).
 
     Repeated under each surface frame, after ``_qss_surface_card``, so the
-    tree keeps its own background instead of the frames' transparency rule.
+    views keep their own background instead of the frames' transparency rule.
     """
     c = t.color
     r_md = int(t.shape["radius_md"])
@@ -892,8 +893,10 @@ def _qss_tree_view(t: ThemeTokens) -> str:
     def under_frames(selector: str) -> str:
         return ",\n    ".join([selector, *(f"{frame} {selector}" for frame in frames)])
 
+    views = ",\n    ".join(under_frames(view) for view in ("QTreeView", "QTableView"))
+
     return f"""
-    {under_frames("QTreeView")} {{
+    {views} {{
         background-color: {c["surface"]};
         border: 1px solid {c["border"]};
         border-radius: {_px(r_md)};
@@ -905,11 +908,54 @@ def _qss_tree_view(t: ThemeTokens) -> str:
     QTreeView::item:selected {{
         background-color: {c["selection_bg"]};
     }}
+    QTableView::item {{
+        padding: {_px(sp_xs)} {_px(sp_sm)};
+        border-bottom: 1px solid {c["border"]};
+    }}
+    QTableView::item:selected {{
+        background-color: {c["selection_bg"]};
+        color: {c["selection_text"]};
+    }}
     {under_frames("QHeaderView::section")} {{
         background-color: {c["surface"]};
         color: {c["text_secondary"]};
         border: none;
         border-bottom: 1px solid {c["border"]};
         padding: {_px(sp_xs)} {_px(sp_sm)};
+    }}
+    """
+
+
+def _qss_tile(t: ThemeTokens) -> str:
+    """Summary tiles: a large count over a label, clickable to filter.
+
+    Repeated under each surface frame so they outrank the
+    ``QFrame[role=...] QPushButton`` overrides in ``_qss_surface_card``.
+    """
+    c = t.color
+    r_md = int(t.shape["radius_md"])
+    frames = (
+        'QFrame[role="app_bg"]',
+        'QFrame[role="panel_bg"]',
+        'QFrame[role="surface"]',
+    )
+
+    def tile(state: str = "") -> str:
+        base = f'QPushButton[role="tile"]{state}'
+        return ",\n    ".join([base, *(f"{frame} {base}" for frame in frames)])
+
+    return f"""
+    {tile()} {{
+        background-color: {c["surface"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_md)};
+        text-align: left;
+    }}
+    {tile(":hover")} {{
+        border-color: {c["text_secondary"]};
+    }}
+    {tile(":checked")} {{
+        background-color: {c["surface"]};
+        border-color: {c["interactive"]};
     }}
     """

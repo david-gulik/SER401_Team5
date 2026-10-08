@@ -5,9 +5,10 @@ from datetime import datetime
 from pathlib import Path
 
 from GAVEL.app.dtos.course_summary import ConsentTally, CourseSummary, TrackedFile
-from GAVEL.app.usecases.downselect_consented_students import (
-    DownselectConsentedStudentsRequest,
-    DownselectConsentedStudentsUseCase,
+from GAVEL.app.usecases.review_course_consent import (
+    CONSENT_READ_ERRORS,
+    ReviewCourseConsentRequest,
+    ReviewCourseConsentUseCase,
 )
 from GAVEL.app.workspace.layout import (
     ASSIGNMENTS_DIR,
@@ -16,12 +17,9 @@ from GAVEL.app.workspace.layout import (
     ROSTER_FILE,
     RUBRIC_ASSESSMENTS_FILE,
     CourseFolder,
-    DataTree,
     Workspace,
 )
 from GAVEL.app.workspace.manifest import ManifestError, load_manifest
-from GAVEL.infra.csv.canvas_consent_form_csv_reader import CanvasConsentFormCSVReader
-from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
 
 # The files the anonymizer reads from original/ and writes to anonymized/,
 # besides one rubric_assessments.json per assignment folder.
@@ -43,15 +41,8 @@ class ListWorkspaceCoursesResult:
 class ListWorkspaceCoursesUseCase:
     """Summarize every course folder in a workspace. Reads only; writes nothing."""
 
-    def __init__(
-        self,
-        consent_form_reader: CanvasConsentFormCSVReader | None = None,
-        roster_reader: CanvasRosterCSVReader | None = None,
-        downselect_use_case: DownselectConsentedStudentsUseCase | None = None,
-    ) -> None:
-        self._consent_form_reader = consent_form_reader or CanvasConsentFormCSVReader()
-        self._roster_reader = roster_reader or CanvasRosterCSVReader()
-        self._downselect_use_case = downselect_use_case or DownselectConsentedStudentsUseCase()
+    def __init__(self, review_consent: ReviewCourseConsentUseCase | None = None) -> None:
+        self._review_consent = review_consent or ReviewCourseConsentUseCase()
 
     def execute(self, request: ListWorkspaceCoursesRequest) -> ListWorkspaceCoursesResult:
         folders = Workspace(request.workspace_root).list_courses()
@@ -60,7 +51,7 @@ class ListWorkspaceCoursesUseCase:
         )
 
     def _summarize(self, folder: CourseFolder) -> CourseSummary:
-        consent, unreadable = self._tally_consent(folder.original)
+        consent, unreadable = self._tally_consent(folder)
         return CourseSummary(
             key=folder.key,
             path=folder.path,
@@ -70,24 +61,16 @@ class ListWorkspaceCoursesUseCase:
             canvas_course_name=_canvas_course_name(folder),
         )
 
-    def _tally_consent(self, original: DataTree) -> tuple[ConsentTally | None, bool]:
+    def _tally_consent(self, folder: CourseFolder) -> tuple[ConsentTally | None, bool]:
         """``(tally, unreadable)``: the same filtering the anonymizer applies."""
-        if not original.consent_form_csv.is_file():
-            return None, False
         try:
-            entries = tuple(self._consent_form_reader.read(str(original.consent_form_csv)))
-            roster = (
-                tuple(self._roster_reader.read(original.roster_csv))
-                if original.roster_csv.is_file()
-                else ()
-            )
-            result = self._downselect_use_case.execute(
-                DownselectConsentedStudentsRequest(entries=entries, roster=roster)
-            )
-        except (OSError, ValueError, KeyError):
+            review = self._review_consent.execute(ReviewCourseConsentRequest(folder.path))
+        except CONSENT_READ_ERRORS:
             # One bad CSV should not keep the other courses from listing.
             return None, True
-        return ConsentTally(included=result.included_count, total=len(result.decisions)), False
+        if not review.consent_form_found:
+            return None, False
+        return ConsentTally(included=review.included_count, total=len(review.decisions)), False
 
 
 def _tracked_files(folder: CourseFolder) -> tuple[TrackedFile, ...]:
