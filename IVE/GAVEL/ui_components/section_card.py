@@ -61,6 +61,10 @@ class SectionCard(QFrame):
     def add_action(self, widget: QWidget) -> None:
         self._actions_layout.addWidget(widget)
 
+    def add_title_suffix(self, widget: QWidget) -> None:
+        """Places a widget directly after the title, before the header stretch."""
+        self._header.layout().insertWidget(1, widget)
+
     def add_row(self, widget: QWidget) -> None:
         self._body_layout.addWidget(widget)
 

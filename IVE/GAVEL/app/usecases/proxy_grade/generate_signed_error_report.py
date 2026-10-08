@@ -179,11 +179,16 @@ class GenerateSignedErrorReportUseCase:
         result = compute_signed_error_rows(
             submissions, gradebook, request.gradebook_column, request.mapping
         )
-        _write_report(result, request.output_path)
+        write_report(result, request.output_path)
         return result
 
 
-def _write_report(result: GenerateSignedErrorReportResult, output_path: Path) -> None:
+def write_report(result: GenerateSignedErrorReportResult, output_path: Path) -> None:
+    """Writes a result to disk in the report's JSON format.
+
+    Public so any caller with a GenerateSignedErrorReportResult, not only this
+    use case, writes the same file shape.
+    """
     payload = {
         "rows": [
             {

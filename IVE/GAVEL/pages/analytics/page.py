@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from PyQt6.QtWidgets import QVBoxLayout
 
 from GAVEL.app_context import AppContext
@@ -16,7 +19,12 @@ class AnalyticsPage(BasePage):
         super().__init__()
         self._theme = ctx.theme
 
-        tab = OverviewTab(self._theme)
+        env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
+        workspace_root = (
+            Path(env_dir).expanduser() if env_dir else Path.home() / "Downloads" / "GAVEL"
+        )
+
+        tab = OverviewTab(self._theme, ctx.services.dataset_readers, workspace_root)
 
         root = QVBoxLayout(self)
         root.addWidget(tab)
@@ -28,7 +36,7 @@ PageRegistry.get().register(
         title=AnalyticsPage.title,
         icon_text="📊",
         factory=lambda ctx: AnalyticsPage(ctx),
-        order=40,
-        group="Analytics",
+        order=15,
+        group="General",
     )
 )
