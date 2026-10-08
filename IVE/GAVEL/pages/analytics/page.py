@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QTabWidget, QVBoxLayout
+from PyQt6.QtWidgets import QVBoxLayout
 
 from GAVEL.app_context import AppContext
 from GAVEL.core.base_page import BasePage
@@ -16,17 +16,10 @@ class AnalyticsPage(BasePage):
         super().__init__()
         self._theme = ctx.theme
 
-        self._tabs = QTabWidget()
-        for tab_title, tab_widget in self.build_tabs():
-            self._tabs.addTab(tab_widget, tab_title)
+        tab = OverviewTab(self._theme)
 
         root = QVBoxLayout(self)
-        root.addWidget(self._tabs)
-
-    def build_tabs(self):
-        return [
-            ("Overview", OverviewTab(self._theme)),
-        ]
+        root.addWidget(tab)
 
 
 PageRegistry.get().register(
