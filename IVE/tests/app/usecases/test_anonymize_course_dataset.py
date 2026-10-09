@@ -112,6 +112,7 @@ def write_rubric(snapshot_dir: Path) -> Path:
 
     return rubric_path
 
+
 def write_consent_form_with_declined_student(snapshot_dir: Path) -> None:
     original_dir = snapshot_dir / "original"
     original_dir.mkdir(parents=True, exist_ok=True)
@@ -317,10 +318,7 @@ class TestFullPipeline:
         expected_anonymous_id = id_map_result.id_map[100001]
 
         assert rubric_entry["student_id"] == expected_anonymous_id
-        assert (
-                rubric_entry["submission_id"]
-                == 300000000 + expected_anonymous_id
-        )
+        assert rubric_entry["submission_id"] == 300000000 + expected_anonymous_id
 
         assert rubric_entry["criteria"][0]["criterion_id"] == "crit_1"
         assert rubric_entry["criteria"][0]["points"] == 4.0
@@ -330,9 +328,9 @@ class TestFullPipeline:
         assert result.rubric_assessment.skipped_count == 0
 
     def test_rubric_excludes_declined_student(
-            self,
-            use_case,
-            tmp_path: Path,
+        self,
+        use_case,
+        tmp_path: Path,
     ):
         write_consent_form_with_declined_student(tmp_path)
         write_rubric_with_declined_student(tmp_path)
@@ -345,16 +343,10 @@ class TestFullPipeline:
         )
 
         rubric_output = (
-                tmp_path
-                / "anonymized"
-                / "assignments"
-                / "7216983_m1"
-                / "rubric_assessments.json"
+            tmp_path / "anonymized" / "assignments" / "7216983_m1" / "rubric_assessments.json"
         )
 
-        rubric_data = json.loads(
-            rubric_output.read_text(encoding="utf-8")
-        )
+        rubric_data = json.loads(rubric_output.read_text(encoding="utf-8"))
 
         assert len(rubric_data) == 1
 
@@ -363,12 +355,12 @@ class TestFullPipeline:
         assert rubric_entry["criteria"][0]["comments"] == "Good work"
 
         assert all(
-            entry["criteria"][0]["comments"] != "Should be excluded"
-            for entry in rubric_data
+            entry["criteria"][0]["comments"] != "Should be excluded" for entry in rubric_data
         )
 
         assert result.rubric_assessment.processed_count == 1
         assert result.rubric_assessment.skipped_count == 1
+
 
 class TestConsentDecisions:
     def test_result_reports_why_each_student_was_left_out(
