@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PyQt6.QtWidgets import QVBoxLayout
@@ -21,7 +22,14 @@ class SanitizePage(BasePage):
         super().__init__()
         self._ctx = ctx
 
-        vm = SanitizeViewModel()
+        # Same workspace the Download page saves into by default.
+        env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
+        workspace_root = (
+            Path(env_dir).expanduser() if env_dir else Path.home() / "Downloads" / "GAVEL"
+        )
+
+        vm = SanitizeViewModel(default_workspace_root=workspace_root)
+        vm.reload()
         self._tab = SanitizeTab(ctx.theme, vm)
 
         root = QVBoxLayout(self)
