@@ -8,6 +8,12 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from GAVEL.app.dtos.consent_decision import ConsentDecision, ConsentStatus
 from GAVEL.app.dtos.course_summary import AnonymizationStatus, CourseSummary
+from GAVEL.app.usecases.anonymize_course_dataset import (
+    AnonymizeCourseDatasetRequest,
+    AnonymizeCourseDatasetResult,
+    AnonymizeCourseDatasetUseCase,
+    build_anonymize_course_dataset_use_case,
+)
 from GAVEL.app.usecases.list_workspace_courses import (
     ListWorkspaceCoursesRequest,
     ListWorkspaceCoursesUseCase,
@@ -18,6 +24,8 @@ from GAVEL.app.usecases.review_course_consent import (
     ReviewCourseConsentUseCase,
 )
 from GAVEL.app.workspace.layout import CourseKey
+from GAVEL.core.background import BackgroundRunner, run_in_background
+from GAVEL.core.status import Status
 
 _TERM_NAMES = {"s": "Spring", "u": "Summer", "f": "Fall", "w": "Winter"}
 
@@ -27,6 +35,13 @@ class CourseFilter(Enum):
     # Everything that is not up to date, including courses that cannot run yet.
     NOT_UP_TO_DATE = "not_up_to_date"
     UP_TO_DATE = "up_to_date"
+
+
+class RunState(Enum):
+    IDLE = "idle"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
 
 
 class ConsentFilter(Enum):
@@ -122,6 +137,42 @@ class SanitizeUiState:
     consent_filter: ConsentFilter = ConsentFilter.ALL
     consent_search: str = ""
 
+    # Anonymization run. run_course is the folder the result or error belongs to.
+    run_state: RunState = RunState.IDLE
+    run_course: str | None = None
+    run_result: AnonymizeCourseDatasetResult | None = None
+    run_error: str | None = None
+
+    @property
+    def is_running(self) -> bool:
+        return self.run_state is RunState.RUNNING
+
+    @property
+    def included_count(self) -> int:
+        return sum(1 for decision in self.consent_decisions if decision.included)
+
+    @property
+    def anonymize_blocker(self) -> str | None:
+        """Why the selected course cannot be anonymized right now, or None when it can."""
+        if self.is_running:
+            return "Anonymizing…"
+        if self.selected_summary is None:
+            return "Select a course to anonymize"
+        if not self.consent_form_found:
+            return "Needs a consent form"
+        if self.consent_error:
+            return "Consent form could not be read"
+        if self.included_count == 0:
+            return "No students consented"
+        return None
+
+    @property
+    def selected_run_state(self) -> RunState:
+        """The run state as it applies to the selected course."""
+        if self.run_course is not None and self.run_course == self.selected_course:
+            return self.run_state
+        return RunState.IDLE
+
     @property
     def visible_decisions(self) -> tuple[ConsentDecision, ...]:
         return tuple(
@@ -158,13 +209,53 @@ class SanitizeUiState:
         return sum(1 for course in self.courses if _matches_filter(course, course_filter))
 
 
+def page_status(state: SanitizeUiState) -> tuple[Status, str, str]:
+    """``(status, message, last saved)`` for the Status card at the bottom of the page."""
+    course = state.selected_summary
+    run_state = state.selected_run_state
+    if course is None:
+        return Status.UNKNOWN, "Select a course to review and anonymize.", ""
+
+    label = course_label(course.key)
+    output = str(course.path / "anonymized")
+    if run_state is RunState.RUNNING:
+        return Status.UNKNOWN, f"Anonymizing {state.included_count} students in {label}…", ""
+    if run_state is RunState.FAILED:
+        return Status.CRITICAL, f"Anonymization failed: {state.run_error}", ""
+    if run_state is RunState.SUCCEEDED:
+        return Status.NOMINAL, f"Anonymized {state.included_count} students to {output}", output
+    if not state.consent_form_found:
+        return Status.CRITICAL, f"{label} has no consent form in original/.", ""
+    if state.consent_error:
+        return Status.CRITICAL, state.consent_error, ""
+    if course.status is AnonymizationStatus.OUT_OF_DATE:
+        return (
+            Status.CAUTION,
+            "Files in original/ changed after the last run. Anonymize again to refresh "
+            "anonymized/.",
+            output,
+        )
+    total = len(state.consent_decisions)
+    ready = f"{state.included_count} of {total} students in {label} will be included."
+    if course.status is AnonymizationStatus.UP_TO_DATE:
+        return Status.NOMINAL, f"Up to date. {ready}", output
+    return Status.NOMINAL, f"Ready. {ready}", ""
+
+
 class SanitizeViewModel(QObject):
     state_changed = pyqtSignal(object)  # SanitizeUiState
 
-    def __init__(self, default_workspace_root: Path) -> None:
+    def __init__(
+        self,
+        default_workspace_root: Path,
+        anonymize_use_case: AnonymizeCourseDatasetUseCase | None = None,
+        runner: BackgroundRunner = run_in_background,
+    ) -> None:
         super().__init__()
         self._list_courses = ListWorkspaceCoursesUseCase()
         self._review_consent = ReviewCourseConsentUseCase()
+        self._anonymize = anonymize_use_case or build_anonymize_course_dataset_use_case()
+        self._runner = runner
         self._state = SanitizeUiState(workspace_root=str(default_workspace_root))
 
     def get_state(self) -> SanitizeUiState:
@@ -192,7 +283,7 @@ class SanitizeViewModel(QObject):
 
     def set_workspace_root(self, value: str) -> None:
         text = value.strip()
-        if not text or text == self._state.workspace_root:
+        if not text or text == self._state.workspace_root or self._state.is_running:
             return
         self._update(workspace_root=text, selected_course=None, **self._consent_fields(None, ()))
         self.reload()
@@ -204,7 +295,8 @@ class SanitizeViewModel(QObject):
         self._update(course_search=text)
 
     def select_course(self, folder_name: str | None) -> None:
-        if folder_name == self._state.selected_course:
+        # The run's course stays selected until it finishes.
+        if folder_name == self._state.selected_course or self._state.is_running:
             return
         self._update(
             selected_course=folder_name,
@@ -212,6 +304,35 @@ class SanitizeViewModel(QObject):
             consent_search="",
             **self._consent_fields(folder_name, self._state.courses),
         )
+
+    def anonymize(self) -> None:
+        """Anonymize the selected course in the background, replacing its anonymized/.
+
+        Asking before replacing an earlier run is the caller's job.
+        """
+        state = self._state
+        course = state.selected_summary
+        if course is None or state.anonymize_blocker is not None:
+            return
+        folder_name = course.folder_name
+        self._update(
+            run_state=RunState.RUNNING, run_course=folder_name, run_result=None, run_error=None
+        )
+        request = AnonymizeCourseDatasetRequest(snapshot_dir=course.path, replace_existing=True)
+        self._runner(
+            lambda: self._anonymize.execute(request),
+            self._on_anonymized,
+            self._on_anonymize_failed,
+        )
+
+    def _on_anonymized(self, result: object) -> None:
+        self._update(run_state=RunState.SUCCEEDED, run_result=result)
+        # The course's files and status changed on disk.
+        self.reload()
+
+    def _on_anonymize_failed(self, exc: Exception) -> None:
+        self._update(run_state=RunState.FAILED, run_error=str(exc) or type(exc).__name__)
+        self.reload()
 
     def set_consent_filter(self, consent_filter: ConsentFilter) -> None:
         self._update(consent_filter=consent_filter)

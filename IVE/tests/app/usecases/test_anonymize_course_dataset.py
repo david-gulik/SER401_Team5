@@ -296,3 +296,49 @@ class TestConsentDecisions:
         assert [decision.status for decision in result.consent_decisions] == [
             ConsentStatus.INCLUDED,
         ]
+
+
+class TestReplaceExisting:
+    def test_stale_files_are_kept_by_default(self, use_case, tmp_path: Path):
+        write_consent_form(tmp_path)
+        stale = tmp_path / "anonymized" / "assignments" / "old" / "rubric_assessments.json"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("[]", encoding="utf-8")
+
+        use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path, seed=42))
+
+        assert stale.exists()
+
+    def test_replace_existing_clears_anonymized_first(self, use_case, tmp_path: Path):
+        write_consent_form(tmp_path)
+        stale = tmp_path / "anonymized" / "assignments" / "old" / "rubric_assessments.json"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("[]", encoding="utf-8")
+
+        use_case.execute(
+            AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path, seed=42, replace_existing=True)
+        )
+
+        assert not stale.exists()
+        assert (tmp_path / "anonymized" / "consent_form.csv").exists()
+
+    def test_missing_consent_form_leaves_anonymized_untouched(self, use_case, tmp_path: Path):
+        (tmp_path / "original").mkdir()
+        kept = tmp_path / "anonymized" / "roster.csv"
+        kept.parent.mkdir()
+        kept.write_text("x", encoding="utf-8")
+
+        with pytest.raises(ValueError):
+            use_case.execute(
+                AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path, replace_existing=True)
+            )
+
+        assert kept.exists()
+
+    def test_missing_consent_form_does_not_create_anonymized(self, use_case, tmp_path: Path):
+        (tmp_path / "original").mkdir()
+
+        with pytest.raises(ValueError):
+            use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path))
+
+        assert not (tmp_path / "anonymized").exists()
