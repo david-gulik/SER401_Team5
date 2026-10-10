@@ -8,6 +8,8 @@ from PyQt6.QtWidgets import QWidget
 
 from GAVEL.app_context import AppContext
 
+GROUP_ORDER: tuple[str, ...] = ("General", "Integrations", "Analytics")
+
 
 @dataclass(frozen=True)
 class PageSpec:
@@ -38,7 +40,18 @@ class PageRegistry:
         self._pages[spec.page_id] = spec
 
     def list_pages(self) -> list[PageSpec]:
-        return sorted(self._pages.values(), key=lambda p: (p.group, p.order))
+        """Pages in sidebar order: by group (see GROUP_ORDER), then by order within a group."""
+        return sorted(
+            self._pages.values(),
+            key=lambda p: (_group_rank(p.group), p.group, p.order),
+        )
 
     def get_page(self, page_id: str) -> PageSpec:
         return self._pages[page_id]
+
+
+def _group_rank(group: str) -> int:
+    try:
+        return GROUP_ORDER.index(group)
+    except ValueError:
+        return len(GROUP_ORDER)

@@ -49,6 +49,6 @@ PageRegistry.get().register(
         factory=lambda ctx: DownloadPage(ctx),
         order=30,
         group="Integrations",
-        icon_path=_ICONS_DIR / "home.svg",
+        icon_path=_ICONS_DIR / "get-app.svg",
     )
 )

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from GAVEL.app.dtos.consent_decision import ConsentStatus
 from GAVEL.app.usecases.anonymize_consent_form import AnonymizeConsentFormUseCase
 from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetRequest,
@@ -231,3 +232,67 @@ class TestFullPipeline:
         assert result.roster.processed_count == 1
         assert result.gradebook.processed_count == 1
         assert result.rubric_assessment.processed_count == 1
+
+
+class TestConsentDecisions:
+    def test_result_reports_why_each_student_was_left_out(
+        self,
+        use_case,
+        tmp_path: Path,
+    ):
+        original_dir = tmp_path / "original"
+        original_dir.mkdir(parents=True)
+
+        (original_dir / "consent_form.csv").write_text(
+            "id,sis_id,name,attempt,leave blank if your name is correct,Do you consent\n"
+            "100001,9999999991,Test Student,1,Test Student,True\n"
+            "100002,9999999992,Other Student,1,Other Student,False\n",
+            encoding="utf-8",
+        )
+
+        (original_dir / "roster.csv").write_text(
+            "ID,Posting ID,First Name,Last Name,Status,Units,"
+            "Grade Basis,Program and Plan,Academic Level,ASURITE,"
+            "Residency,Zoom Email\n"
+            "9999999991,9999999991-001,Test,Student,Enrolled,3,"
+            "GRD,SER,Senior,teststudent,Resident,test@example.com\n"
+            "9999999992,9999999992-001,Other,Student,Enrolled,3,"
+            "GRD,SER,Senior,otherstudent,Resident,other@example.com\n"
+            "9999999993,9999999993-001,Silent,Student,Enrolled,3,"
+            "GRD,SER,Senior,silentstudent,Resident,silent@example.com\n",
+            encoding="utf-8",
+        )
+
+        result = use_case.execute(
+            AnonymizeCourseDatasetRequest(
+                snapshot_dir=tmp_path,
+                seed=42,
+            )
+        )
+
+        statuses = {decision.sis_id: decision.status for decision in result.consent_decisions}
+
+        assert statuses == {
+            9999999991: ConsentStatus.INCLUDED,
+            9999999992: ConsentStatus.DECLINED,
+            9999999993: ConsentStatus.NO_RESPONSE,
+        }
+        assert result.roster.processed_count == 1
+
+    def test_without_roster_only_respondents_have_decisions(
+        self,
+        use_case,
+        tmp_path: Path,
+    ):
+        write_consent_form(tmp_path)
+
+        result = use_case.execute(
+            AnonymizeCourseDatasetRequest(
+                snapshot_dir=tmp_path,
+                seed=42,
+            )
+        )
+
+        assert [decision.status for decision in result.consent_decisions] == [
+            ConsentStatus.INCLUDED,
+        ]

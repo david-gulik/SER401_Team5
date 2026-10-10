@@ -11,6 +11,7 @@ class AnonymizeRubricAssessmentRequest:
     assessments: tuple[RubricAssessment, ...]
     consented_ids: tuple[int, ...]
     id_map: tuple[tuple[int, int], ...]
+    seed: int | None = None
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,7 @@ class AnonymizeRubricAssessmentUseCase:
         """
         id_map = dict(request.id_map)
         consented = set(request.consented_ids)
+        rng = random.Random(request.seed)
 
         anonymized = []
         skipped_count = 0
@@ -46,12 +48,12 @@ class AnonymizeRubricAssessmentUseCase:
             anonymized.append(
                 RubricAssessment(
                     student_id=anonymous_id,
-                    submission_id=int("30000" + str(anonymous_id)),
+                    submission_id=300000000 + anonymous_id,
                     criteria=assessment.criteria,
                 )
             )
 
-        random.shuffle(anonymized)
+        rng.shuffle(anonymized)
 
         return AnonymizeRubricAssessmentResult(
             assessments=tuple(anonymized),

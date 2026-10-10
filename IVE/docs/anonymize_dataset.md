@@ -89,13 +89,13 @@ The original files remain unchanged.
 
 ## 5. Summary Output
 
-After the pipeline finishes, the CLI prints a summary for each artifact.
+After the pipeline finishes, the CLI prints how many students each consent rule kept or left out, then a summary for each artifact.
 
 Example:
 
 ```text
 Anonymized dataset written to GAVEL/courses/ser222_25sc_12345/20260901T1430/anonymized
-
+Consent filtering: 10 included, 1 declined, 0 name blank, 1 possible typo, 0 name mismatch, 2 no response
 Consent form: 10 processed, 0 skipped, 2 excluded
 Roster: 10 processed, 0 skipped, 2 excluded
 Gradebook: 10 processed, 0 skipped, 2 excluded
@@ -109,6 +109,25 @@ Rubric assessments: 25 processed, 0 skipped, 5 excluded
 | `processed` | Records successfully included in the anonymized output |
 | `skipped` | Records or artifacts that could not be processed or were missing |
 | `excluded` | Records excluded because the student was not included in the consent set |
+
+### Consent Filtering Reasons
+
+Each student's latest consent form attempt decides whether they are kept. Every student ends up with exactly one of these statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `included` | Answered yes and typed a name that matches their Canvas name |
+| `declined` | Answered no to the consent question |
+| `name blank` | Answered yes but left the name question blank |
+| `possible typo` | Answered yes and the typed name is a letter or two off from their Canvas name |
+| `name mismatch` | Answered yes but the typed name does not match their Canvas name |
+| `no response` | On the roster but never submitted the consent form (only reported when `roster.csv` is present) |
+
+A typed name matches when any word of the Canvas name appears in it, so first and last names in either order are accepted ("Bourque, Bailey" matches "Bailey Bourque").
+
+A `possible typo` is a name where some word is close to a word of the Canvas name but not exact. Names of 4 to 7 letters may be off by one letter, names of 8 or more letters by two, and names shorter than 4 letters must match exactly. A missing, extra or changed letter, or two neighboring letters swapped, each count as one. These students are still left out of the anonymized output; the status exists so someone can confirm the student and follow up.
+
+Only `included` students appear in the anonymized output. The CLI prints counts only. The per-student list, with names and answers, is available to callers as `consent_decisions` on the pipeline result.
 
 ---
 
@@ -157,11 +176,11 @@ The command exits with code `2`.
 The anonymization pipeline performs the following steps:
 
 1. Loads the consent form.
-2. Determines the set of consented students.
+2. Determines the set of consented students and records why every other student was left out.
 3. Generates one shared anonymous ID map.
 4. Anonymizes the consent form.
 5. Anonymizes the roster if present.
 6. Anonymizes the gradebook if present.
 7. Anonymizes rubric assessments if present.
 8. Writes all anonymized output to the `anonymized/` directory.
-9. Prints processed, skipped, and excluded counts for each artifact.
+9. Prints the consent filtering counts and the processed, skipped, and excluded counts for each artifact.
