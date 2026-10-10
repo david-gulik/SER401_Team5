@@ -30,7 +30,8 @@ def test_sanitize_icon_is_a_valid_svg(qapp):
     assert QSvgRenderer(str(spec.icon_path)).isValid()
 
 
-def test_factory_builds_the_page_around_one_sanitize_tab(qapp, theme):
+def test_factory_builds_the_page_around_one_sanitize_tab(qapp, theme, tmp_path, monkeypatch):
+    monkeypatch.setenv("DEFAULT_OUTPUT_DIR", str(tmp_path))
     spec = PageRegistry.get().get_page("sanitize")
 
     page = spec.factory(SimpleNamespace(theme=theme))
@@ -39,13 +40,23 @@ def test_factory_builds_the_page_around_one_sanitize_tab(qapp, theme):
     assert len(page.findChildren(SanitizeTab)) == 1
 
 
-def test_tab_paints_the_initial_state_and_every_change(qapp, theme, monkeypatch):
+def test_page_reads_the_download_workspace(qapp, theme, tmp_path, monkeypatch):
+    monkeypatch.setenv("DEFAULT_OUTPUT_DIR", str(tmp_path))
+    spec = PageRegistry.get().get_page("sanitize")
+
+    page = spec.factory(SimpleNamespace(theme=theme))
+
+    [tab] = page.findChildren(SanitizeTab)
+    assert tab.workspace_input.text() == str(tmp_path)
+
+
+def test_tab_paints_the_initial_state_and_every_change(qapp, theme, tmp_path, monkeypatch):
     painted: list[SanitizeUiState] = []
     monkeypatch.setattr(SanitizeTab, "render", lambda self, state: painted.append(state))
-    vm = SanitizeViewModel()
+    vm = SanitizeViewModel(default_workspace_root=tmp_path)
 
     tab = SanitizeTab(theme, vm)
     vm.state_changed.emit(SanitizeUiState())
 
-    assert painted == [SanitizeUiState(), SanitizeUiState()]
+    assert painted == [vm.get_state(), SanitizeUiState()]
     tab.deleteLater()
