@@ -39,7 +39,12 @@ class SectionCard(QFrame):
         set_spacing(self._actions_layout, theme, 8)
         self._actions_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
 
+        self._subtitle = QLabel()
+        self._subtitle.setProperty("role", "text_muted")
+        self._subtitle.hide()
+
         header_layout.addWidget(self._title)
+        header_layout.addWidget(self._subtitle)
         header_layout.addStretch(1)
         header_layout.addWidget(self._actions)
 
@@ -57,6 +62,15 @@ class SectionCard(QFrame):
 
         root.addWidget(self._header)
         root.addWidget(self._body)
+
+    def set_subtitle(self, text: str) -> None:
+        """Muted text beside the title; hidden when empty."""
+        self._subtitle.setText(text)
+        self._subtitle.setVisible(bool(text))
+
+    @property
+    def subtitle(self) -> str:
+        return self._subtitle.text()
 
     def add_action(self, widget: QWidget) -> None:
         self._actions_layout.addWidget(widget)

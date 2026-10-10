@@ -117,3 +117,43 @@ def _write_manifest(course: Path, folder_name: str, canvas_course_name: str) -> 
         "updated_at": "2026-09-20T09:00:00+00:00",
     }
     (course / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+# (Canvas name, typed name, consented, latest attempt). typed None means the
+# student is on the roster but never submitted the consent form.
+StudentRow = tuple[str, str | None, bool | None, int | None]
+
+# One student for every consent outcome, named "First Last" as Canvas shows them.
+EVERY_OUTCOME: tuple[StudentRow, ...] = (
+    ("Marisol Alvarez", "Marisol Alvarez", True, 2),
+    ("Devon Brooks", "Devon", True, 1),
+    ("Luca Esposito", "", True, 1),
+    ("Hannah Fischer", "Hannah Fischer", False, 1),
+    ("Omar Haddad", None, None, None),
+    ("Kenji Ishikawa", "Kenij Ishikwa", True, 1),
+    ("Chinedu Okafor", "Nedu O.", True, 1),
+)
+
+
+def sis_id(index: int) -> int:
+    return 1220440000 + index
+
+
+def write_students(
+    course: Path, students: tuple[StudentRow, ...], when: datetime = DOWNLOADED
+) -> None:
+    """Replace a course's consent form and roster with exactly these students."""
+    consent = [_CONSENT_HEADER]
+    roster = [_ROSTER_HEADER]
+    for n, (name, typed, consented, attempt) in enumerate(students):
+        first, last = name.split(" ", 1)
+        roster.append(
+            f"{sis_id(n)},{sis_id(n)}-001,{first},{last},Enrolled,3,Standard,SER,Senior,"
+            f"s{n},Resident,s{n}@example.com"
+        )
+        if typed is None:
+            continue
+        for a in range(1, (attempt or 1) + 1):
+            consent.append(f"{name},{9000 + n},{sis_id(n)},{a},{typed},{consented}")
+    _write(course / "original" / "consent_form.csv", when, "\n".join(consent) + "\n")
+    _write(course / "original" / "roster.csv", when, "\n".join(roster) + "\n")
