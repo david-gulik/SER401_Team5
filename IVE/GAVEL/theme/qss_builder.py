@@ -132,6 +132,17 @@ def _qss_labels(t: ThemeTokens) -> str:
         color: {c["text_secondary"]};
         font-size: {_pt(int(ty["font_size_small"]))};
     }}
+    QLabel[role="hint_icon"] {{
+        color: {c["interactive"]};
+        border: 1px solid {c["interactive"]};
+        border-radius: 8px;
+        font-size: {_pt(int(ty["font_size_small"]))};
+        qproperty-alignment: AlignCenter;
+    }}
+    QLabel[role="hint_icon"]:hover {{
+        color: {c["interactive_text"]};
+        background-color: {c["interactive"]};
+    }}
     """
 
 

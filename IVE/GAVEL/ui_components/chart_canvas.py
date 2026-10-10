@@ -11,9 +11,11 @@ from __future__ import annotations
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QLabel, QStackedWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QLabel, QSizePolicy, QStackedWidget, QVBoxLayout, QWidget
 
 from GAVEL.theme.context import ThemeContext
+
+_MINIMUM_HEIGHT = 320
 
 
 class ChartCanvas(QWidget):
@@ -34,7 +36,7 @@ class ChartCanvas(QWidget):
         super().__init__(parent)
         self._theme = theme
 
-        self.figure = Figure()
+        self.figure = Figure(layout="constrained")
         self._canvas = FigureCanvasQTAgg(self.figure)
 
         self._placeholder = QLabel(placeholder_text, self)
@@ -45,13 +47,19 @@ class ChartCanvas(QWidget):
         self._stack = QStackedWidget(self)
         self._stack.addWidget(self._placeholder)
         self._stack.addWidget(self._canvas)
+        self._stack.setMinimumHeight(_MINIMUM_HEIGHT)
+        self._stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._stack)
 
     def draw(self) -> None:
-        """Render the figure's current contents and show it in place of the placeholder."""
+        """Render the figure's current contents and show it in place of the placeholder.
+
+        The figure uses constrained layout (set at construction), so axis
+        labels stay inside its bounds even as this widget gets resized.
+        """
         self._canvas.draw()
         self._stack.setCurrentWidget(self._canvas)
 
