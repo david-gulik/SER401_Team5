@@ -36,7 +36,7 @@ PageRegistry.get().register(
         title=AnalyticsPage.title,
         icon_text="📊",
         factory=lambda ctx: AnalyticsPage(ctx),
-        order=15,
-        group="General",
+        order=40,
+        group="Analytics",
     )
 )
