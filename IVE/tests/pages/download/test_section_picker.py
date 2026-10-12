@@ -44,6 +44,28 @@ def test_set_items_honours_select(qapp, theme):
     assert picker.value() == "12346"
 
 
+def test_set_items_replaces_the_list(qapp, theme):
+    picker = SectionSearchPicker(theme)
+    picker.set_items(ITEMS)
+    replacement = [("55555", "SER 402 (55555) Capstone II")]
+    picker.set_items(replacement)
+    assert picker.items() == replacement
+    assert picker.combo.count() == 1
+    assert picker.value() == "55555"
+
+
+def test_clearing_items_empties_the_results_and_value(qapp, theme):
+    picker = SectionSearchPicker(theme)
+    picker.set_items(ITEMS)
+    seen: list[str] = []
+    picker.value_changed.connect(seen.append)
+    picker.set_items([])
+    assert picker.items() == []
+    assert picker.value() == ""
+    assert not picker.combo.isEnabled()
+    assert seen == [""]
+
+
 def test_busy_disables_search_controls_and_restores(qapp, theme):
     picker = SectionSearchPicker(theme)
     picker.set_items(ITEMS)

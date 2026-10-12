@@ -162,6 +162,39 @@ def test_find_sections_publishes_sorted_results_without_choosing_one(qapp, vm, r
     assert state.class_number == ""  # the picker, not the view model, chooses
 
 
+def test_find_sections_replaces_the_previous_results(qapp, vm, roster):
+    vm.set_term("2267")
+    vm.set_subject("SER")
+    vm.set_catalog_number("401")
+    vm.find_sections()
+    wait_for_workers(qapp)
+    assert [s.class_number for s in vm.get_state().sections] == ["22222", "11111"]
+
+    roster.sections = [ClassSection("33333", "SER", "402", "Capstone II", "Gary", "TTh 1:30")]
+    vm.set_catalog_number("402")
+    vm.find_sections()
+    wait_for_workers(qapp)
+    assert [s.class_number for s in vm.get_state().sections] == ["33333"]
+
+
+def test_empty_search_result_clears_the_previous_results(qapp, vm, roster):
+    vm.set_term("2267")
+    vm.set_subject("SER")
+    vm.set_catalog_number("401")
+    vm.find_sections()
+    wait_for_workers(qapp)
+    assert len(vm.get_state().sections) == 2
+
+    roster.sections = []
+    vm.set_catalog_number("999")
+    vm.find_sections()
+    wait_for_workers(qapp)
+    state = vm.get_state()
+    assert state.sections == ()
+    assert state.status is Status.WARNING
+    assert state.message == "No sections found."
+
+
 def test_download_all_reads_the_same_resolved_class_number(vm, roster, canvas):
     vm.set_term("2267")
     vm.set_class_number("abc")

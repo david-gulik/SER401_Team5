@@ -75,6 +75,15 @@ def test_combo_picker_set_items_falls_back_when_select_missing(qapp, theme):
     assert picker.value() == "2267"
 
 
+def test_combo_picker_items_reports_the_list_in_order(qapp, theme):
+    picker = ComboPicker(theme, load_text="Load")
+    assert picker.items() == []
+    picker.set_items(TERMS)
+    assert picker.items() == TERMS
+    picker.set_items(TERMS[::-1])
+    assert picker.items() == TERMS[::-1]
+
+
 def test_combo_picker_clearing_items_resets_value(qapp, theme):
     picker = ComboPicker(theme, load_text="Load")
     picker.set_items(TERMS)

@@ -335,12 +335,21 @@ class DownloadViewModel(QObject):
     def set_term(self, value: str) -> None:
         if value == self._state.selected_term:
             return
-        self._state = replace(
+        self._state = self._with_term(value)
+        self.state_changed.emit(self._state)
+
+    def _with_term(self, term: str) -> DownloadUiState:
+        """The state for ``term``: no sections and no roster mark.
+
+        The Download tab empties the Step 2 dropdown in turn, which drops a
+        class number picked from it. A typed class number is left alone.
+        """
+        return replace(
             self._state,
-            selected_term=value,
+            selected_term=term,
+            sections=(),
             completed=self._state.completed - {ROSTER_DOWNLOAD},
         )
-        self.state_changed.emit(self._state)
 
     def set_subject(self, value: str) -> None:
         text = value.strip().upper()
@@ -464,10 +473,11 @@ class DownloadViewModel(QObject):
             if t.default:
                 default_term = t.code
                 break
+        if default_term != self._state.selected_term:
+            self._state = self._with_term(default_term)
         self._state = replace(
             self._state,
             terms=terms_seq,
-            selected_term=default_term,
             is_busy=False,
             status=Status.NOMINAL,
             message=f"Loaded {len(terms_seq)} terms.",
@@ -502,16 +512,18 @@ class DownloadViewModel(QObject):
 
     def _on_sections_found(self, sections: object) -> None:
         sections_seq: Sequence[ClassSection] = sections  # type: ignore[assignment]
-        if not sections_seq:
-            self._set_idle(Status.WARNING, "No sections found.")
-            return
-        sorted_sections = sorted(sections_seq, key=lambda s: (s.subject, s.catalog_number))
+        # Every search replaces the list; an empty result leaves it empty.
+        sorted_sections = tuple(sorted(sections_seq, key=lambda s: (s.subject, s.catalog_number)))
+        if sorted_sections:
+            status, message = Status.NOMINAL, f"Found {len(sorted_sections)} section(s)."
+        else:
+            status, message = Status.WARNING, "No sections found."
         self._state = replace(
             self._state,
             sections=sorted_sections,
             is_busy=False,
-            status=Status.NOMINAL,
-            message=f"Found {len(sorted_sections)} section(s).",
+            status=status,
+            message=message,
         )
         self.state_changed.emit(self._state)
 

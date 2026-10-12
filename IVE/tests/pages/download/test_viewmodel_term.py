@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from PyQt6.QtCore import QThreadPool
 
-from GAVEL.app.dtos.roster import TermInfo
+from GAVEL.app.dtos.roster import ClassSection, TermInfo
 from GAVEL.core.status import Status
 from GAVEL.pages.download.viewmodel import DownloadViewModel, ShowError, term_code_error
 from GAVEL.services.logger import AppLogger
@@ -17,6 +17,14 @@ TERMS = [
     TermInfo("2261", "Spring 2026"),
     TermInfo("2267", "Fall 2026", default=True),
     TermInfo("2271", "Spring 2027"),
+]
+FALL_SECTIONS = [
+    ClassSection("12345", "SER", "401", "Capstone I", "Gary", "TTh 1:30"),
+    ClassSection("12346", "SER", "401", "Capstone I", "Ruben", "MW 3:00"),
+]
+SPRING_SECTIONS = [
+    ClassSection("23456", "SER", "401", "Capstone I", "Gary", "MW 10:30"),
+    ClassSection("23457", "SER", "401", "Capstone I", "Ruben", "TTh 9:00"),
 ]
 
 
@@ -28,7 +36,7 @@ def wait_for_workers(qapp) -> None:
 
 @pytest.fixture
 def roster() -> FakeRosterClient:
-    return FakeRosterClient(terms=TERMS)
+    return FakeRosterClient(terms=TERMS, sections=FALL_SECTIONS)
 
 
 @pytest.fixture
@@ -80,6 +88,65 @@ def test_load_terms_publishes_the_list_and_preselects_the_default(qapp, vm):
     assert [t.code for t in state.terms] == ["2261", "2267", "2271"]
     assert state.selected_term == "2267"
     assert state.status is Status.NOMINAL
+
+
+def search(vm: DownloadViewModel, qapp) -> None:
+    vm.set_subject("SER")
+    vm.set_catalog_number("401")
+    vm.find_sections()
+    wait_for_workers(qapp)
+
+
+def class_numbers(vm: DownloadViewModel) -> list[str]:
+    return [s.class_number for s in vm.get_state().sections]
+
+
+def test_changing_the_term_drops_the_old_terms_sections(qapp, vm, roster):
+    vm.set_term("2267")
+    search(vm, qapp)
+    vm.set_class_number("12345")
+    assert vm.get_state().selected_section is FALL_SECTIONS[0]
+
+    vm.set_term("2261")
+    state = vm.get_state()
+    assert state.sections == ()
+    assert state.selected_section is None  # the class number matches no loaded section
+
+
+def test_find_sections_after_a_term_change_replaces_the_list(qapp, vm, roster):
+    vm.set_term("2267")
+    search(vm, qapp)
+    assert class_numbers(vm) == ["12345", "12346"]
+
+    vm.set_term("2261")
+    roster.sections = list(SPRING_SECTIONS)
+    search(vm, qapp)
+
+    assert roster.section_queries == [("2267", "SER", "401"), ("2261", "SER", "401")]
+    assert class_numbers(vm) == ["23456", "23457"]  # only the selected term's sections
+
+
+def test_loading_terms_drops_sections_searched_under_a_typed_term(qapp, vm):
+    vm.set_term("2261")
+    search(vm, qapp)
+    assert class_numbers(vm) == ["12345", "12346"]
+
+    vm.load_terms()
+    wait_for_workers(qapp)
+    state = vm.get_state()
+    assert state.selected_term == "2267"  # the default term took over
+    assert state.sections == ()
+
+
+def test_loading_terms_keeps_sections_when_the_default_term_is_already_selected(qapp, vm):
+    vm.set_term("2267")
+    search(vm, qapp)
+
+    vm.load_terms()
+    wait_for_workers(qapp)
+    state = vm.get_state()
+    assert state.selected_term == "2267"
+    assert class_numbers(vm) == ["12345", "12346"]
 
 
 def test_section_search_requires_a_term(vm, roster):
