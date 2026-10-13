@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from GAVEL.pages.analytics.signed_error_histogram_card import SignedErrorHistogramCard
 from GAVEL.pages.analytics.signed_error_histogram_viewmodel import SignedErrorHistogramViewModel
-from GAVEL.pages.analytics.tabs import SignedErrorHistogramCard
 from GAVEL.ui_components.chart_canvas import ChartCanvas
 
 

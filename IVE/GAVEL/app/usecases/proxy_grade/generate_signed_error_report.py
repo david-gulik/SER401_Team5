@@ -20,12 +20,11 @@ from GAVEL.app.usecases.proxy_grade.compute_proxy_grade import (
     MissingTestResultsError,
     compute_proxy_grade,
 )
-
-# Gradescope message when the autograder process itself crashes or
-# times out, distinct from a message an assignment's own autograder writes
-# about the submission it was given. Used to tell those apart when every
-# test the mapping refers to is missing from a submission's results.
-_AUTOGRADER_CRASHED_MESSAGE = "The autograder failed to execute correctly."
+from GAVEL.app.usecases.proxy_grade.submission_matching import (
+    match_submission_to_gradebook_row,
+    no_tests_ran_on_the_submitted_code,
+    student_key,
+)
 
 
 class GradebookCSVReader(Protocol):
@@ -69,31 +68,6 @@ class GenerateSignedErrorReportResult:
     failed_submissions: tuple[FailedSubmission, ...] = ()
 
 
-def _student_key(email: str) -> str:
-    """The email's local part (before @), lowercased.
-
-    Used to match a Gradescope submitter to a gradebook row by SIS login ID,
-    assuming the SIS login ID equals the email's local part. Check
-    unmatched_submissions on the result before trusting the output.
-    """
-    return email.split("@")[0].strip().lower()
-
-
-def _no_tests_ran_on_the_submitted_code(
-    submission: GradescopeSubmission, exc: MissingTestResultsError, mapping: ProxyGradeMapping
-) -> bool:
-    """A submission scores 0 rather than being excluded when every test that the
-    mapping refers to is missing and the autograder's own output explains why,
-    as opposed to Gradescope's generic message for when the autograder process
-    itself crashed or timed out.
-    """
-    if len(exc.missing) != len(mapping.test_names()):
-        return False
-    if not submission.output:
-        return False
-    return _AUTOGRADER_CRASHED_MESSAGE not in submission.output
-
-
 def compute_signed_error_rows(
     submissions: Sequence[GradescopeSubmission],
     gradebook: CanvasGradebook,
@@ -107,18 +81,14 @@ def compute_signed_error_rows(
     can get the same rows, unmatched list, and failed list that the report
     use case writes to disk.
     """
-    human_scores_by_login = {
-        row.sis_login_id.lower(): row.assignment_scores.get(gradebook_column)
-        for row in gradebook.rows
-    }
-
     rows: list[SubmissionSignedError] = []
     unmatched: list[str] = []
     failed: list[FailedSubmission] = []
 
     for submission in submissions:
-        login = _student_key(submission.submitter.email)
-        human_score = human_scores_by_login.get(login)
+        login = student_key(submission.submitter.email)
+        row = match_submission_to_gradebook_row(submission, gradebook)
+        human_score = row.assignment_scores.get(gradebook_column) if row is not None else None
 
         if human_score is None:
             unmatched.append(submission.submitter.sid or submission.submission_key)
@@ -128,7 +98,7 @@ def compute_signed_error_rows(
             proxy_result = compute_proxy_grade(submission, mapping)
             proxy_score = proxy_result.total_score
         except MissingTestResultsError as exc:
-            if _no_tests_ran_on_the_submitted_code(submission, exc, mapping):
+            if no_tests_ran_on_the_submitted_code(submission, exc, mapping):
                 proxy_score = 0.0
             else:
                 failed.append(
