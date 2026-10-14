@@ -25,6 +25,7 @@ from GAVEL.pages.download.viewmodel import (
     CONSENT_DOWNLOAD,
     GRADEBOOK_DOWNLOAD,
     GRADESCOPE_DOWNLOAD,
+    QUIZ_REPORTS_DOWNLOAD,
     ROSTER_DOWNLOAD,
     RUBRIC_DOWNLOAD,
     DownloadUiState,
@@ -87,6 +88,7 @@ DONE_MARK = "✓"
 _CANVAS_DOWNLOAD_ORDER = (
     GRADEBOOK_DOWNLOAD,
     CONSENT_DOWNLOAD,
+    QUIZ_REPORTS_DOWNLOAD,
     RUBRIC_DOWNLOAD,
     GRADESCOPE_DOWNLOAD,
 )
@@ -376,6 +378,7 @@ class DownloadTab(ScrollableTab):
             ROSTER_DOWNLOAD: (self._download_roster_btn,),
             GRADEBOOK_DOWNLOAD: (self._download_gradebook_btn,),
             CONSENT_DOWNLOAD: (self._download_consent_btn,),
+            QUIZ_REPORTS_DOWNLOAD: (self._download_all_quizzes_btn,),
             RUBRIC_DOWNLOAD: (self._download_rubric_btn, self._download_all_rubric_btn),
             GRADESCOPE_DOWNLOAD: (self._download_gradescope_btn,),
         }
