@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from GAVEL.app.workspace.dataset import DatasetReaders, MissingArtifactError
+from GAVEL.app.workspace.dataset import DatasetReaders
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.analytics.generate_report_viewmodel import GenerateReportViewModel
@@ -190,7 +190,7 @@ class GenerateReportCard(QWidget):
             return
         try:
             columns = self._view_model.list_gradebook_columns(course, int(module_text))
-        except (MissingArtifactError, OSError, ValueError) as exc:
+        except Exception as exc:
             self._status.setText(f"Could not read the gradebook: {exc}")
             return
         self._column_box.addItems(columns)
@@ -218,7 +218,7 @@ class GenerateReportCard(QWidget):
             outcome = self._view_model.generate(
                 self._workspace_root, course, int(module_text), mapping_name, gradebook_column
             )
-        except (MissingArtifactError, OSError, ValueError) as exc:
+        except Exception as exc:
             self._status.setText(f"Could not generate the report: {exc}")
             return
 
@@ -273,7 +273,7 @@ class SignedErrorHistogramCard(QWidget):
         """Loads a report and displays its histogram, or reports why it could not."""
         try:
             data = self._view_model.load(report_path)
-        except (OSError, ValueError, KeyError) as exc:
+        except Exception as exc:
             self._status.setText(f"Could not read {report_path.name}: {exc}")
             self._canvas.clear()
             return
