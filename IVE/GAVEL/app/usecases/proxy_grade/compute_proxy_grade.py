@@ -24,10 +24,10 @@ class MissingTestResultsError(ValueError):
 
 
 def _find_test(
-    tests: Sequence[GradescopeTestScore], name_substring: str
+    tests: Sequence[GradescopeTestScore], name_prefix: str
 ) -> GradescopeTestScore | None:
     for test in tests:
-        if name_substring in test.name:
+        if test.name.startswith(name_prefix):
             return test
     return None
 
