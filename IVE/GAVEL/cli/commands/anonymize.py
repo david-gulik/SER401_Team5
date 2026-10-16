@@ -11,6 +11,9 @@ from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetUseCase,
 )
 from GAVEL.app.usecases.anonymize_gradebook import AnonymizeGradebookUseCase
+from GAVEL.app.usecases.anonymize_gradescope_submissions import (
+    AnonymizeGradescopeSubmissionsUseCase,
+)
 from GAVEL.app.usecases.anonymize_roster import AnonymizeRosterUseCase
 from GAVEL.app.usecases.anonymize_rubric_assessment import (
     AnonymizeRubricAssessmentUseCase,
@@ -30,6 +33,7 @@ from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
 from GAVEL.infra.json.rubric_assessment_json_reader import (
     RubricAssessmentJSONReader,
 )
+from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 
 
 def handle_anonymize_run(ctx: AppContext, args: Namespace) -> int:
@@ -60,6 +64,8 @@ def handle_anonymize_run(ctx: AppContext, args: Namespace) -> int:
         anonymize_consent_form_use_case=AnonymizeConsentFormUseCase(),
         rubric_reader=RubricAssessmentJSONReader(),
         anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
+        gradescope_reader=YamlGradescopeReader(),
+        anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
     )
 
     try:
