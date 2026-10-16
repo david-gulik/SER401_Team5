@@ -14,6 +14,9 @@ from GAVEL.app.usecases.anonymize_roster import AnonymizeRosterUseCase
 from GAVEL.app.usecases.anonymize_rubric_assessment import (
     AnonymizeRubricAssessmentUseCase,
 )
+from GAVEL.app.usecases.anonymize_gradescope_submissions import (
+    AnonymizeGradescopeSubmissionsUseCase,
+)
 from GAVEL.app.usecases.downselect_consented_students import (
     DownselectConsentedStudentsUseCase,
 )
@@ -29,6 +32,7 @@ from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
 from GAVEL.infra.json.rubric_assessment_json_reader import (
     RubricAssessmentJSONReader,
 )
+from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 
 
 @pytest.fixture
@@ -44,6 +48,8 @@ def use_case() -> AnonymizeCourseDatasetUseCase:
         anonymize_consent_form_use_case=AnonymizeConsentFormUseCase(),
         rubric_reader=RubricAssessmentJSONReader(),
         anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
+        gradescope_reader=YamlGradescopeReader(),
+        anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
     )
 
 
@@ -114,7 +120,14 @@ def write_rubric(snapshot_dir: Path) -> Path:
 
 
 def write_gradescope_submissions(snapshot_dir: Path) -> None:
-    extracted_dir = snapshot_dir / "original" / "submissions" / "m1" / "extracted"
+    extracted_dir = (
+            snapshot_dir
+            / "original"
+            / "submissions"
+            / "m1"
+            / "extracted"
+            / "assignment_123_export"
+    )
     extracted_dir.mkdir(parents=True, exist_ok=True)
 
     metadata_path = extracted_dir / "submission_metadata.yml"

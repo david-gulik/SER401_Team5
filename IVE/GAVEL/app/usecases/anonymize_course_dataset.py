@@ -385,13 +385,13 @@ class AnonymizeCourseDatasetUseCase:
         consented_sis_ids = set(roster_consented_ids)
 
         if submissions_dir.exists():
-            metadata_files = sorted(submissions_dir.glob("m*/extracted/submission_metadata.yml"))
+            metadata_files = sorted(submissions_dir.rglob("submission_metadata.yml"))
 
             for metadata_path in metadata_files:
                 submissions = self._gradescope_reader.read(metadata_path)
 
                 extracted_dir = metadata_path.parent
-                module_dir = extracted_dir.parent
+                module_dir = submissions_dir / metadata_path.relative_to(submissions_dir).parts[0]
 
                 for submission in submissions:
                     try:
