@@ -10,12 +10,12 @@ from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetUseCase,
 )
 from GAVEL.app.usecases.anonymize_gradebook import AnonymizeGradebookUseCase
+from GAVEL.app.usecases.anonymize_gradescope_submissions import (
+    AnonymizeGradescopeSubmissionsUseCase,
+)
 from GAVEL.app.usecases.anonymize_roster import AnonymizeRosterUseCase
 from GAVEL.app.usecases.anonymize_rubric_assessment import (
     AnonymizeRubricAssessmentUseCase,
-)
-from GAVEL.app.usecases.anonymize_gradescope_submissions import (
-    AnonymizeGradescopeSubmissionsUseCase,
 )
 from GAVEL.app.usecases.downselect_consented_students import (
     DownselectConsentedStudentsUseCase,
@@ -121,12 +121,7 @@ def write_rubric(snapshot_dir: Path) -> Path:
 
 def write_gradescope_submissions(snapshot_dir: Path) -> None:
     extracted_dir = (
-            snapshot_dir
-            / "original"
-            / "submissions"
-            / "m1"
-            / "extracted"
-            / "assignment_123_export"
+        snapshot_dir / "original" / "submissions" / "m1" / "extracted" / "assignment_123_export"
     )
     extracted_dir.mkdir(parents=True, exist_ok=True)
 
