@@ -3,6 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from GAVEL.app.usecases.proxy_grade.generate_heat_map_report import (
+    compute_heat_map_rows,
+    write_heat_map_report,
+)
 from GAVEL.app.usecases.proxy_grade.generate_signed_error_report import (
     compute_signed_error_rows,
     write_report,
@@ -10,6 +14,7 @@ from GAVEL.app.usecases.proxy_grade.generate_signed_error_report import (
 from GAVEL.app.usecases.proxy_grade.mappings.registry import MAPPINGS
 from GAVEL.app.workspace.dataset import CourseDataset, DatasetReaders, MissingArtifactError
 from GAVEL.app.workspace.layout import CourseFolder, Workspace
+from GAVEL.app.workspace.manifest import AssignmentEntry
 
 
 @dataclass(frozen=True)
@@ -18,6 +23,15 @@ class GenerateReportOutcome:
     scored: int
     unmatched: int
     failed: int
+
+
+@dataclass(frozen=True)
+class GenerateHeatMapOutcome:
+    output_path: Path
+    scored: int
+    unmatched: int
+    failed: int
+    missing_human_scores: int
 
 
 class GenerateReportViewModel:
@@ -66,6 +80,20 @@ class GenerateReportViewModel:
         rest = [c.raw_header for c in gradebook.columns if c.canvas_id not in matched_ids]
         return tuple(matched + rest)
 
+    def list_rubric_assignments(
+        self, course: CourseFolder, module_number: int
+    ) -> tuple[AssignmentEntry, ...]:
+        """Assignments in a module that have a rubric, for the Heat Map Report's picker."""
+        dataset = CourseDataset.anonymized(course, self._dataset_readers)
+        try:
+            return tuple(
+                entry
+                for entry in dataset.assignments()
+                if entry.module_number == module_number and entry.has_rubric
+            )
+        except MissingArtifactError:
+            return ()
+
     def generate(
         self,
         workspace_root: Path,
@@ -93,4 +121,44 @@ class GenerateReportViewModel:
             scored=len(result.rows),
             unmatched=len(result.unmatched_submissions),
             failed=len(result.failed_submissions),
+        )
+
+    def generate_heat_map(
+        self,
+        workspace_root: Path,
+        course: CourseFolder,
+        module_number: int,
+        mapping_name: str,
+        rubric_assignment: AssignmentEntry,
+    ) -> GenerateHeatMapOutcome:
+        dataset = CourseDataset.anonymized(course, self._dataset_readers)
+        submissions = dataset.gradescope_submissions(module_number)
+        gradebook = dataset.gradebook()
+        mapping = MAPPINGS[mapping_name]
+
+        rubric_definition = dataset.rubric_definition(rubric_assignment.canvas_id)
+        if rubric_definition is None:
+            raise MissingArtifactError(
+                dataset.tree, f"rubric definition for {rubric_assignment.name}", dataset.tree.root
+            )
+        rubric_assessments = dataset.rubric_assessments(rubric_assignment.canvas_id)
+
+        result = compute_heat_map_rows(
+            submissions, gradebook, rubric_definition, rubric_assessments, mapping
+        )
+
+        workspace = Workspace(workspace_root)
+        output_path = (
+            workspace.runs_dir
+            / f"{course.key.folder_name}_m{module_number}_{mapping_name}_heatmap.json"
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        write_heat_map_report(result, output_path)
+
+        return GenerateHeatMapOutcome(
+            output_path=output_path,
+            scored=len(result.rows),
+            unmatched=len(result.unmatched_submissions),
+            failed=len(result.failed_submissions),
+            missing_human_scores=len(result.students_without_human_scores),
         )

@@ -6,7 +6,6 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtWidgets import (
     QComboBox,
-    QFileDialog,
     QFormLayout,
     QLabel,
     QPushButton,
@@ -16,18 +15,16 @@ from PyQt6.QtWidgets import (
 
 from GAVEL.app.workspace.dataset import DatasetReaders, MissingArtifactError
 from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.analytics.generate_report_viewmodel import GenerateReportViewModel
-from GAVEL.pages.analytics.signed_error_histogram_viewmodel import (
-    SignedErrorHistogramData,
-    SignedErrorHistogramViewModel,
-)
+from GAVEL.pages.analytics.heat_map_card import HeatMapCard
+from GAVEL.pages.analytics.signed_error_histogram_card import SignedErrorHistogramCard
 from GAVEL.theme.context import ThemeContext
-from GAVEL.ui_components.chart_canvas import ChartCanvas
+from GAVEL.ui_components.hint_icon import hint_icon
 from GAVEL.ui_components.section_card import SectionCard
 
 _PLACEHOLDER_VISUALIZATIONS = (
-    "Human vs Autograder Heat Map",
     "Signed Error Boxplot (Mann-Whitney U)",
     "Swiss Cheese Comparison Table",
     "Multi-Autograder Heat Map",
@@ -47,22 +44,16 @@ class OverviewTab(ScrollableTab):
 
         generate_card = GenerateReportCard(theme, dataset_readers, workspace_root)
         histogram_card = SignedErrorHistogramCard(theme)
-        generate_card.report_generated.connect(histogram_card.load_report)
+        heat_map_card = HeatMapCard(theme)
+        generate_card.signed_error_report_generated.connect(histogram_card.load_report)
+        generate_card.heat_map_report_generated.connect(heat_map_card.load_report)
 
         self.add_section(generate_card)
         self.add_section(histogram_card)
+        self.add_section(heat_map_card)
         for title in _PLACEHOLDER_VISUALIZATIONS:
             self.add_section(_PlaceholderCard(theme, title))
         self.add_stretch()
-
-
-def _hint_icon(tooltip: str) -> QLabel:
-    """A small circled "?" explaining a card's requirements on hover."""
-    icon = QLabel("?")
-    icon.setProperty("role", "hint_icon")
-    icon.setFixedSize(16, 16)
-    icon.setToolTip(tooltip)
-    return icon
 
 
 class _PlaceholderCard(QWidget):
@@ -82,13 +73,20 @@ class _PlaceholderCard(QWidget):
 
 
 class GenerateReportCard(QWidget):
-    """Runs the proxy-grade report against a course already in the workspace.
+    """Builds a report from a course already in the workspace.
 
-    Always reads the anonymized side of the course folder, through
-    GenerateReportViewModel.
+    The report type picked determines which extra fields appear: a signed-
+    error report needs a gradebook column, a heat map report needs a rubric
+    assignment. Always reads the anonymized side of the course folder,
+    through GenerateReportViewModel.
     """
 
-    report_generated = pyqtSignal(Path)
+    signed_error_report_generated = pyqtSignal(Path)
+    heat_map_report_generated = pyqtSignal(Path)
+
+    _CHOOSE_TYPE = "Choose a report type…"
+    _SIGNED_ERROR = "Signed Error Report"
+    _HEAT_MAP = "Heat Map Report"
 
     def __init__(
         self,
@@ -103,36 +101,57 @@ class GenerateReportCard(QWidget):
         self._workspace_root = workspace_root
         self._view_model = view_model or GenerateReportViewModel(dataset_readers)
         self._courses: tuple[CourseFolder, ...] = ()
+        self._rubric_assignments: tuple[AssignmentEntry, ...] = ()
 
         self._card = SectionCard(self._theme, "Generate Report")
+        self._card.add_title_suffix(
+            hint_icon(
+                "Pick a report type, then fill in what it needs. Both types require a course "
+                "that has been downloaded and anonymized in the workspace."
+            )
+        )
+
+        self._report_type_box = QComboBox()
+        self._report_type_box.addItems((self._CHOOSE_TYPE, self._SIGNED_ERROR, self._HEAT_MAP))
+        self._report_type_box.currentIndexChanged.connect(self._on_report_type_changed)
+        type_form = QFormLayout()
+        type_form.addRow("Report type", self._report_type_box)
+        type_widget = QWidget()
+        type_widget.setLayout(type_form)
+        self._card.add_row(type_widget)
 
         self._course_box = QComboBox()
         self._course_box.currentIndexChanged.connect(self._refresh_modules)
         self._module_box = QComboBox()
-        self._module_box.currentIndexChanged.connect(self._refresh_columns)
+        self._module_box.currentIndexChanged.connect(self._refresh_module_dependents)
         self._mapping_box = QComboBox()
         self._mapping_box.addItems(self._view_model.mapping_names())
+
+        common_form = QFormLayout()
+        common_form.addRow("Course", self._course_box)
+        common_form.addRow("Module", self._module_box)
+        common_form.addRow("Proxy Mapping", self._mapping_box)
+        self._common_fields = QWidget()
+        self._common_fields.setLayout(common_form)
+        self._card.add_row(self._common_fields)
+
         self._column_box = QComboBox()
+        signed_error_form = QFormLayout()
+        signed_error_form.addRow("Gradebook column", self._column_box)
+        self._signed_error_fields = QWidget()
+        self._signed_error_fields.setLayout(signed_error_form)
+        self._card.add_row(self._signed_error_fields)
 
-        form = QFormLayout()
-        form.addRow("Course", self._course_box)
-        form.addRow("Module", self._module_box)
-        form.addRow("Proxy Mapping", self._mapping_box)
-        form.addRow("Gradebook column", self._column_box)
-        form_widget = QWidget()
-        form_widget.setLayout(form)
-        self._card.add_row(form_widget)
+        self._rubric_box = QComboBox()
+        heat_map_form = QFormLayout()
+        heat_map_form.addRow("Rubric Assignment", self._rubric_box)
+        self._heat_map_fields = QWidget()
+        self._heat_map_fields.setLayout(heat_map_form)
+        self._card.add_row(self._heat_map_fields)
 
-        self._card.add_title_suffix(
-            _hint_icon(
-                "Requires a course that has been downloaded and anonymized in the workspace, "
-                "including its Gradebook and Gradescope Submissions for the selected module."
-            )
-        )
-
-        generate_button = QPushButton("Generate Report")
-        generate_button.clicked.connect(self._generate)
-        self._card.add_action(generate_button)
+        self._generate_button = QPushButton("Generate Report")
+        self._generate_button.clicked.connect(self._generate)
+        self._card.add_row(self._generate_button)
 
         self._status = QLabel("No courses found in the workspace.")
         self._status.setProperty("role", "text_muted")
@@ -141,6 +160,11 @@ class GenerateReportCard(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._card)
+
+        self._common_fields.setVisible(False)
+        self._signed_error_fields.setVisible(False)
+        self._heat_map_fields.setVisible(False)
+        self._generate_button.setVisible(False)
 
         self._refresh_courses()
 
@@ -154,7 +178,15 @@ class GenerateReportCard(QWidget):
         super().showEvent(event)
         self._refresh_courses()
         self._refresh_modules()
-        self._refresh_columns()
+        self._refresh_module_dependents()
+
+    def _on_report_type_changed(self) -> None:
+        report_type = self._report_type_box.currentText()
+        chosen = report_type in (self._SIGNED_ERROR, self._HEAT_MAP)
+        self._common_fields.setVisible(chosen)
+        self._generate_button.setVisible(chosen)
+        self._signed_error_fields.setVisible(report_type == self._SIGNED_ERROR)
+        self._heat_map_fields.setVisible(report_type == self._HEAT_MAP)
 
     def _refresh_courses(self) -> None:
         previous = self._course_box.currentText()
@@ -181,6 +213,10 @@ class GenerateReportCard(QWidget):
         if index >= 0:
             self._module_box.setCurrentIndex(index)
 
+    def _refresh_module_dependents(self) -> None:
+        self._refresh_columns()
+        self._refresh_rubric_assignments()
+
     def _refresh_columns(self) -> None:
         previous = self._column_box.currentText()
         self._column_box.clear()
@@ -198,25 +234,62 @@ class GenerateReportCard(QWidget):
         if index >= 0:
             self._column_box.setCurrentIndex(index)
 
+    def _refresh_rubric_assignments(self) -> None:
+        previous = self._rubric_box.currentText()
+        self._rubric_box.clear()
+        self._rubric_assignments = ()
+        course = self._selected_course()
+        module_text = self._module_box.currentText()
+        if course is None or not module_text:
+            return
+        self._rubric_assignments = self._view_model.list_rubric_assignments(
+            course, int(module_text)
+        )
+        self._rubric_box.addItems([a.name for a in self._rubric_assignments])
+        index = self._rubric_box.findText(previous)
+        if index >= 0:
+            self._rubric_box.setCurrentIndex(index)
+
     def _selected_course(self) -> CourseFolder | None:
         index = self._course_box.currentIndex()
         if index < 0 or index >= len(self._courses):
             return None
         return self._courses[index]
 
+    def _selected_rubric_assignment(self) -> AssignmentEntry | None:
+        index = self._rubric_box.currentIndex()
+        if index < 0 or index >= len(self._rubric_assignments):
+            return None
+        return self._rubric_assignments[index]
+
     def _generate(self) -> None:
+        report_type = self._report_type_box.currentText()
         course = self._selected_course()
         module_text = self._module_box.currentText()
         mapping_name = self._mapping_box.currentText()
-        gradebook_column = self._column_box.currentText()
 
-        if course is None or not module_text or not mapping_name or not gradebook_column:
-            self._status.setText("Choose a course, module, mapping, and gradebook column.")
+        if course is None or not module_text or not mapping_name:
+            self._status.setText("Choose a course, module, and proxy mapping.")
+            return
+
+        if report_type == self._SIGNED_ERROR:
+            self._generate_signed_error_report(course, int(module_text), mapping_name)
+        elif report_type == self._HEAT_MAP:
+            self._generate_heat_map_report(course, int(module_text), mapping_name)
+        else:
+            self._status.setText("Choose a report type.")
+
+    def _generate_signed_error_report(
+        self, course: CourseFolder, module_number: int, mapping_name: str
+    ) -> None:
+        gradebook_column = self._column_box.currentText()
+        if not gradebook_column:
+            self._status.setText("Choose a gradebook column.")
             return
 
         try:
             outcome = self._view_model.generate(
-                self._workspace_root, course, int(module_text), mapping_name, gradebook_column
+                self._workspace_root, course, module_number, mapping_name, gradebook_column
             )
         except (MissingArtifactError, OSError, ValueError) as exc:
             self._status.setText(f"Could not generate the report: {exc}")
@@ -226,74 +299,27 @@ class GenerateReportCard(QWidget):
             f"Scored {outcome.scored}, unmatched {outcome.unmatched}, failed {outcome.failed}. "
             f"Saved to {outcome.output_path.name}."
         )
-        self.report_generated.emit(outcome.output_path)
+        self.signed_error_report_generated.emit(outcome.output_path)
 
-
-class SignedErrorHistogramCard(QWidget):
-    """Loads a signed-error report, chosen by the user, and charts its distribution."""
-
-    def __init__(
-        self,
-        theme: ThemeContext,
-        view_model: SignedErrorHistogramViewModel | None = None,
-        parent: QWidget | None = None,
+    def _generate_heat_map_report(
+        self, course: CourseFolder, module_number: int, mapping_name: str
     ) -> None:
-        super().__init__(parent)
-        self._theme = theme
-        self._view_model = view_model or SignedErrorHistogramViewModel()
-
-        self._card = SectionCard(self._theme, "Signed Error Histogram")
-
-        choose_button = QPushButton("Choose report…")
-        choose_button.clicked.connect(self._choose_report)
-        self._card.add_action(choose_button)
-
-        self._status = QLabel("No report chosen yet.")
-        self._status.setProperty("role", "text_muted")
-        self._card.add_row(self._status)
-
-        self._canvas = ChartCanvas(
-            self._theme, placeholder_text="Choose a signed-error report to see its histogram."
-        )
-        self._card.add_row(self._canvas)
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.addWidget(self._card)
-
-    def _choose_report(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Choose a signed-error report", "", "JSON files (*.json)"
-        )
-        if not path:
+        rubric_assignment = self._selected_rubric_assignment()
+        if rubric_assignment is None:
+            self._status.setText("Choose a rubric assignment.")
             return
-        self.load_report(Path(path))
 
-    def load_report(self, report_path: Path) -> None:
-        """Loads a report and displays its histogram, or reports why it could not."""
         try:
-            data = self._view_model.load(report_path)
-        except (OSError, ValueError, KeyError) as exc:
-            self._status.setText(f"Could not read {report_path.name}: {exc}")
-            self._canvas.clear()
+            outcome = self._view_model.generate_heat_map(
+                self._workspace_root, course, module_number, mapping_name, rubric_assignment
+            )
+        except (MissingArtifactError, OSError, ValueError) as exc:
+            self._status.setText(f"Could not generate the report: {exc}")
             return
 
-        self._status.setText(f"Showing {report_path.name}")
-        self.display(data)
-
-    def display(self, data: SignedErrorHistogramData) -> None:
-        self._canvas.clear()
-        if not data.bins:
-            return
-
-        axes = self._canvas.figure.add_subplot()
-        axes.bar(
-            [b.lower for b in data.bins],
-            [b.count for b in data.bins],
-            width=[b.upper - b.lower for b in data.bins],
-            align="edge",
+        self._status.setText(
+            f"Scored {outcome.scored}, unmatched {outcome.unmatched}, failed {outcome.failed}, "
+            f"missing human scores {outcome.missing_human_scores}. "
+            f"Saved to {outcome.output_path.name}."
         )
-        axes.set_xlabel("Signed error (human minus proxy)")
-        axes.set_ylabel("Submissions")
-        axes.set_title(data.module_label)
-        self._canvas.draw()
+        self.heat_map_report_generated.emit(outcome.output_path)
