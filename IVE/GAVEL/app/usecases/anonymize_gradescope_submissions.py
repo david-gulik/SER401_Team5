@@ -96,8 +96,8 @@ class AnonymizeGradescopeSubmissionsRequest:
     Request object for anonymizing Gradescope submissions.
     """
 
-    input_folder: str
-    output_folder: str
+    input_folder: Path
+    output_folder: Path
 
 
 @dataclass(frozen=True)
@@ -108,7 +108,7 @@ class AnonymizeGradescopeSubmissionsResult:
 
     processed_count: int
     skipped_count: int
-    output_folder: str
+    output_folder: Path
 
 
 class AnonymizeGradescopeSubmissionsUseCase:
@@ -119,8 +119,8 @@ class AnonymizeGradescopeSubmissionsUseCase:
     def execute(
         self, request: AnonymizeGradescopeSubmissionsRequest
     ) -> AnonymizeGradescopeSubmissionsResult:
-        input_path = Path(request.input_folder)
-        output_path = Path(request.output_folder)
+        input_path = request.input_folder
+        output_path = request.output_folder
 
         if not input_path.exists():
             raise FileNotFoundError(f"Input folder does not exist: {input_path}")
@@ -159,5 +159,5 @@ class AnonymizeGradescopeSubmissionsUseCase:
         return AnonymizeGradescopeSubmissionsResult(
             processed_count=processed_count,
             skipped_count=skipped_count,
-            output_folder=str(output_path),
+            output_folder=output_path,
         )
