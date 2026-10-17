@@ -3,7 +3,7 @@ from GAVEL.app.usecases.anonymize_gradescope_submissions import (
     AnonymizeGradescopeSubmissionsUseCase,
     strip_gradescope_comments,
 )
-
+from pathlib import Path
 
 def test_strip_gradescope_comments_basic():
     src = """
@@ -40,8 +40,8 @@ def test_usecase_processes_valid_files(tmp_path):
     valid_file.write_text("int x = 0; // remove me\n")
 
     request = AnonymizeGradescopeSubmissionsRequest(
-        input_folder=str(input_dir),
-        output_folder=str(output_dir),
+        input_folder=input_dir,
+        output_folder=output_dir,
     )
 
     usecase = AnonymizeGradescopeSubmissionsUseCase()
@@ -53,7 +53,7 @@ def test_usecase_processes_valid_files(tmp_path):
     assert result.processed_count == 1
     assert result.skipped_count == 0
 
-    out_file = output_dir / "test_anon.java"
+    out_file = Path(output_dir / "test_anon.java")
     assert out_file.exists()
     assert "//" not in out_file.read_text()
 
@@ -67,8 +67,8 @@ def test_usecase_skips_non_code_files(tmp_path):
     (input_dir / "image.png").write_text("binarydata")
 
     request = AnonymizeGradescopeSubmissionsRequest(
-        input_folder=str(input_dir),
-        output_folder=str(output_dir),
+        input_folder=input_dir,
+        output_folder=output_dir,
     )
 
     usecase = AnonymizeGradescopeSubmissionsUseCase()
@@ -90,8 +90,8 @@ def test_usecase_recurses_directories(tmp_path):
     file1.write_text("int x; // comment")
 
     request = AnonymizeGradescopeSubmissionsRequest(
-        input_folder=str(input_dir),
-        output_folder=str(output_dir),
+        input_folder=input_dir,
+        output_folder=output_dir,
     )
 
     usecase = AnonymizeGradescopeSubmissionsUseCase()
@@ -99,7 +99,7 @@ def test_usecase_recurses_directories(tmp_path):
 
     assert result.processed_count == 1
 
-    out_file = output_dir / "nested" / "a_anon.cpp"
+    out_file = Path(output_dir / "nested" / "a_anon.cpp")
     assert out_file.exists()
     assert "//" not in out_file.read_text()
 
@@ -114,8 +114,8 @@ def test_usecase_handles_encoding_fallback(tmp_path):
     file.write_bytes("int x = 0; // áéíóú".encode("latin-1"))
 
     request = AnonymizeGradescopeSubmissionsRequest(
-        input_folder=str(input_dir),
-        output_folder=str(output_dir),
+        input_folder=input_dir,
+        output_folder=output_dir,
     )
 
     usecase = AnonymizeGradescopeSubmissionsUseCase()
@@ -123,6 +123,6 @@ def test_usecase_handles_encoding_fallback(tmp_path):
 
     assert result.processed_count == 1
 
-    out_file = output_dir / "latin_anon.c"
+    out_file = Path(output_dir / "latin_anon.c")
     assert out_file.exists()
     assert "//" not in out_file.read_text()
