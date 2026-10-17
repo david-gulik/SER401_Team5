@@ -18,6 +18,10 @@ from GAVEL.app.usecases.anonymize_gradescope_submissions import (
     AnonymizeGradescopeSubmissionsRequest,
     AnonymizeGradescopeSubmissionsUseCase,
 )
+from GAVEL.app.usecases.anonymize_gradescope_yml import (
+    AnonymizeGradescopeYMLRequest,
+    AnonymizeGradescopeYMLUseCase,
+)
 from GAVEL.app.usecases.anonymize_roster import (
     AnonymizeRosterRequest,
     AnonymizeRosterUseCase,
@@ -83,6 +87,7 @@ class AnonymizeCourseDatasetUseCase:
         rubric_reader: RubricAssessmentJSONReader,
         anonymize_rubric_use_case: AnonymizeRubricAssessmentUseCase,
         anonymize_gradescope_submissions_use_case: AnonymizeGradescopeSubmissionsUseCase,
+        anonymize_gradescope_yml_use_case: AnonymizeGradescopeYMLUseCase,
     ) -> None:
         self._consent_form_reader = consent_form_reader
         self._downselect_use_case = downselect_use_case
@@ -92,6 +97,7 @@ class AnonymizeCourseDatasetUseCase:
         self._gradebook_reader = gradebook_reader
         self._anonymize_gradebook_use_case = anonymize_gradebook_use_case
         self._anonymize_gradescope_submissions_use_case = anonymize_gradescope_submissions_use_case
+        self._anonymize_gradescope_yml_use_case = anonymize_gradescope_yml_use_case
         self._anonymize_consent_form_use_case = anonymize_consent_form_use_case
         self._rubric_reader = rubric_reader
         self._anonymize_rubric_use_case = anonymize_rubric_use_case
@@ -332,6 +338,25 @@ class AnonymizeCourseDatasetUseCase:
                 output_folder=anonymized_assignment_dir,
             )
         )
+
+        # Anonymize Gradescope ymls
+        ag = AnonymizeGradescopeYMLUseCase()
+        for path in assignments_dir.rglob("*.yml"):
+            path_parts = list(path.parts)
+            output_parts = ["anonymized" if p == "original" else p for p in path_parts]
+            output_path = (
+                Path(*output_parts).with_name("submission_metadata_anonymized").with_suffix(".yml")
+            )
+            output_path.parent.mkdir(exist_ok=True, parents=True)
+
+            ag.execute(
+                AnonymizeGradescopeYMLRequest(
+                    input_YML=path,
+                    output_YML=output_path,
+                    consented_ids=consent_result.consented_ids,
+                    id_map=id_map,
+                )
+            )
 
         # One rubric_assessments.json per assignment folder; see docs/workspace_layout.md.
         rubric_files = sorted(assignments_dir.rglob("rubric_assessments.json"))
