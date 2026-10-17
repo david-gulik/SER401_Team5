@@ -1,9 +1,11 @@
+from pathlib import Path
+
 from GAVEL.app.usecases.anonymize_gradescope_submissions import (
     AnonymizeGradescopeSubmissionsRequest,
     AnonymizeGradescopeSubmissionsUseCase,
     strip_gradescope_comments,
 )
-from pathlib import Path
+
 
 def test_strip_gradescope_comments_basic():
     src = """
