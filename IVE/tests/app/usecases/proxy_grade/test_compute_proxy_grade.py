@@ -92,6 +92,30 @@ def test_a_missing_test_raises_even_when_it_would_not_change_the_score() -> None
     assert error.value.missing == ("Test B",)
 
 
+def test_a_short_target_is_not_matched_by_a_longer_name_that_contains_it() -> None:
+    """ "1.1)" must not match "11.1) Copy Image 1", which merely contains it."""
+    mapping = ProxyGradeMapping(
+        name="toy", criteria=(Criterion("only", (Tier(1.0, all_of=("1.1)",)),)),)
+    )
+    submission = _submission({"11.1) Copy Image 1": PASS})
+
+    with pytest.raises(MissingTestResultsError) as error:
+        compute_proxy_grade(submission, mapping)
+    assert error.value.missing == ("1.1)",)
+
+
+def test_a_short_target_matches_its_own_test_even_with_a_colliding_name_present() -> None:
+    """The real "1.1)" test is found, not the unrelated "11.1)" test."""
+    mapping = ProxyGradeMapping(
+        name="toy", criteria=(Criterion("only", (Tier(1.0, all_of=("1.1)",)),)),)
+    )
+    submission = _submission({"1.1) BMP Headers IO": PASS, "11.1) Copy Image 1": FAIL})
+
+    result = compute_proxy_grade(submission, mapping)
+
+    assert result.criterion_scores == (1.0,)
+
+
 def test_at_least_needs_that_many_any_of_tests_to_pass() -> None:
     mapping = ProxyGradeMapping(
         name="toy",

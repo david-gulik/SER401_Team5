@@ -10,6 +10,9 @@ from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetUseCase,
 )
 from GAVEL.app.usecases.anonymize_gradebook import AnonymizeGradebookUseCase
+from GAVEL.app.usecases.anonymize_gradescope_submissions import (
+    AnonymizeGradescopeSubmissionsUseCase,
+)
 from GAVEL.app.usecases.anonymize_roster import AnonymizeRosterUseCase
 from GAVEL.app.usecases.anonymize_rubric_assessment import (
     AnonymizeRubricAssessmentUseCase,
@@ -18,6 +21,7 @@ from GAVEL.app.usecases.downselect_consented_students import (
     DownselectConsentedStudentsUseCase,
 )
 from GAVEL.app.usecases.generate_anonymous_id_map import (
+    GenerateAnonymousIdMapRequest,
     GenerateAnonymousIdMapUseCase,
 )
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
@@ -28,6 +32,7 @@ from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
 from GAVEL.infra.json.rubric_assessment_json_reader import (
     RubricAssessmentJSONReader,
 )
+from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 
 
 @pytest.fixture
@@ -43,6 +48,8 @@ def use_case() -> AnonymizeCourseDatasetUseCase:
         anonymize_consent_form_use_case=AnonymizeConsentFormUseCase(),
         rubric_reader=RubricAssessmentJSONReader(),
         anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
+        gradescope_reader=YamlGradescopeReader(),
+        anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
     )
 
 
@@ -110,6 +117,99 @@ def write_rubric(snapshot_dir: Path) -> Path:
     )
 
     return rubric_path
+
+
+def write_gradescope_submissions(snapshot_dir: Path) -> None:
+    extracted_dir = (
+        snapshot_dir / "original" / "submissions" / "m1" / "extracted" / "assignment_123_export"
+    )
+    extracted_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata_path = extracted_dir / "submission_metadata.yml"
+
+    metadata_path.write_text(
+        """
+submission_1:
+  :submitters:
+    - :sid: "9999999999"
+      :email: "test@example.com"
+      :name: "Test Student"
+  :created_at: 2026-10-07 12:00:00
+  :results:
+    tests: []
+
+submission_2:
+  :submitters:
+    - :sid: "8888888888"
+      :email: "other@example.com"
+      :name: "Other Student"
+  :created_at: 2026-10-07 12:00:00
+  :results:
+    tests: []
+""".strip(),
+        encoding="utf-8",
+    )
+
+    included_dir = extracted_dir / "submission_1"
+    included_dir.mkdir()
+    (included_dir / "Main.java").write_text(
+        "class Main { // remove me\n}\n",
+        encoding="utf-8",
+    )
+
+    excluded_dir = extracted_dir / "submission_2"
+    excluded_dir.mkdir()
+    (excluded_dir / "Main.java").write_text(
+        "class Main { // should never be included\n}\n",
+        encoding="utf-8",
+    )
+
+
+def write_consent_form_with_declined_student(snapshot_dir: Path) -> None:
+    original_dir = snapshot_dir / "original"
+    original_dir.mkdir(parents=True, exist_ok=True)
+
+    (original_dir / "consent_form.csv").write_text(
+        "id,sis_id,name,attempt,leave blank if your name is correct,Do you consent\n"
+        "100001,9999999999,Test Student,1,Test Student,True\n"
+        "100002,9999999998,Declined Student,1,Declined Student,False\n",
+        encoding="utf-8",
+    )
+
+
+def write_rubric_with_declined_student(snapshot_dir: Path) -> None:
+    assignment_dir = snapshot_dir / "original" / "assignments" / "7216983_m1"
+    assignment_dir.mkdir(parents=True, exist_ok=True)
+
+    (assignment_dir / "rubric_assessments.json").write_text(
+        json.dumps(
+            [
+                {
+                    "student_id": 100001,
+                    "submission_id": 9001,
+                    "criteria": [
+                        {
+                            "criterion_id": "crit_1",
+                            "points": 4.0,
+                            "comments": "Good work",
+                        }
+                    ],
+                },
+                {
+                    "student_id": 100002,
+                    "submission_id": 9002,
+                    "criteria": [
+                        {
+                            "criterion_id": "crit_1",
+                            "points": 2.0,
+                            "comments": "Should be excluded",
+                        }
+                    ],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 class TestValidation:
@@ -232,6 +332,113 @@ class TestFullPipeline:
         assert result.roster.processed_count == 1
         assert result.gradebook.processed_count == 1
         assert result.rubric_assessment.processed_count == 1
+
+    def test_gradescope_only_includes_consented_students(
+        self,
+        use_case,
+        tmp_path: Path,
+    ):
+        write_consent_form(tmp_path)
+        write_gradescope_submissions(tmp_path)
+
+        request = AnonymizeCourseDatasetRequest(
+            snapshot_dir=tmp_path,
+            seed=42,
+        )
+
+        use_case.execute(request)
+
+        output_dir = tmp_path / "anonymized" / "submissions" / "m1"
+
+        included_file = output_dir / "submission_1" / "Main_anon.java"
+        excluded_file = output_dir / "submission_2" / "Main_anon.java"
+
+        assert included_file.exists()
+        assert not excluded_file.exists()
+
+        cleaned = included_file.read_text(encoding="utf-8")
+        assert "// remove me" not in cleaned
+        assert "class Main" in cleaned
+
+    def test_rubric_is_anonymized_and_preserves_assessment_data(
+        self,
+        use_case,
+        tmp_path: Path,
+    ):
+        write_consent_form(tmp_path)
+        write_rubric(tmp_path)
+
+        request = AnonymizeCourseDatasetRequest(
+            snapshot_dir=tmp_path,
+            seed=42,
+        )
+
+        result = use_case.execute(request)
+
+        rubric_output = (
+            tmp_path / "anonymized" / "assignments" / "7216983_m1" / "rubric_assessments.json"
+        )
+
+        assert rubric_output.exists()
+
+        rubric_data = json.loads(rubric_output.read_text(encoding="utf-8"))
+
+        assert len(rubric_data) == 1
+
+        rubric_entry = rubric_data[0]
+
+        id_map_result = GenerateAnonymousIdMapUseCase().execute(
+            GenerateAnonymousIdMapRequest(
+                student_ids={100001},
+                seed=42,
+            )
+        )
+
+        expected_anonymous_id = id_map_result.id_map[100001]
+
+        assert rubric_entry["student_id"] == expected_anonymous_id
+        assert rubric_entry["submission_id"] == 300000000 + expected_anonymous_id
+
+        assert rubric_entry["criteria"][0]["criterion_id"] == "crit_1"
+        assert rubric_entry["criteria"][0]["points"] == 4.0
+        assert rubric_entry["criteria"][0]["comments"] == "Good work"
+
+        assert result.rubric_assessment.processed_count == 1
+        assert result.rubric_assessment.skipped_count == 0
+
+    def test_rubric_excludes_declined_student(
+        self,
+        use_case,
+        tmp_path: Path,
+    ):
+        write_consent_form_with_declined_student(tmp_path)
+        write_rubric_with_declined_student(tmp_path)
+
+        result = use_case.execute(
+            AnonymizeCourseDatasetRequest(
+                snapshot_dir=tmp_path,
+                seed=42,
+            )
+        )
+
+        rubric_output = (
+            tmp_path / "anonymized" / "assignments" / "7216983_m1" / "rubric_assessments.json"
+        )
+
+        rubric_data = json.loads(rubric_output.read_text(encoding="utf-8"))
+
+        assert len(rubric_data) == 1
+
+        rubric_entry = rubric_data[0]
+
+        assert rubric_entry["criteria"][0]["comments"] == "Good work"
+
+        assert all(
+            entry["criteria"][0]["comments"] != "Should be excluded" for entry in rubric_data
+        )
+
+        assert result.rubric_assessment.processed_count == 1
+        assert result.rubric_assessment.skipped_count == 1
 
 
 class TestConsentDecisions:
