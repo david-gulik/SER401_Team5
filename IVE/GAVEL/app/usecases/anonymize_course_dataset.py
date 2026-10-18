@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,6 +50,7 @@ from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 class AnonymizeCourseDatasetRequest:
     snapshot_dir: Path
     seed: int | None = None
+    replace_existing: bool = False
 
 
 @dataclass(frozen=True)
@@ -105,7 +107,6 @@ class AnonymizeCourseDatasetUseCase:
     ) -> AnonymizeCourseDatasetResult:
         original_dir = request.snapshot_dir / "original"
         output_dir = request.snapshot_dir / "anonymized"
-        output_dir.mkdir(parents=True, exist_ok=True)
         consent_form_path = original_dir / "consent_form.csv"
         roster_path = original_dir / "roster.csv"
         gradebook_path = original_dir / "gradebook.csv"
@@ -114,6 +115,10 @@ class AnonymizeCourseDatasetUseCase:
 
         if not consent_form_path.exists():
             raise ValueError("Consent form is missing from the dataset")
+
+        if request.replace_existing and output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         consent_entries = tuple(self._consent_form_reader.read(str(consent_form_path)))
 
@@ -434,3 +439,21 @@ class AnonymizeCourseDatasetUseCase:
             ),
             consent_decisions=consent_result.decisions,
         )
+
+
+def build_anonymize_course_dataset_use_case() -> AnonymizeCourseDatasetUseCase:
+    """The pipeline wired with GAVEL's own readers and anonymizers."""
+    return AnonymizeCourseDatasetUseCase(
+        consent_form_reader=CanvasConsentFormCSVReader(),
+        downselect_use_case=DownselectConsentedStudentsUseCase(),
+        id_map_use_case=GenerateAnonymousIdMapUseCase(),
+        roster_reader=CanvasRosterCSVReader(),
+        anonymize_roster_use_case=AnonymizeRosterUseCase(),
+        gradebook_reader=LegacyGradebookCSVReader(),
+        anonymize_gradebook_use_case=AnonymizeGradebookUseCase(),
+        anonymize_consent_form_use_case=AnonymizeConsentFormUseCase(),
+        rubric_reader=RubricAssessmentJSONReader(),
+        anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
+        gradescope_reader=YamlGradescopeReader(),
+        anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
+    )

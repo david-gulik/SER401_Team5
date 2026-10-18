@@ -16,6 +16,12 @@ _ROSTER_HEADER = (
     "ID,Posting ID,First Name,Last Name,Status,Units,Grade Basis,"
     "Program and Plan,Academic Level,ASURITE,Residency,Zoom Email"
 )
+# A Canvas gradebook export with its two preamble rows and no students.
+_GRADEBOOK = (
+    "Student,ID,SIS Login ID,Section,Module 1: Assignment (7216983)\n"
+    "Manual Posting,,,,\n"
+    "Points Possible,,,,10\n"
+)
 _CONSENT_HEADER = (
     "name,id,sis_id,attempt,"
     "Type your name below (leave blank if you do not consent to participate),"
@@ -82,7 +88,7 @@ def build_course(
     if roster:
         files["roster.csv"] = _roster(students)
     if gradebook:
-        files["gradebook.csv"] = "Student,ID\n"
+        files["gradebook.csv"] = _GRADEBOOK
     for index in range(rubric_assessments):
         files[f"assignments/{7216970 + index}_m{index + 1}/rubric_assessments.json"] = "[]\n"
 
