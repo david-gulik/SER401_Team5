@@ -5,7 +5,6 @@ from argparse import Namespace
 from pathlib import Path
 
 from GAVEL.app.dtos.consent_decision import ConsentStatus
-from GAVEL.app.usecases.anonymize_consent_form import AnonymizeConsentFormUseCase
 from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetRequest,
     AnonymizeCourseDatasetUseCase,
@@ -24,16 +23,9 @@ from GAVEL.app.usecases.downselect_consented_students import (
 )
 from GAVEL.app.usecases.generate_anonymous_id_map import (
     GenerateAnonymousIdMapUseCase,
+    build_anonymize_course_dataset_use_case,
 )
 from GAVEL.app_context import AppContext
-from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
-    CanvasConsentFormCSVReader,
-)
-from GAVEL.infra.csv.canvas_gradebook_csv_reader import LegacyGradebookCSVReader
-from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
-from GAVEL.infra.json.rubric_assessment_json_reader import (
-    RubricAssessmentJSONReader,
-)
 
 
 def handle_anonymize_run(ctx: AppContext, args: Namespace) -> int:
@@ -67,6 +59,7 @@ def handle_anonymize_run(ctx: AppContext, args: Namespace) -> int:
         anonymize_gradescope_submissions_use_case=AnonymizeGradescopeSubmissionsUseCase(),
         anonymize_gradescope_yml_use_case=AnonymizeGradescopeYMLUseCase(),
     )
+    use_case = build_anonymize_course_dataset_use_case()
 
     try:
         result = use_case.execute(

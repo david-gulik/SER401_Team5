@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,12 +47,14 @@ from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
 from GAVEL.infra.json.rubric_assessment_json_reader import (
     RubricAssessmentJSONReader,
 )
+from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 
 
 @dataclass(frozen=True)
 class AnonymizeCourseDatasetRequest:
     snapshot_dir: Path
     seed: int | None = None
+    replace_existing: bool = False
 
 
 @dataclass(frozen=True)
@@ -88,6 +91,7 @@ class AnonymizeCourseDatasetUseCase:
         anonymize_rubric_use_case: AnonymizeRubricAssessmentUseCase,
         anonymize_gradescope_submissions_use_case: AnonymizeGradescopeSubmissionsUseCase,
         anonymize_gradescope_yml_use_case: AnonymizeGradescopeYMLUseCase,
+        gradescope_reader: YamlGradescopeReader,
     ) -> None:
         self._consent_form_reader = consent_form_reader
         self._downselect_use_case = downselect_use_case
@@ -101,6 +105,8 @@ class AnonymizeCourseDatasetUseCase:
         self._anonymize_consent_form_use_case = anonymize_consent_form_use_case
         self._rubric_reader = rubric_reader
         self._anonymize_rubric_use_case = anonymize_rubric_use_case
+        self._gradescope_reader = gradescope_reader
+        self._anonymize_gradescope_use_case = anonymize_gradescope_use_case
 
     def execute(
         self,
@@ -108,16 +114,20 @@ class AnonymizeCourseDatasetUseCase:
     ) -> AnonymizeCourseDatasetResult:
         original_dir = request.snapshot_dir / "original"
         output_dir = request.snapshot_dir / "anonymized"
-        output_dir.mkdir(parents=True, exist_ok=True)
         consent_form_path = original_dir / "consent_form.csv"
         roster_path = original_dir / "roster.csv"
         gradebook_path = original_dir / "gradebook.csv"
         assignments_dir = original_dir / "assignments"
         anonymized_assignment_dir = output_dir / "anonymized"
         anonymized_assignment_dir.mkdir(parents=True, exist_ok=True)
+        submissions_dir = original_dir / "submissions"
 
         if not consent_form_path.exists():
             raise ValueError("Consent form is missing from the dataset")
+
+        if request.replace_existing and output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         consent_entries = tuple(self._consent_form_reader.read(str(consent_form_path)))
 
@@ -418,6 +428,42 @@ class AnonymizeCourseDatasetUseCase:
 
         rubric_processed = sum(len(result.assessments) for _, result in rubric_results)
 
+        consented_sis_ids = set(roster_consented_ids)
+
+        if submissions_dir.exists():
+            metadata_files = sorted(submissions_dir.rglob("submission_metadata.yml"))
+
+            for metadata_path in metadata_files:
+                submissions = self._gradescope_reader.read(metadata_path)
+
+                extracted_dir = metadata_path.parent
+                module_dir = submissions_dir / metadata_path.relative_to(submissions_dir).parts[0]
+
+                for submission in submissions:
+                    try:
+                        sis_id = int(submission.submitter.sid)
+                    except (TypeError, ValueError):
+                        continue
+
+                    if sis_id not in consented_sis_ids:
+                        continue
+
+                    submission_input = extracted_dir / submission.submission_key
+
+                    if not submission_input.is_dir():
+                        continue
+
+                    submission_output = (
+                        output_dir / "submissions" / module_dir.name / submission.submission_key
+                    )
+
+                    self._anonymize_gradescope_use_case.execute(
+                        AnonymizeGradescopeSubmissionsRequest(
+                            input_folder=str(submission_input),
+                            output_folder=str(submission_output),
+                        )
+                    )
+
         return AnonymizeCourseDatasetResult(
             output_dir=output_dir,
             consent_form=ArtifactReport(
@@ -434,3 +480,21 @@ class AnonymizeCourseDatasetUseCase:
             ),
             consent_decisions=consent_result.decisions,
         )
+
+
+def build_anonymize_course_dataset_use_case() -> AnonymizeCourseDatasetUseCase:
+    """The pipeline wired with GAVEL's own readers and anonymizers."""
+    return AnonymizeCourseDatasetUseCase(
+        consent_form_reader=CanvasConsentFormCSVReader(),
+        downselect_use_case=DownselectConsentedStudentsUseCase(),
+        id_map_use_case=GenerateAnonymousIdMapUseCase(),
+        roster_reader=CanvasRosterCSVReader(),
+        anonymize_roster_use_case=AnonymizeRosterUseCase(),
+        gradebook_reader=LegacyGradebookCSVReader(),
+        anonymize_gradebook_use_case=AnonymizeGradebookUseCase(),
+        anonymize_consent_form_use_case=AnonymizeConsentFormUseCase(),
+        rubric_reader=RubricAssessmentJSONReader(),
+        anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
+        gradescope_reader=YamlGradescopeReader(),
+        anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
+    )
