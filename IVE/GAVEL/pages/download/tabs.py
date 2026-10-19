@@ -762,27 +762,24 @@ class DownloadTab(ScrollableTab):
         self._download_all_btn.setEnabled(not busy and state.can_download_all)
         self._download_all_quizzes_btn.setEnabled(not busy and state.can_download_all_quizzes)
 
-        if self._term_picker.combo.count() != len(state.terms):
-            self._term_picker.set_items(
-                [(t.code, f"{t.code}  {t.name}") for t in state.terms],
-                select=state.selected_term,
-            )
+        # Each list is refilled only when its items differ from the state, so
+        # a user's selection survives an unrelated render.
+        term_items = [(t.code, f"{t.code}  {t.name}") for t in state.terms]
+        if self._term_picker.items() != term_items:
+            self._term_picker.set_items(term_items, select=state.selected_term)
 
-        if self._section_picker.combo.count() != len(state.sections):
-            self._section_picker.set_items(
-                [(s.class_number, s.display_label) for s in state.sections],
-                select=state.class_number,
-            )
+        section_items = [(s.class_number, s.display_label) for s in state.sections]
+        if self._section_picker.items() != section_items:
+            self._section_picker.set_items(section_items, select=state.class_number)
 
-        if self._course_picker.combo.count() != len(state.courses):
-            self._course_picker.set_items(
-                [(str(c.id), _course_label(c)) for c in state.courses],
-                select=state.selected_course_id,
-            )
+        course_items = [(str(c.id), _course_label(c)) for c in state.courses]
+        if self._course_picker.items() != course_items:
+            self._course_picker.set_items(course_items, select=state.selected_course_id)
 
-        if self._quiz_picker.combo.count() != len(state.quizzes):
+        quiz_items = [(str(q.id), _quiz_label(q)) for q in state.quizzes]
+        if self._quiz_picker.items() != quiz_items:
             self._quiz_picker.set_items(
-                [(str(q.id), _quiz_label(q)) for q in state.quizzes],
+                quiz_items,
                 select=state.selected_consent_quiz_id or _likely_consent_quiz(state.quizzes),
             )
 
