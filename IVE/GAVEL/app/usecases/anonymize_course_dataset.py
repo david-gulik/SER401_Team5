@@ -372,7 +372,7 @@ class AnonymizeCourseDatasetUseCase:
                 )
         else:
             print(f"Skipping Gradescope YML anonymization for {assignments_dir}")
-            
+
         # One rubric_assessments.json per assignment folder; see docs/workspace_layout.md.
         rubric_files = sorted(assignments_dir.rglob("rubric_assessments.json"))
 
@@ -457,7 +457,7 @@ class AnonymizeCourseDatasetUseCase:
                         output_dir / "submissions" / module_dir.name / submission.submission_key
                     )
 
-                    self._anonymize_gradescope_use_case.execute(
+                    self._anonymize_gradescope_submissions_use_case.execute(
                         AnonymizeGradescopeSubmissionsRequest(
                             input_folder=str(submission_input),
                             output_folder=str(submission_output),
