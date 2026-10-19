@@ -120,11 +120,18 @@ ROSTER_DOWNLOAD = "Roster"
 GRADEBOOK_DOWNLOAD = "Gradebook"
 GRADESCOPE_DOWNLOAD = "Gradescope Submissions"
 CONSENT_DOWNLOAD = "Consent Form"
+QUIZ_REPORTS_DOWNLOAD = "Quiz Reports"
 RUBRIC_DOWNLOAD = "Rubric Assessment"
 
 # Everything keyed to the selected Canvas course, so a course change resets it.
 CANVAS_DOWNLOADS = frozenset(
-    {GRADEBOOK_DOWNLOAD, GRADESCOPE_DOWNLOAD, CONSENT_DOWNLOAD, RUBRIC_DOWNLOAD}
+    {
+        GRADEBOOK_DOWNLOAD,
+        GRADESCOPE_DOWNLOAD,
+        CONSENT_DOWNLOAD,
+        QUIZ_REPORTS_DOWNLOAD,
+        RUBRIC_DOWNLOAD,
+    }
 )
 
 
@@ -917,6 +924,7 @@ class DownloadViewModel(QObject):
             return
 
         succeeded, skipped, failed = result.succeeded, result.skipped, result.failed
+        existing = result.already_downloaded
         for outcome in skipped:
             self._logger.warning(
                 f"Skipped quiz report for '{outcome.quiz_name}' "
@@ -926,7 +934,8 @@ class DownloadViewModel(QObject):
         quizzes_dir = folder.original.quizzes_dir
         message = (
             f"Quiz reports for course {course_id}: {len(succeeded)} saved to {quizzes_dir}, "
-            f"{len(skipped)} skipped, {len(failed)} failed."
+            f"{len(existing)} already downloaded, {len(skipped) - len(existing)} skipped, "
+            f"{len(failed)} failed."
         )
         if failed:
             message += " Failed: " + "; ".join(f"{o.quiz_name}: {o.error}" for o in failed)
@@ -937,12 +946,17 @@ class DownloadViewModel(QObject):
         elif skipped:
             status = Status.WARNING
 
+        # Reports already in the folder count too: a rerun finds them all there.
+        completed = self._state.completed
+        if succeeded or existing:
+            completed = completed | {QUIZ_REPORTS_DOWNLOAD}
         self._state = replace(
             self._state,
             is_busy=False,
             status=status,
             message=message,
             last_saved_path=str(quizzes_dir) if succeeded else self._state.last_saved_path,
+            completed=completed,
         )
         self.state_changed.emit(self._state)
         if failed:
@@ -1038,6 +1052,29 @@ class DownloadViewModel(QObject):
                     .saved_path
                 ),
             )
+
+            try:
+                quiz_result = DownloadAllQuizzesUseCase(canvas_client).execute(
+                    DownloadAllQuizzesRequest(course_id=course_id, folder=folder)
+                )
+                for outcome in quiz_result.succeeded:
+                    successes.append(f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name})")
+                    completed.add(QUIZ_REPORTS_DOWNLOAD)
+                    last_path = outcome.saved_path
+                for outcome in quiz_result.skipped:
+                    if outcome.already_downloaded:
+                        skipped.append(f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name})")
+                        completed.add(QUIZ_REPORTS_DOWNLOAD)
+                    else:
+                        successes.append(
+                            f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name}) [skipped: no report]"
+                        )
+                for outcome in quiz_result.failed:
+                    failures.append(
+                        f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name}): {outcome.error}"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"{QUIZ_REPORTS_DOWNLOAD}: {exc}")
 
             try:
                 rubric_result = DownloadAllRubricAssessmentsUseCase(canvas_client).execute(
