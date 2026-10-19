@@ -52,47 +52,58 @@ class AnonymizeGradescopeYMLUseCase:
         downselected_count = 0
 
         with open(request.input_YML, encoding="utf-8") as file:
-            raw = file.read()
+            data = yaml.safe_load(file)
 
-        normalized = re.sub(r"^(\s*):(\w+):", r"\1\2:", raw, flags=re.MULTILINE)
-        data = yaml.safe_load(normalized)
         downselected = []
 
         for key, submission in data.items():
             if not key.startswith("submission_"):
                 continue
 
-            submitters = submission.get("submitters")
-            filtered_submitters = []
+            submitters = submission.get(":submitters")
             if not isinstance(submitters, list):
                 print(f"Warning: {key} has no valid submitters list")
                 downselected.append(key)
                 downselected_count += 1
                 continue
 
+            # Collect SIDs safely
             sids = set()
             for s in submitters:
-                sid = int(s.get("sid"))
-                if sid is None:
+                sid_raw = s.get(":sid")
+                if sid_raw is None:
                     print(f"Warning: submitter missing SID in {key}")
+                    continue
+                try:
+                    sid = int(sid_raw)
+                except ValueError:
+                    print(f"Warning: non-integer SID in {key}: {sid_raw}")
                     continue
                 sids.add(sid)
 
+            # If none of the submitters are consented → delete whole submission
             if sids.isdisjoint(consented):
                 downselected.append(key)
                 downselected_count += 1
-                break
+                continue
 
-            # Rewrite sid, anonymize name and email
-            s["sid"] = id_map[sid]
-            s[":name"] = f"Anon {id_map[sid]}"
-            s["email"] = "anon@asu.edu"
-            filtered_submitters.append(s)
+            # Otherwise anonymize ALL submitters
+            filtered_submitters = []
+            for s in submitters:
+                sid_raw = s.get(":sid")
+                if sid_raw is None:
+                    continue
+                sid = int(sid_raw)
 
-            # Only update if not marked for deletion
-            if key not in downselected:
-                submission["submitters"] = filtered_submitters
-                processed_count += 1
+                # Rewrite sid, anonymize name/email
+                s[":sid"] = id_map[sid]
+                s[":name"] = f"Anon {id_map[sid]}"
+                s[":email"] = "anon@asu.edu"
+
+                filtered_submitters.append(s)
+
+            submission[":submitters"] = filtered_submitters
+            processed_count += 1
 
         for key in downselected:
             del data[key]

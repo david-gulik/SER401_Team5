@@ -332,32 +332,37 @@ class AnonymizeCourseDatasetUseCase:
             )
 
         # Anonymize Gradescope submissions
-        self._anonymize_gradescope_submissions_use_case.execute(
-            AnonymizeGradescopeSubmissionsRequest(
-                input_folder=assignments_dir,
-                output_folder=anonymized_assignment_dir,
-            )
-        )
-
-        # Anonymize Gradescope ymls
-        ag = AnonymizeGradescopeYMLUseCase()
-        for path in assignments_dir.rglob("*.yml"):
-            path_parts = list(path.parts)
-            output_parts = ["anonymized" if p == "original" else p for p in path_parts]
-            output_path = (
-                Path(*output_parts).with_name("submission_metadata_anonymized").with_suffix(".yml")
-            )
-            output_path.parent.mkdir(exist_ok=True, parents=True)
-
-            ag.execute(
-                AnonymizeGradescopeYMLRequest(
-                    input_YML=path,
-                    output_YML=output_path,
-                    consented_ids=consent_result.consented_ids,
-                    id_map=id_map,
+        if assignments_dir.exists() and assignments_dir.is_dir():
+            self._anonymize_gradescope_submissions_use_case.execute(
+                AnonymizeGradescopeSubmissionsRequest(
+                    input_folder=assignments_dir,
+                    output_folder=anonymized_assignment_dir,
                 )
             )
+        else:
+            print(f"Skipping Gradescope submission anonymization for {assignments_dir}")
+        # Anonymize Gradescope ymls
+        if assignments_dir.exists() and assignments_dir.is_dir():
+            ag = AnonymizeGradescopeYMLUseCase()
+            for path in assignments_dir.rglob("*.yml"):
+                path_parts = list(path.parts)
+                output_parts = ["anonymized" if p == "original" else p for p in path_parts]
+                output_path = (
+                    Path(*output_parts).with_name("submission_metadata_anonymized").with_suffix(".yml")
+                )
+                output_path.parent.mkdir(exist_ok=True, parents=True)
 
+                ag.execute(
+                    AnonymizeGradescopeYMLRequest(
+                        input_YML=path,
+                        output_YML=output_path,
+                        consented_ids=consent_result.consented_ids,
+                        id_map=id_map,
+                    )
+                )
+        else:
+            print(f"Skipping Gradescope YML anonymization for {assignments_dir}")
+            
         # One rubric_assessments.json per assignment folder; see docs/workspace_layout.md.
         rubric_files = sorted(assignments_dir.rglob("rubric_assessments.json"))
 
