@@ -120,11 +120,18 @@ ROSTER_DOWNLOAD = "Roster"
 GRADEBOOK_DOWNLOAD = "Gradebook"
 GRADESCOPE_DOWNLOAD = "Gradescope Submissions"
 CONSENT_DOWNLOAD = "Consent Form"
+QUIZ_REPORTS_DOWNLOAD = "Quiz Reports"
 RUBRIC_DOWNLOAD = "Rubric Assessment"
 
 # Everything keyed to the selected Canvas course, so a course change resets it.
 CANVAS_DOWNLOADS = frozenset(
-    {GRADEBOOK_DOWNLOAD, GRADESCOPE_DOWNLOAD, CONSENT_DOWNLOAD, RUBRIC_DOWNLOAD}
+    {
+        GRADEBOOK_DOWNLOAD,
+        GRADESCOPE_DOWNLOAD,
+        CONSENT_DOWNLOAD,
+        QUIZ_REPORTS_DOWNLOAD,
+        RUBRIC_DOWNLOAD,
+    }
 )
 
 
@@ -335,12 +342,21 @@ class DownloadViewModel(QObject):
     def set_term(self, value: str) -> None:
         if value == self._state.selected_term:
             return
-        self._state = replace(
+        self._state = self._with_term(value)
+        self.state_changed.emit(self._state)
+
+    def _with_term(self, term: str) -> DownloadUiState:
+        """The state for ``term``: no sections and no roster mark.
+
+        The Download tab empties the Step 2 dropdown in turn, which drops a
+        class number picked from it. A typed class number is left alone.
+        """
+        return replace(
             self._state,
-            selected_term=value,
+            selected_term=term,
+            sections=(),
             completed=self._state.completed - {ROSTER_DOWNLOAD},
         )
-        self.state_changed.emit(self._state)
 
     def set_subject(self, value: str) -> None:
         text = value.strip().upper()
@@ -464,10 +480,11 @@ class DownloadViewModel(QObject):
             if t.default:
                 default_term = t.code
                 break
+        if default_term != self._state.selected_term:
+            self._state = self._with_term(default_term)
         self._state = replace(
             self._state,
             terms=terms_seq,
-            selected_term=default_term,
             is_busy=False,
             status=Status.NOMINAL,
             message=f"Loaded {len(terms_seq)} terms.",
@@ -502,16 +519,18 @@ class DownloadViewModel(QObject):
 
     def _on_sections_found(self, sections: object) -> None:
         sections_seq: Sequence[ClassSection] = sections  # type: ignore[assignment]
-        if not sections_seq:
-            self._set_idle(Status.WARNING, "No sections found.")
-            return
-        sorted_sections = sorted(sections_seq, key=lambda s: (s.subject, s.catalog_number))
+        # Every search replaces the list; an empty result leaves it empty.
+        sorted_sections = tuple(sorted(sections_seq, key=lambda s: (s.subject, s.catalog_number)))
+        if sorted_sections:
+            status, message = Status.NOMINAL, f"Found {len(sorted_sections)} section(s)."
+        else:
+            status, message = Status.WARNING, "No sections found."
         self._state = replace(
             self._state,
             sections=sorted_sections,
             is_busy=False,
-            status=Status.NOMINAL,
-            message=f"Found {len(sorted_sections)} section(s).",
+            status=status,
+            message=message,
         )
         self.state_changed.emit(self._state)
 
@@ -917,6 +936,7 @@ class DownloadViewModel(QObject):
             return
 
         succeeded, skipped, failed = result.succeeded, result.skipped, result.failed
+        existing = result.already_downloaded
         for outcome in skipped:
             self._logger.warning(
                 f"Skipped quiz report for '{outcome.quiz_name}' "
@@ -926,7 +946,8 @@ class DownloadViewModel(QObject):
         quizzes_dir = folder.original.quizzes_dir
         message = (
             f"Quiz reports for course {course_id}: {len(succeeded)} saved to {quizzes_dir}, "
-            f"{len(skipped)} skipped, {len(failed)} failed."
+            f"{len(existing)} already downloaded, {len(skipped) - len(existing)} skipped, "
+            f"{len(failed)} failed."
         )
         if failed:
             message += " Failed: " + "; ".join(f"{o.quiz_name}: {o.error}" for o in failed)
@@ -937,12 +958,17 @@ class DownloadViewModel(QObject):
         elif skipped:
             status = Status.WARNING
 
+        # Reports already in the folder count too: a rerun finds them all there.
+        completed = self._state.completed
+        if succeeded or existing:
+            completed = completed | {QUIZ_REPORTS_DOWNLOAD}
         self._state = replace(
             self._state,
             is_busy=False,
             status=status,
             message=message,
             last_saved_path=str(quizzes_dir) if succeeded else self._state.last_saved_path,
+            completed=completed,
         )
         self.state_changed.emit(self._state)
         if failed:
@@ -1038,6 +1064,29 @@ class DownloadViewModel(QObject):
                     .saved_path
                 ),
             )
+
+            try:
+                quiz_result = DownloadAllQuizzesUseCase(canvas_client).execute(
+                    DownloadAllQuizzesRequest(course_id=course_id, folder=folder)
+                )
+                for outcome in quiz_result.succeeded:
+                    successes.append(f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name})")
+                    completed.add(QUIZ_REPORTS_DOWNLOAD)
+                    last_path = outcome.saved_path
+                for outcome in quiz_result.skipped:
+                    if outcome.already_downloaded:
+                        skipped.append(f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name})")
+                        completed.add(QUIZ_REPORTS_DOWNLOAD)
+                    else:
+                        successes.append(
+                            f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name}) [skipped: no report]"
+                        )
+                for outcome in quiz_result.failed:
+                    failures.append(
+                        f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name}): {outcome.error}"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                failures.append(f"{QUIZ_REPORTS_DOWNLOAD}: {exc}")
 
             try:
                 rubric_result = DownloadAllRubricAssessmentsUseCase(canvas_client).execute(

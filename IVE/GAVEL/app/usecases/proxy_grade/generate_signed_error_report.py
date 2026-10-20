@@ -79,15 +79,18 @@ def _student_key(email: str) -> str:
     return email.split("@")[0].strip().lower()
 
 
-def _no_tests_ran_on_the_submitted_code(
-    submission: GradescopeSubmission, exc: MissingTestResultsError, mapping: ProxyGradeMapping
-) -> bool:
-    """A submission scores 0 rather than being excluded when every test that the
-    mapping refers to is missing and the autograder's own output explains why,
-    as opposed to Gradescope's generic message for when the autograder process
-    itself crashed or timed out.
+def _no_tests_ran_on_the_submitted_code(submission: GradescopeSubmission) -> bool:
+    """A submission scores 0 rather than being reported as failed when it has no
+    test results at all and the autograder's own output explains why, as opposed
+    to Gradescope's generic message for when the autograder process itself
+    crashed or timed out.
+
+    A submission that has test results but none matching the mapping, for
+    example after a test rename or when a mapping is applied to the wrong
+    assignment, is reported as failed instead of scored zero, since scoring it
+    zero would hide the mismatch.
     """
-    if len(exc.missing) != len(mapping.test_names()):
+    if submission.tests:
         return False
     if not submission.output:
         return False
@@ -128,7 +131,7 @@ def compute_signed_error_rows(
             proxy_result = compute_proxy_grade(submission, mapping)
             proxy_score = proxy_result.total_score
         except MissingTestResultsError as exc:
-            if _no_tests_ran_on_the_submitted_code(submission, exc, mapping):
+            if _no_tests_ran_on_the_submitted_code(submission):
                 proxy_score = 0.0
             else:
                 failed.append(

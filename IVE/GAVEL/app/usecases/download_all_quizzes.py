@@ -30,6 +30,8 @@ class QuizDownloadOutcome:
     saved_path: Path | None
     skipped_reason: str | None
     error: str | None
+    # A skip because the CSV is already in the folder, not because Canvas had no report.
+    already_downloaded: bool = False
 
     @property
     def status(self) -> str:
@@ -55,6 +57,11 @@ class DownloadAllQuizzesResult:
     @property
     def skipped(self) -> tuple[QuizDownloadOutcome, ...]:
         return tuple(o for o in self.outcomes if o.status == "skipped")
+
+    @property
+    def already_downloaded(self) -> tuple[QuizDownloadOutcome, ...]:
+        """The skipped quizzes whose CSV was already in the folder."""
+        return tuple(o for o in self.skipped if o.already_downloaded)
 
 
 class DownloadAllQuizzesUseCase:
@@ -108,6 +115,7 @@ class DownloadAllQuizzesUseCase:
                         saved_path=path,
                         skipped_reason=str(exc),
                         error=None,
+                        already_downloaded=True,
                     )
                 )
 
