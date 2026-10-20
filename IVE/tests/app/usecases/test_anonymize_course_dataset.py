@@ -10,6 +10,9 @@ from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetUseCase,
 )
 from GAVEL.app.usecases.anonymize_gradebook import AnonymizeGradebookUseCase
+from GAVEL.app.usecases.anonymize_gradescope_submissions import (
+    AnonymizeGradescopeSubmissionsUseCase,
+)
 from GAVEL.app.usecases.anonymize_roster import AnonymizeRosterUseCase
 from GAVEL.app.usecases.anonymize_rubric_assessment import (
     AnonymizeRubricAssessmentUseCase,
@@ -29,6 +32,7 @@ from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
 from GAVEL.infra.json.rubric_assessment_json_reader import (
     RubricAssessmentJSONReader,
 )
+from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 
 
 @pytest.fixture
@@ -44,6 +48,8 @@ def use_case() -> AnonymizeCourseDatasetUseCase:
         anonymize_consent_form_use_case=AnonymizeConsentFormUseCase(),
         rubric_reader=RubricAssessmentJSONReader(),
         anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
+        gradescope_reader=YamlGradescopeReader(),
+        anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
     )
 
 
@@ -111,6 +117,52 @@ def write_rubric(snapshot_dir: Path) -> Path:
     )
 
     return rubric_path
+
+
+def write_gradescope_submissions(snapshot_dir: Path) -> None:
+    extracted_dir = (
+        snapshot_dir / "original" / "submissions" / "m1" / "extracted" / "assignment_123_export"
+    )
+    extracted_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata_path = extracted_dir / "submission_metadata.yml"
+
+    metadata_path.write_text(
+        """
+submission_1:
+  :submitters:
+    - :sid: "9999999999"
+      :email: "test@example.com"
+      :name: "Test Student"
+  :created_at: 2026-10-07 12:00:00
+  :results:
+    tests: []
+
+submission_2:
+  :submitters:
+    - :sid: "8888888888"
+      :email: "other@example.com"
+      :name: "Other Student"
+  :created_at: 2026-10-07 12:00:00
+  :results:
+    tests: []
+""".strip(),
+        encoding="utf-8",
+    )
+
+    included_dir = extracted_dir / "submission_1"
+    included_dir.mkdir()
+    (included_dir / "Main.java").write_text(
+        "class Main { // remove me\n}\n",
+        encoding="utf-8",
+    )
+
+    excluded_dir = extracted_dir / "submission_2"
+    excluded_dir.mkdir()
+    (excluded_dir / "Main.java").write_text(
+        "class Main { // should never be included\n}\n",
+        encoding="utf-8",
+    )
 
 
 def write_consent_form_with_declined_student(snapshot_dir: Path) -> None:
@@ -281,6 +333,33 @@ class TestFullPipeline:
         assert result.gradebook.processed_count == 1
         assert result.rubric_assessment.processed_count == 1
 
+    def test_gradescope_only_includes_consented_students(
+        self,
+        use_case,
+        tmp_path: Path,
+    ):
+        write_consent_form(tmp_path)
+        write_gradescope_submissions(tmp_path)
+
+        request = AnonymizeCourseDatasetRequest(
+            snapshot_dir=tmp_path,
+            seed=42,
+        )
+
+        use_case.execute(request)
+
+        output_dir = tmp_path / "anonymized" / "submissions" / "m1"
+
+        included_file = output_dir / "submission_1" / "Main_anon.java"
+        excluded_file = output_dir / "submission_2" / "Main_anon.java"
+
+        assert included_file.exists()
+        assert not excluded_file.exists()
+
+        cleaned = included_file.read_text(encoding="utf-8")
+        assert "// remove me" not in cleaned
+        assert "class Main" in cleaned
+
     def test_rubric_is_anonymized_and_preserves_assessment_data(
         self,
         use_case,
@@ -405,7 +484,6 @@ class TestConsentDecisions:
             9999999992: ConsentStatus.DECLINED,
             9999999993: ConsentStatus.NO_RESPONSE,
         }
-
         assert result.roster.processed_count == 1
 
     def test_without_roster_only_respondents_have_decisions(
@@ -425,3 +503,49 @@ class TestConsentDecisions:
         assert [decision.status for decision in result.consent_decisions] == [
             ConsentStatus.INCLUDED,
         ]
+
+
+class TestReplaceExisting:
+    def test_stale_files_are_kept_by_default(self, use_case, tmp_path: Path):
+        write_consent_form(tmp_path)
+        stale = tmp_path / "anonymized" / "assignments" / "old" / "rubric_assessments.json"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("[]", encoding="utf-8")
+
+        use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path, seed=42))
+
+        assert stale.exists()
+
+    def test_replace_existing_clears_anonymized_first(self, use_case, tmp_path: Path):
+        write_consent_form(tmp_path)
+        stale = tmp_path / "anonymized" / "assignments" / "old" / "rubric_assessments.json"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("[]", encoding="utf-8")
+
+        use_case.execute(
+            AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path, seed=42, replace_existing=True)
+        )
+
+        assert not stale.exists()
+        assert (tmp_path / "anonymized" / "consent_form.csv").exists()
+
+    def test_missing_consent_form_leaves_anonymized_untouched(self, use_case, tmp_path: Path):
+        (tmp_path / "original").mkdir()
+        kept = tmp_path / "anonymized" / "roster.csv"
+        kept.parent.mkdir()
+        kept.write_text("x", encoding="utf-8")
+
+        with pytest.raises(ValueError):
+            use_case.execute(
+                AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path, replace_existing=True)
+            )
+
+        assert kept.exists()
+
+    def test_missing_consent_form_does_not_create_anonymized(self, use_case, tmp_path: Path):
+        (tmp_path / "original").mkdir()
+
+        with pytest.raises(ValueError):
+            use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path))
+
+        assert not (tmp_path / "anonymized").exists()

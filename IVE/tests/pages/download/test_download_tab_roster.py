@@ -22,6 +22,9 @@ from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
 TERMS = [TermInfo("2267", "Fall 2026", default=True)]
 FIRST = ClassSection("12345", "SER", "401", "Capstone I", "Gary", "TTh 1:30")
 SECOND = ClassSection("12346", "SER", "401", "Capstone I", "Ruben", "MW 3:00")
+# Spring 2026 has as many sections as Fall 2026, with different class numbers.
+SPRING_FIRST = ClassSection("23456", "SER", "401", "Capstone I", "Gary", "MW 10:30")
+SPRING_SECOND = ClassSection("23457", "SER", "401", "Capstone I", "Ruben", "TTh 9:00")
 TYPED = "99999"
 
 
@@ -67,6 +70,16 @@ def search(env, qapp, subject: str = "SER", catalog: str = "401") -> None:
     wait_for_workers(qapp)
 
 
+def type_term(env, code: str) -> None:
+    """Change Step 1 the way a user does, through the term input rather than the view model."""
+    env.tab.term_input.set_mode(InputMode.MANUAL)
+    env.tab.term_input.manual_field().setText(code)
+
+
+def listed_class_numbers(env) -> list[str]:
+    return [value for value, _label in env.section.picker().items()]
+
+
 def test_only_one_section_input_is_visible_at_a_time(env):
     section = env.section
     assert section.mode() is InputMode.PICKER
@@ -94,6 +107,58 @@ def test_picking_another_result_changes_the_class_number(qapp, env):
     search(qapp=qapp, env=env)
     env.section.picker().combo.setCurrentIndex(1)
     assert class_number(env) == SECOND.class_number
+
+
+def test_changing_the_term_clears_the_section_dropdown_and_class_number(qapp, env):
+    type_term(env, "2267")
+    search(qapp=qapp, env=env)
+    assert listed_class_numbers(env) == [FIRST.class_number, SECOND.class_number]
+    assert class_number(env) == FIRST.class_number
+
+    type_term(env, "2261")
+
+    assert listed_class_numbers(env) == []
+    assert not env.section.picker().combo.isEnabled()
+    assert class_number(env) == ""
+    assert env.section.readout_text() == env.section.EMPTY_PICKER_TEXT
+    assert not env.tab._download_roster_btn.isEnabled()
+
+
+def test_find_sections_after_a_term_change_lists_only_the_new_term(qapp, env):
+    type_term(env, "2267")
+    search(qapp=qapp, env=env)
+
+    type_term(env, "2261")
+    env.roster.sections = [SPRING_FIRST, SPRING_SECOND]
+    search(qapp=qapp, env=env)
+
+    assert env.roster.section_queries == [("2267", "SER", "401"), ("2261", "SER", "401")]
+    assert listed_class_numbers(env) == [SPRING_FIRST.class_number, SPRING_SECOND.class_number]
+    assert class_number(env) == SPRING_FIRST.class_number
+    assert env.section.readout_text() == SPRING_FIRST.display_label
+    assert env.tab._download_roster_btn.isEnabled()
+
+
+def test_find_sections_replaces_a_list_of_the_same_size(qapp, env):
+    type_term(env, "2267")
+    search(qapp=qapp, env=env)
+    env.section.picker().combo.setCurrentIndex(1)
+    assert class_number(env) == SECOND.class_number
+
+    env.roster.sections = [SPRING_FIRST, SPRING_SECOND]
+    search(qapp=qapp, env=env, catalog="402")
+
+    assert listed_class_numbers(env) == [SPRING_FIRST.class_number, SPRING_SECOND.class_number]
+    assert class_number(env) == SPRING_FIRST.class_number
+
+
+def test_changing_the_term_keeps_a_typed_class_number(env):
+    type_term(env, "2267")
+    env.section.set_mode(InputMode.MANUAL)
+    env.section.manual_field().setText(TYPED)
+    type_term(env, "2261")
+    assert class_number(env) == TYPED
+    assert env.tab._download_roster_btn.isEnabled()
 
 
 def test_manual_class_number_enables_roster_download(env):

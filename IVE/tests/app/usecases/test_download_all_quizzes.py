@@ -79,6 +79,7 @@ def test_quiz_already_in_the_folder_is_skipped_not_overwritten(tmp_path):
 
     assert result.succeeded == ()
     assert len(result.skipped) == 1 and "already downloaded" in result.skipped[0].skipped_reason
+    assert result.already_downloaded == result.skipped
     assert course_folder(tmp_path).original.quiz_csv(101).read_bytes() == b"first\n"
     assert client.attempted_quiz_ids == [101]
 
@@ -110,6 +111,7 @@ def test_unavailable_report_is_skipped_and_batch_continues(tmp_path):
 
     assert result.skipped[0].quiz_id == 202
     assert result.skipped[0].skipped_reason == "No report available"
+    assert result.already_downloaded == ()
 
     assert client.attempted_quiz_ids == [101, 202, 303]
 

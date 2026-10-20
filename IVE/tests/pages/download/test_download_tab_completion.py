@@ -8,10 +8,11 @@ from types import SimpleNamespace
 import pytest
 from PyQt6.QtWidgets import QMessageBox
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse
+from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasQuiz
 from GAVEL.pages.download.tabs import DONE_MARK, DownloadTab
 from GAVEL.pages.download.viewmodel import (
     GRADEBOOK_DOWNLOAD,
+    QUIZ_REPORTS_DOWNLOAD,
     ROSTER_DOWNLOAD,
     DownloadViewModel,
 )
@@ -29,6 +30,10 @@ class GradebookCanvasClient(FakeCanvasClient):
         self.download_calls.append("fetch_gradebook_csv")
         return b"Student,ID\n"
 
+    def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
+        self.download_calls.append("fetch_quiz_student_analysis")
+        return b"student,score\n"
+
 
 def pump(qapp) -> None:
     for _ in range(5):
@@ -38,7 +43,9 @@ def pump(qapp) -> None:
 @pytest.fixture
 def env(qapp, theme, tmp_path: Path, monkeypatch) -> SimpleNamespace:
     monkeypatch.setenv("CANVAS_TOKEN", "test-token")
-    canvas = GradebookCanvasClient(courses=[SECOND, FIRST])
+    canvas = GradebookCanvasClient(
+        courses=[SECOND, FIRST], quizzes=[CanvasQuiz(id=101, name="Quiz One")]
+    )
     vm = DownloadViewModel(
         roster_client=FakeRosterClient(),
         canvas_client=canvas,
@@ -73,13 +80,21 @@ def selected(env) -> str:
 
 
 def test_buttons_start_without_a_mark(env):
-    for name in (ROSTER_DOWNLOAD, GRADEBOOK_DOWNLOAD):
+    for name in (ROSTER_DOWNLOAD, GRADEBOOK_DOWNLOAD, QUIZ_REPORTS_DOWNLOAD):
         assert DONE_MARK not in env.tab.download_button(name).text()
 
 
 def test_gradebook_button_earns_a_mark_after_success(env):
     env.tab.download_button(GRADEBOOK_DOWNLOAD).click()
     assert env.tab.download_button(GRADEBOOK_DOWNLOAD).text() == f"Download Gradebook {DONE_MARK}"
+
+
+def test_quiz_reports_button_earns_a_mark_after_success(env):
+    env.tab.download_button(QUIZ_REPORTS_DOWNLOAD).click()
+    assert (
+        env.tab.download_button(QUIZ_REPORTS_DOWNLOAD).text()
+        == f"Download All Quiz Reports {DONE_MARK}"
+    )
 
 
 def test_roster_button_earns_a_mark_and_loses_it_on_a_new_class(qapp, env):
