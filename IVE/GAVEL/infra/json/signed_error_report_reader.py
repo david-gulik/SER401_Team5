@@ -14,10 +14,9 @@ def read_signed_errors(path: Path) -> tuple[float, ...]:
     (e.g. a heat map report was chosen instead).
     """
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    rows = payload.get("rows")
-    if rows is None:
+    if not isinstance(payload, dict) or not isinstance(payload.get("rows"), list):
         raise ValueError(f"{path.name} is not a report file (missing 'rows').")
     try:
-        return tuple(float(row["signed_error"]) for row in rows)
-    except KeyError as exc:
-        raise ValueError(f"{path.name} is not a signed-error report (missing {exc}).") from exc
+        return tuple(float(row["signed_error"]) for row in payload["rows"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"{path.name} is not a signed-error report ({exc}).") from exc
