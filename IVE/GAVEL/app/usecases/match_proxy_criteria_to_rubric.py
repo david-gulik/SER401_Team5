@@ -28,8 +28,18 @@ def match_proxy_criteria_to_rubric(
     alone (e.g. "course_insert::memory" vs "course_insert:: memory"). Raises
     UnmatchedProxyCriterionError, naming every proxy criterion with no match
     at once, so a mapping that has drifted from its rubric is caught early.
+    Raises ValueError if two rubric criteria normalize to the same name, since
+    a silent collision would otherwise match a criterion to the wrong one.
     """
-    by_normalized_name = {_normalize(c.description): c for c in rubric.criteria}
+    by_normalized_name: dict[str, RubricCriterionDefinition] = {}
+    for criterion in rubric.criteria:
+        key = _normalize(criterion.description)
+        if key in by_normalized_name:
+            raise ValueError(
+                "Rubric criteria are ambiguous after normalization: "
+                f"{by_normalized_name[key].description!r} and {criterion.description!r}"
+            )
+        by_normalized_name[key] = criterion
 
     unmatched = [
         criterion.name

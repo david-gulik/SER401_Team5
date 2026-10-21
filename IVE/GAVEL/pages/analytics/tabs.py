@@ -242,9 +242,13 @@ class GenerateReportCard(QWidget):
         module_text = self._module_box.currentText()
         if course is None or not module_text:
             return
-        self._rubric_assignments = self._view_model.list_rubric_assignments(
-            course, int(module_text)
-        )
+        try:
+            self._rubric_assignments = self._view_model.list_rubric_assignments(
+                course, int(module_text)
+            )
+        except (MissingArtifactError, OSError, ValueError) as exc:
+            self._status.setText(f"Could not read the manifest: {exc}")
+            return
         self._rubric_box.addItems([a.name for a in self._rubric_assignments])
         index = self._rubric_box.findText(previous)
         if index >= 0:

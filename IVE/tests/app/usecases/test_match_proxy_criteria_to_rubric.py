@@ -74,3 +74,10 @@ def test_names_every_unmatched_criterion() -> None:
         match_proxy_criteria_to_rubric(SER334_M2, rubric)
 
     assert set(exc_info.value.unmatched) == {"schedule_load", "schedule_save"}
+
+
+def test_two_criteria_that_normalize_the_same_are_rejected_instead_of_silently_merged() -> None:
+    rubric = _rubric(("main menu", "Main Menu") + _M2_CRITERION_DESCRIPTIONS[1:])
+
+    with pytest.raises(ValueError, match="ambiguous"):
+        match_proxy_criteria_to_rubric(SER334_M2, rubric)

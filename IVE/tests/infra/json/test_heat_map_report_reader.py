@@ -86,3 +86,11 @@ def test_a_file_with_no_rows_raises_a_clear_error(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="not a report file"):
         read_criterion_score_pairs(path)
+
+
+def test_a_file_whose_top_level_is_a_list_raises_a_clear_error(tmp_path: Path) -> None:
+    path = tmp_path / "rubric_assessments.json"
+    path.write_text(json.dumps([{"student_id": "a"}]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not a report file"):
+        read_criterion_score_pairs(path)

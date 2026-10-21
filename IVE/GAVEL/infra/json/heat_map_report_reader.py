@@ -16,18 +16,17 @@ def read_criterion_score_pairs(path: Path) -> tuple[CriterionScorePair, ...]:
     a signed-error report was chosen instead).
     """
     data = json.loads(path.read_text(encoding="utf-8"))
-    rows = data.get("rows")
-    if rows is None:
+    if not isinstance(data, dict) or not isinstance(data.get("rows"), list):
         raise ValueError(f"{path.name} is not a report file (missing 'rows').")
 
     try:
         return tuple(
             CriterionScorePair(
-                criterion=row["criterion"],
-                human_points=row["human_points"],
-                proxy_points=row["proxy_points"],
+                criterion=str(row["criterion"]),
+                human_points=float(row["human_points"]),
+                proxy_points=float(row["proxy_points"]),
             )
-            for row in rows
+            for row in data["rows"]
         )
-    except KeyError as exc:
-        raise ValueError(f"{path.name} is not a heat map report (missing {exc}).") from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"{path.name} is not a heat map report ({exc}).") from exc
