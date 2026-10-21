@@ -128,6 +128,17 @@ class ComboPicker(PickerWidget):
     def load_button(self) -> QPushButton:
         return self._load_btn
 
+    def items(self) -> list[tuple[str, str]]:
+        """The ``(value, label)`` pairs currently in the list, in order.
+
+        Lets a caller compare the list against fresh data before calling
+        ``set_items``.
+        """
+        return [
+            (str(self._combo.itemData(i)), self._combo.itemText(i))
+            for i in range(self._combo.count())
+        ]
+
     def set_items(self, items: Sequence[tuple[str, str]], select: str = "") -> None:
         """Replace the list. Selects ``select`` if present, else the first item."""
         self._combo.blockSignals(True)

@@ -33,7 +33,7 @@ TERMS = [
 ]
 
 # Class numbers 87275, 37789, 75307 and 88213 match the Canvas codes below.
-SECTIONS = [
+FALL_2026_SECTIONS = [
     ClassSection("87275", "SER", "402", "Computing Capstone II", "Acuna", "TTh 12:00PM", "C"),
     ClassSection("12345", "SER", "402", "Computing Capstone II", "Gary", "MW 3:00PM", "C"),
     ClassSection("37789", "SER", "401", "Computing Capstone I", "Acuna", "TTh 12:00PM", "C"),
@@ -42,6 +42,14 @@ SECTIONS = [
     ClassSection("88213", "SER", "475", "Found of Machine Learning", "Li", "MW 1:30PM", "C"),
     ClassSection("22222", "CSE", "475", "Found of Machine Learning", "Wu", "TTh 9:00AM", "C"),
 ]
+# Spring 2026 has as many SER 402 sections as Fall 2026, with different class numbers.
+SPRING_2026_SECTIONS = [
+    ClassSection("23456", "SER", "402", "Computing Capstone II", "Acuna", "MW 10:30AM", "C"),
+    ClassSection("23457", "SER", "402", "Computing Capstone II", "Ruben", "TTh 9:00AM", "C"),
+    ClassSection("23458", "SER", "401", "Computing Capstone I", "Gary", "MW 3:00PM", "C"),
+]
+# Summer 2026 and Spring 2027 have no sections: a search there comes back empty.
+SECTIONS_BY_TERM = {"2267": FALL_2026_SECTIONS, "2261": SPRING_2026_SECTIONS}
 
 COURSES = [
     CanvasCourse(
@@ -65,13 +73,19 @@ ASSIGNMENTS = [
 
 
 class SeededRosterClient(FakeRosterClient):
-    """Filters the canned sections by subject and catalog like the real search."""
+    """Serves each term its own sections, filtered by subject and catalog like the real search."""
+
+    def __init__(
+        self, terms: Sequence[TermInfo], sections_by_term: dict[str, Sequence[ClassSection]]
+    ) -> None:
+        super().__init__(terms=terms)
+        self.sections_by_term = sections_by_term
 
     def find_sections(self, term: str, subject: str, catalog_number: str) -> Sequence[ClassSection]:
         self.section_queries.append((term, subject, catalog_number))
         return [
             s
-            for s in self.sections
+            for s in self.sections_by_term.get(term, ())
             if s.subject == subject.upper() and s.catalog_number == catalog_number
         ]
 
@@ -99,7 +113,7 @@ def main() -> None:
     theme = ThemeContext(tokens=tokens)
 
     vm = DownloadViewModel(
-        roster_client=SeededRosterClient(terms=TERMS, sections=SECTIONS),
+        roster_client=SeededRosterClient(terms=TERMS, sections_by_term=SECTIONS_BY_TERM),
         canvas_client=SeededCanvasClient(courses=COURSES, quizzes=QUIZZES, assignments=ASSIGNMENTS),
         default_output_dir=output_dir,
         logger=AppLogger("preview"),

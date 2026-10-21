@@ -76,6 +76,10 @@ class SectionSearchPicker(PickerWidget):
 
     # ---------- PickerWidget contract ----------
 
+    def items(self) -> list[tuple[str, str]]:
+        """The ``(class_number, label)`` pairs currently in the results list."""
+        return self._results.items()
+
     def set_items(self, items: Sequence[tuple[str, str]], select: str = "") -> None:
         self._results.set_items(items, select=select)
 
