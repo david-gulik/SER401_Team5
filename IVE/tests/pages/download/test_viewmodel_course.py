@@ -25,7 +25,6 @@ CANVAS_DOWNLOADS = [
     "download_gradescope_submissions",
     "download_consent",
     "download_rubric_assessment",
-    "download_all_rubric_assessments",
     "download_all_quizzes",
 ]
 
