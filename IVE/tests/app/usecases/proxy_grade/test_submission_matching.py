@@ -60,8 +60,8 @@ def test_no_tests_ran_is_true_when_every_test_is_missing_and_not_an_autograder_c
     try:
         compute_proxy_grade(submission, _MAPPING)
         raise AssertionError("expected MissingTestResultsError")
-    except MissingTestResultsError as exc:
-        assert no_tests_ran_on_the_submitted_code(submission, exc, _MAPPING)
+    except MissingTestResultsError:
+        assert no_tests_ran_on_the_submitted_code(submission)
 
 
 def test_no_tests_ran_is_false_on_an_autograder_crash_message() -> None:
@@ -71,11 +71,11 @@ def test_no_tests_ran_is_false_on_an_autograder_crash_message() -> None:
     try:
         compute_proxy_grade(submission, _MAPPING)
         raise AssertionError("expected MissingTestResultsError")
-    except MissingTestResultsError as exc:
-        assert not no_tests_ran_on_the_submitted_code(submission, exc, _MAPPING)
+    except MissingTestResultsError:
+        assert not no_tests_ran_on_the_submitted_code(submission)
 
 
-def test_no_tests_ran_is_false_when_only_some_tests_are_missing() -> None:
+def test_no_tests_ran_is_false_when_the_submission_has_unmatched_test_results() -> None:
     mapping = ProxyGradeMapping(
         name="two",
         criteria=(
@@ -91,5 +91,5 @@ def test_no_tests_ran_is_false_when_only_some_tests_are_missing() -> None:
     try:
         compute_proxy_grade(submission, mapping)
         raise AssertionError("expected MissingTestResultsError")
-    except MissingTestResultsError as exc:
-        assert not no_tests_ran_on_the_submitted_code(submission, exc, mapping)
+    except MissingTestResultsError:
+        assert not no_tests_ran_on_the_submitted_code(submission)

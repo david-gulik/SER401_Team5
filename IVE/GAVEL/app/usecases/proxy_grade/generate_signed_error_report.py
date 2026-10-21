@@ -98,7 +98,7 @@ def compute_signed_error_rows(
             proxy_result = compute_proxy_grade(submission, mapping)
             proxy_score = proxy_result.total_score
         except MissingTestResultsError as exc:
-            if no_tests_ran_on_the_submitted_code(submission, exc, mapping):
+            if no_tests_ran_on_the_submitted_code(submission):
                 proxy_score = 0.0
             else:
                 failed.append(

@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook, GradebookStudentRow
 from GAVEL.app.dtos.gradescope import GradescopeSubmission
-from GAVEL.app.dtos.proxy_grade_mapping import ProxyGradeMapping
-from GAVEL.app.usecases.proxy_grade.compute_proxy_grade import MissingTestResultsError
 
 # Gradescope message when the autograder process itself crashes or times
 # out, distinct from a message an assignment's own autograder writes about
@@ -41,15 +39,18 @@ def match_submission_to_gradebook_row(
     return next((row for row in gradebook.rows if row.sis_login_id.lower() == login), None)
 
 
-def no_tests_ran_on_the_submitted_code(
-    submission: GradescopeSubmission, exc: MissingTestResultsError, mapping: ProxyGradeMapping
-) -> bool:
-    """A submission scores 0 rather than being excluded when every test that the
-    mapping refers to is missing and the autograder's own output explains why,
-    as opposed to Gradescope's generic message for when the autograder process
-    itself crashed or timed out.
+def no_tests_ran_on_the_submitted_code(submission: GradescopeSubmission) -> bool:
+    """A submission scores 0 rather than being reported as failed when it has no
+    test results at all and the autograder's own output explains why, as opposed
+    to Gradescope's generic message for when the autograder process itself
+    crashed or timed out.
+
+    A submission that has test results but none matching the mapping, for
+    example after a test rename or when a mapping is applied to the wrong
+    assignment, is reported as failed instead of scored zero, since scoring it
+    zero would hide the mismatch.
     """
-    if len(exc.missing) != len(mapping.test_names()):
+    if submission.tests:
         return False
     if not submission.output:
         return False

@@ -89,7 +89,7 @@ def compute_heat_map_rows(
             proxy_result = compute_proxy_grade(submission, mapping)
             criterion_scores = proxy_result.criterion_scores
         except MissingTestResultsError as exc:
-            if no_tests_ran_on_the_submitted_code(submission, exc, mapping):
+            if no_tests_ran_on_the_submitted_code(submission):
                 criterion_scores = tuple(0.0 for _ in mapping.criteria)
             else:
                 failed.append(
