@@ -7,6 +7,22 @@ from pathlib import Path
 from GAVEL.app.dtos.consent_decision import ConsentStatus
 from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetRequest,
+    AnonymizeCourseDatasetUseCase,
+)
+from GAVEL.app.usecases.anonymize_gradebook import AnonymizeGradebookUseCase
+from GAVEL.app.usecases.anonymize_gradescope_submissions import (
+    AnonymizeGradescopeSubmissionsUseCase,
+)
+from GAVEL.app.usecases.anonymize_gradescope_yml import AnonymizeGradescopeYMLUseCase
+from GAVEL.app.usecases.anonymize_roster import AnonymizeRosterUseCase
+from GAVEL.app.usecases.anonymize_rubric_assessment import (
+    AnonymizeRubricAssessmentUseCase,
+)
+from GAVEL.app.usecases.downselect_consented_students import (
+    DownselectConsentedStudentsUseCase,
+)
+from GAVEL.app.usecases.generate_anonymous_id_map import (
+    GenerateAnonymousIdMapUseCase,
     build_anonymize_course_dataset_use_case,
 )
 from GAVEL.app_context import AppContext
@@ -29,6 +45,20 @@ def handle_anonymize_run(ctx: AppContext, args: Namespace) -> int:
         )
         return 2
 
+    use_case = AnonymizeCourseDatasetUseCase(
+        consent_form_reader=CanvasConsentFormCSVReader(),
+        downselect_use_case=DownselectConsentedStudentsUseCase(),
+        id_map_use_case=GenerateAnonymousIdMapUseCase(),
+        roster_reader=CanvasRosterCSVReader(),
+        anonymize_roster_use_case=AnonymizeRosterUseCase(),
+        gradebook_reader=LegacyGradebookCSVReader(),
+        anonymize_gradebook_use_case=AnonymizeGradebookUseCase(),
+        anonymize_consent_form_use_case=AnonymizeConsentFormUseCase(),
+        rubric_reader=RubricAssessmentJSONReader(),
+        anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
+        anonymize_gradescope_submissions_use_case=AnonymizeGradescopeSubmissionsUseCase(),
+        anonymize_gradescope_yml_use_case=AnonymizeGradescopeYMLUseCase(),
+    )
     use_case = build_anonymize_course_dataset_use_case()
 
     try:

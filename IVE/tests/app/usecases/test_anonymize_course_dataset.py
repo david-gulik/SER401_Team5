@@ -13,6 +13,7 @@ from GAVEL.app.usecases.anonymize_gradebook import AnonymizeGradebookUseCase
 from GAVEL.app.usecases.anonymize_gradescope_submissions import (
     AnonymizeGradescopeSubmissionsUseCase,
 )
+from GAVEL.app.usecases.anonymize_gradescope_yml import AnonymizeGradescopeYMLUseCase
 from GAVEL.app.usecases.anonymize_roster import AnonymizeRosterUseCase
 from GAVEL.app.usecases.anonymize_rubric_assessment import (
     AnonymizeRubricAssessmentUseCase,
@@ -48,8 +49,9 @@ def use_case() -> AnonymizeCourseDatasetUseCase:
         anonymize_consent_form_use_case=AnonymizeConsentFormUseCase(),
         rubric_reader=RubricAssessmentJSONReader(),
         anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
+        anonymize_gradescope_submissions_use_case=AnonymizeGradescopeSubmissionsUseCase(),
+        anonymize_gradescope_yml_use_case=AnonymizeGradescopeYMLUseCase(),
         gradescope_reader=YamlGradescopeReader(),
-        anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
     )
 
 
