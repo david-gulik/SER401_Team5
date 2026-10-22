@@ -290,6 +290,54 @@ def test_a_submission_with_no_tests_and_the_autograder_crashed_message_is_exclud
     assert result.failed_submissions[0].submission_id == "5"
 
 
+def test_a_submission_with_unmatched_test_names_is_reported_as_failed_not_scored_zero(
+    tmp_path: Path,
+) -> None:
+    submissions_dir = tmp_path / "submissions"
+    submissions_dir.mkdir()
+    yaml_path = submissions_dir / "student7.yml"
+    yaml_path.write_text("placeholder")
+
+    submission = _submission(
+        "7",
+        "student7@asu.edu",
+        set(),
+        names=["Renamed Test"],
+        output="Could not find a struct in your code named courseNode.",
+    )
+    gradebook = _gradebook(
+        [
+            GradebookStudentRow(
+                student_name="Student Seven",
+                canvas_id=7,
+                sis_login_id="student7",
+                section="001",
+                assignment_scores={_GRADEBOOK_COLUMN: 1.0},
+            )
+        ]
+    )
+
+    use_case = GenerateSignedErrorReportUseCase(
+        gradescope_reader=FakeGradescopeReader({yaml_path: [submission]}),
+        gradebook_reader=FakeGradebookReader(gradebook),
+    )
+
+    result = use_case.execute(
+        GenerateSignedErrorReportRequest(
+            submissions_dir=submissions_dir,
+            mapping=_MAPPING,
+            gradebook_path=tmp_path / "gradebook.csv",
+            gradebook_column=_GRADEBOOK_COLUMN,
+            output_path=tmp_path / "report.json",
+        )
+    )
+
+    assert result.rows == ()
+    assert len(result.failed_submissions) == 1
+    assert result.failed_submissions[0].submission_id == "7"
+    assert result.failed_submissions[0].missing_tests == ("Test A", "Test B", "Test C")
+
+
 def test_a_submission_with_no_tests_and_no_output_is_excluded(tmp_path: Path) -> None:
     submissions_dir = tmp_path / "submissions"
     submissions_dir.mkdir()

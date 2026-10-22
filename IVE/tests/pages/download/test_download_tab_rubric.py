@@ -68,9 +68,8 @@ def test_only_one_assignment_input_is_visible_at_a_time(env):
     assert rubric.manual_field().isVisibleTo(rubric)
 
 
-def test_both_download_buttons_sit_inside_the_rubric_panel(env):
+def test_download_button_sits_inside_the_rubric_panel(env):
     assert env.rubric.isAncestorOf(env.tab._download_rubric_btn)
-    assert env.rubric.isAncestorOf(env.tab._download_all_rubric_btn)
 
 
 def test_assignments_load_with_the_course_and_none_is_preselected(env):
@@ -81,7 +80,6 @@ def test_assignments_load_with_the_course_and_none_is_preselected(env):
     assert assignment_ids(env) == ""
     assert env.rubric.readout_text() == env.rubric.EMPTY_PICKER_TEXT
     assert not env.tab._download_rubric_btn.isEnabled()
-    assert env.tab._download_all_rubric_btn.isEnabled()  # needs only a course
 
 
 def test_checking_assignments_joins_their_ids_in_list_order(env):
@@ -172,3 +170,37 @@ def test_assignments_without_a_rubric_are_flagged_in_the_list(env):
     ]
     assert boxes[0].toolTip() == ""
     assert "No rubric attached" in boxes[2].toolTip()
+
+
+def test_select_all_with_rubric_checks_only_assignments_that_have_one(env):
+    env.canvas.assignments = [
+        CanvasAssignment(id=21, name="Exam Retake", has_rubric=False),
+        HOMEWORK,
+        PROJECT,
+        CanvasAssignment(id=12, name="Quiz 3", has_rubric=False),
+    ]
+    env.picker.load_button.click()
+    env.picker.boxes()[3].setChecked(True)  # Quiz 3, no rubric
+    assert env.picker.isAncestorOf(env.tab._select_with_rubric_btn)
+
+    env.tab._select_with_rubric_btn.click()
+
+    boxes = env.picker.boxes()
+    assert [b.text() for b in boxes] == [
+        "⚠ Exam Retake  (21)",
+        "Homework 1  (7)",
+        "Project Report  (9)",
+        "⚠ Quiz 3  (12)",
+    ]
+    assert [b.isChecked() for b in boxes] == [False, True, True, False]
+    assert assignment_ids(env) == "7,9"
+    assert env.tab._download_rubric_btn.isEnabled()
+
+
+def test_select_all_with_rubric_is_disabled_until_assignments_load(
+    qapp, theme, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("CANVAS_TOKEN", raising=False)
+    env = build(qapp, theme, tmp_path)
+    assert env.picker.count() == 0
+    assert not env.tab._select_with_rubric_btn.isEnabled()

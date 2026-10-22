@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from PyQt6.QtWidgets import QPushButton
 
 from GAVEL.ui_components.input_mode_toggle import (
     CheckListPicker,
@@ -73,6 +74,15 @@ def test_combo_picker_set_items_falls_back_when_select_missing(qapp, theme):
     picker = ComboPicker(theme, load_text="Load")
     picker.set_items(TERMS, select="9999")
     assert picker.value() == "2267"
+
+
+def test_combo_picker_items_reports_the_list_in_order(qapp, theme):
+    picker = ComboPicker(theme, load_text="Load")
+    assert picker.items() == []
+    picker.set_items(TERMS)
+    assert picker.items() == TERMS
+    picker.set_items(TERMS[::-1])
+    assert picker.items() == TERMS[::-1]
 
 
 def test_combo_picker_clearing_items_resets_value(qapp, theme):
@@ -155,6 +165,36 @@ def test_check_list_picker_select_all_and_clear_emit_once(qapp, theme):
     picker.select_all_button.click()
     picker.clear_button.click()
     assert seen == ["7,9,12", ""]
+
+
+def test_check_list_picker_set_checked_replaces_selection_and_emits_once(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    picker.set_items(ASSIGNMENTS, select="9")
+    seen = record(picker.value_changed)
+    picker.set_checked(["12", "7", "404"])  # unknown values are ignored
+    assert picker.values() == ["7", "12"]
+    assert seen == ["7,12"]
+
+
+def test_check_list_picker_added_button_follows_select_all_enabled_state(qapp, theme):
+    picker = CheckListPicker(theme, load_text="Load")
+    extra = QPushButton("Extra")
+    picker.add_button(extra)
+    assert picker.isAncestorOf(extra)
+    order = [picker._buttons.itemAt(i).widget() for i in range(picker._buttons.count())]
+    assert order[:4] == [
+        picker.load_button,
+        extra,
+        picker.select_all_button,
+        picker.clear_button,
+    ]
+    assert not extra.isEnabled()  # nothing loaded yet
+    picker.set_items(ASSIGNMENTS)
+    assert extra.isEnabled()
+    picker.set_busy(True)
+    assert not extra.isEnabled()
+    picker.set_busy(False)
+    assert extra.isEnabled()
 
 
 def test_check_list_picker_clearing_items_resets_value(qapp, theme):

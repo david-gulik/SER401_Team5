@@ -10,7 +10,7 @@ models drop their per-input "typed text or selected item" fallback logic.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from enum import Enum
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -128,6 +128,17 @@ class ComboPicker(PickerWidget):
     def load_button(self) -> QPushButton:
         return self._load_btn
 
+    def items(self) -> list[tuple[str, str]]:
+        """The ``(value, label)`` pairs currently in the list, in order.
+
+        Lets a caller compare the list against fresh data before calling
+        ``set_items``.
+        """
+        return [
+            (str(self._combo.itemData(i)), self._combo.itemText(i))
+            for i in range(self._combo.count())
+        ]
+
     def set_items(self, items: Sequence[tuple[str, str]], select: str = "") -> None:
         """Replace the list. Selects ``select`` if present, else the first item."""
         self._combo.blockSignals(True)
@@ -190,6 +201,7 @@ class CheckListPicker(PickerWidget):
     ) -> None:
         super().__init__(parent)
         self._boxes: list[QCheckBox] = []
+        self._extra_btns: list[QPushButton] = []
         self._busy = False
 
         self._empty_label = QLabel(empty_text, self)
@@ -215,13 +227,13 @@ class CheckListPicker(PickerWidget):
         self._none_btn = QPushButton("Clear", self)
         self._none_btn.setProperty("role", "secondary")
 
-        buttons = QVBoxLayout()
-        buttons.setContentsMargins(0, 0, 0, 0)
-        set_spacing(buttons, theme, 8)
-        buttons.addWidget(self._load_btn)
-        buttons.addWidget(self._all_btn)
-        buttons.addWidget(self._none_btn)
-        buttons.addStretch(1)
+        self._buttons = QVBoxLayout()
+        self._buttons.setContentsMargins(0, 0, 0, 0)
+        set_spacing(self._buttons, theme, 8)
+        self._buttons.addWidget(self._load_btn)
+        self._buttons.addWidget(self._all_btn)
+        self._buttons.addWidget(self._none_btn)
+        self._buttons.addStretch(1)
 
         left = QVBoxLayout()
         left.setContentsMargins(0, 0, 0, 0)
@@ -232,7 +244,7 @@ class CheckListPicker(PickerWidget):
         row.setContentsMargins(0, 0, 0, 0)
         set_spacing(row, theme, 8)
         row.addLayout(left, 1)
-        row.addLayout(buttons)
+        row.addLayout(self._buttons)
 
         self._load_btn.clicked.connect(self._on_load_clicked)
         self._all_btn.clicked.connect(lambda: self._set_all(True))
@@ -250,6 +262,12 @@ class CheckListPicker(PickerWidget):
     @property
     def clear_button(self) -> QPushButton:
         return self._none_btn
+
+    def add_button(self, button: QPushButton) -> None:
+        """Add a caller-owned button above Select All, enabled whenever Select All is."""
+        self._buttons.insertWidget(self._buttons.indexOf(self._all_btn), button)
+        self._extra_btns.append(button)
+        self._sync_controls()
 
     def boxes(self) -> list[QCheckBox]:
         """The check boxes in list order. Exposed for tests."""
@@ -291,15 +309,20 @@ class CheckListPicker(PickerWidget):
         self._busy = busy
         self._sync_controls()
 
-    def _set_all(self, checked: bool) -> None:
+    def set_checked(self, values: Iterable[str]) -> None:
+        """Check exactly the boxes whose value is in ``values``; uncheck the rest."""
+        wanted = set(values)
         # One value_changed for the whole sweep, not one per box.
         for box in self._boxes:
             box.blockSignals(True)
             try:
-                box.setChecked(checked)
+                box.setChecked(str(box.property("value")) in wanted)
             finally:
                 box.blockSignals(False)
         self.value_changed.emit(self.value())
+
+    def _set_all(self, checked: bool) -> None:
+        self.set_checked([str(b.property("value")) for b in self._boxes] if checked else [])
 
     def _fit_height(self) -> None:
         if not self._boxes:
@@ -312,6 +335,8 @@ class CheckListPicker(PickerWidget):
         self._load_btn.setEnabled(not self._busy)
         self._all_btn.setEnabled(not self._busy and has_items)
         self._none_btn.setEnabled(not self._busy and has_items)
+        for button in self._extra_btns:
+            button.setEnabled(not self._busy and has_items)
         self._list_host.setEnabled(not self._busy)
 
     def _on_toggled(self, _checked: bool) -> None:

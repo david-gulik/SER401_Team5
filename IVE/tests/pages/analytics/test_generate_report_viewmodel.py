@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ _FOLDER_NAME = "ser222_25sc_12345"
 _MODULE_9_COLUMN = "Module 9: Programming (Gradescope) (9001)"
 _OTHER_COLUMN = "Module 1: Activity (5001)"
 _ALL_TEST_NAMES = list(SER334_M9.test_names())
+_RUBRIC_ASSIGNMENT_ID = 9002
 
 
 @pytest.fixture
@@ -65,7 +67,57 @@ def _write_submissions(path: Path, passing_a: set[str], passing_b: set[str]) -> 
     )
 
 
-def _build_course(tmp_path: Path, *, with_manifest: bool = False) -> Path:
+def _write_rubric_definition(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "rubric_id": "1",
+                "title": "M9 rubric",
+                "points_possible": sum(c.tiers[0].points for c in SER334_M9.criteria),
+                "free_form_criterion_comments": False,
+                "criteria": [
+                    {
+                        "id": f"c{i}",
+                        "description": criterion.name,
+                        "points": criterion.tiers[0].points,
+                        "ratings": [],
+                    }
+                    for i, criterion in enumerate(SER334_M9.criteria)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_rubric_assessments(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "student_id": student_id,
+                    "submission_id": student_id,
+                    "criteria": [
+                        {
+                            "criterion_id": f"c{i}",
+                            "points": criterion.tiers[0].points if full_marks else 0.0,
+                            "comments": "",
+                        }
+                        for i, criterion in enumerate(SER334_M9.criteria)
+                    ],
+                }
+                for student_id, full_marks in ((1001, True), (1002, False))
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def _build_course(
+    tmp_path: Path, *, with_manifest: bool = False, with_rubric: bool = False
+) -> Path:
     folder = Workspace(tmp_path).course(CourseKey.parse(_FOLDER_NAME))
     folder.anonymized.root.mkdir(parents=True)
 
@@ -79,7 +131,12 @@ def _build_course(tmp_path: Path, *, with_manifest: bool = False) -> Path:
         passing_b=set(),
     )
 
-    if with_manifest:
+    if with_rubric:
+        assignment_folder = folder.anonymized.assignment(_RUBRIC_ASSIGNMENT_ID, module_number=9)
+        _write_rubric_definition(assignment_folder.rubric_definition_json)
+        _write_rubric_assessments(assignment_folder.rubric_assessments_json)
+
+    if with_manifest or with_rubric:
         manifest = new_manifest(folder.key)
         manifest = record_assignment(
             manifest,
@@ -91,6 +148,16 @@ def _build_course(tmp_path: Path, *, with_manifest: bool = False) -> Path:
             manifest,
             AssignmentEntry(canvas_id=5001, name="Activity", module_number=1, has_rubric=False),
         )
+        if with_rubric:
+            manifest = record_assignment(
+                manifest,
+                AssignmentEntry(
+                    canvas_id=_RUBRIC_ASSIGNMENT_ID,
+                    name="Programming (Manual)",
+                    module_number=9,
+                    has_rubric=True,
+                ),
+            )
         save_manifest(folder.manifest_path, manifest)
 
     return tmp_path
@@ -161,3 +228,47 @@ def test_gradebook_columns_without_a_manifest_still_lists_every_column(
     columns = vm.list_gradebook_columns(course, 9)
 
     assert set(columns) == {_MODULE_9_COLUMN, _OTHER_COLUMN}
+
+
+def test_rubric_assignments_lists_only_assignments_with_a_rubric(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    workspace_root = _build_course(tmp_path, with_rubric=True)
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+
+    assignments = vm.list_rubric_assignments(course, 9)
+
+    assert [a.canvas_id for a in assignments] == [_RUBRIC_ASSIGNMENT_ID]
+
+
+def test_rubric_assignments_without_a_manifest_lists_none(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    workspace_root = _build_course(tmp_path)
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+
+    assert vm.list_rubric_assignments(course, 9) == ()
+
+
+def test_generate_heat_map_writes_a_report_to_the_runs_folder(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    workspace_root = _build_course(tmp_path, with_rubric=True)
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+    rubric_assignment = vm.list_rubric_assignments(course, 9)[0]
+
+    outcome = vm.generate_heat_map(workspace_root, course, 9, "ser334_m9", rubric_assignment)
+
+    assert outcome.scored == len(SER334_M9.criteria) * 2
+    assert outcome.unmatched == 0
+    assert outcome.failed == 0
+    assert outcome.missing_human_scores == 0
+    assert outcome.output_path.exists()
+    assert outcome.output_path.parent == Workspace(workspace_root).runs_dir
+    assert (
+        outcome.output_path
+        != vm.generate(workspace_root, course, 9, "ser334_m9", _MODULE_9_COLUMN).output_path
+    )

@@ -25,6 +25,7 @@ from GAVEL.pages.download.viewmodel import (
     CONSENT_DOWNLOAD,
     GRADEBOOK_DOWNLOAD,
     GRADESCOPE_DOWNLOAD,
+    QUIZ_REPORTS_DOWNLOAD,
     ROSTER_DOWNLOAD,
     RUBRIC_DOWNLOAD,
     DownloadUiState,
@@ -87,6 +88,7 @@ DONE_MARK = "✓"
 _CANVAS_DOWNLOAD_ORDER = (
     GRADEBOOK_DOWNLOAD,
     CONSENT_DOWNLOAD,
+    QUIZ_REPORTS_DOWNLOAD,
     RUBRIC_DOWNLOAD,
     GRADESCOPE_DOWNLOAD,
 )
@@ -332,15 +334,16 @@ class DownloadTab(ScrollableTab):
             manual_placeholder="e.g. 7216983, 7216990",
             validator=assignment_ids_error,
         )
-        self._download_rubric_btn = QPushButton("Download Rubric Assessment")
+        self._select_with_rubric_btn = QPushButton("Select All with Rubric")
+        self._select_with_rubric_btn.setProperty("role", "secondary")
+        self._select_with_rubric_btn.setToolTip(
+            "Checks every assignment that has a rubric attached and unchecks the rest."
+        )
+        self._assignment_picker.add_button(self._select_with_rubric_btn)
+        self._download_rubric_btn = QPushButton("Download Rubric Assessment(s)")
         self._download_rubric_btn.setProperty("role", "primary")
         self._download_rubric_btn.setToolTip(
             "Requires a valid course and at least one assignment to be selected above."
-        )
-        self._download_all_rubric_btn = QPushButton("Download All Rubric Assessments")
-        self._download_all_rubric_btn.setProperty("role", "secondary")
-        self._download_all_rubric_btn.setToolTip(
-            "Downloads a rubric assessment for every assignment in the selected course."
         )
 
         # Gradescope submissions
@@ -376,7 +379,8 @@ class DownloadTab(ScrollableTab):
             ROSTER_DOWNLOAD: (self._download_roster_btn,),
             GRADEBOOK_DOWNLOAD: (self._download_gradebook_btn,),
             CONSENT_DOWNLOAD: (self._download_consent_btn,),
-            RUBRIC_DOWNLOAD: (self._download_rubric_btn, self._download_all_rubric_btn),
+            QUIZ_REPORTS_DOWNLOAD: (self._download_all_quizzes_btn,),
+            RUBRIC_DOWNLOAD: (self._download_rubric_btn,),
             GRADESCOPE_DOWNLOAD: (self._download_gradescope_btn,),
         }
         self._button_labels: dict[QPushButton, str] = {
@@ -407,8 +411,8 @@ class DownloadTab(ScrollableTab):
         # Single writer of the assignment ids, whichever mode produced them.
         self._assignment_input.value_changed.connect(self._vm.set_assignment_ids)
         self._assignment_picker.load_requested.connect(self._on_reload_assignments)
+        self._select_with_rubric_btn.clicked.connect(self._on_select_with_rubric)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
-        self._download_all_rubric_btn.clicked.connect(self._vm.download_all_rubric_assessments)
         self._download_all_quizzes_btn.clicked.connect(self._vm.download_all_quizzes)
 
         self._output_path.textEdited.connect(self._vm.set_output_dir)
@@ -494,7 +498,6 @@ class DownloadTab(ScrollableTab):
 
         # Rubric Assessment
         self._assignment_input.add_footer(self._download_rubric_btn)
-        self._assignment_input.add_footer(self._download_all_rubric_btn)
         card.add_row(self._assignment_input)
 
         # Gradescope Submissions
@@ -647,6 +650,12 @@ class DownloadTab(ScrollableTab):
         if course_id:
             self._vm.load_assignments(course_id)
 
+    def _on_select_with_rubric(self) -> None:
+        # Assignments without a rubric stay listed and flagged, just unchecked.
+        self._assignment_picker.set_checked(
+            str(a.id) for a in self._vm.get_state().assignments if a.has_rubric
+        )
+
     def _on_download_all(self) -> None:
         self._vm.download_all()
 
@@ -753,33 +762,27 @@ class DownloadTab(ScrollableTab):
         self._download_gradescope_btn.setEnabled(not busy and state.can_download_submissions)
         self._download_consent_btn.setEnabled(not busy and state.can_download_consent)
         self._download_rubric_btn.setEnabled(not busy and state.can_download_rubric)
-        self._download_all_rubric_btn.setEnabled(
-            not busy and state.can_download_all_rubric_assessments
-        )
         self._download_all_btn.setEnabled(not busy and state.can_download_all)
         self._download_all_quizzes_btn.setEnabled(not busy and state.can_download_all_quizzes)
 
-        if self._term_picker.combo.count() != len(state.terms):
-            self._term_picker.set_items(
-                [(t.code, f"{t.code}  {t.name}") for t in state.terms],
-                select=state.selected_term,
-            )
+        # Each list is refilled only when its items differ from the state, so
+        # a user's selection survives an unrelated render.
+        term_items = [(t.code, f"{t.code}  {t.name}") for t in state.terms]
+        if self._term_picker.items() != term_items:
+            self._term_picker.set_items(term_items, select=state.selected_term)
 
-        if self._section_picker.combo.count() != len(state.sections):
-            self._section_picker.set_items(
-                [(s.class_number, s.display_label) for s in state.sections],
-                select=state.class_number,
-            )
+        section_items = [(s.class_number, s.display_label) for s in state.sections]
+        if self._section_picker.items() != section_items:
+            self._section_picker.set_items(section_items, select=state.class_number)
 
-        if self._course_picker.combo.count() != len(state.courses):
-            self._course_picker.set_items(
-                [(str(c.id), _course_label(c)) for c in state.courses],
-                select=state.selected_course_id,
-            )
+        course_items = [(str(c.id), _course_label(c)) for c in state.courses]
+        if self._course_picker.items() != course_items:
+            self._course_picker.set_items(course_items, select=state.selected_course_id)
 
-        if self._quiz_picker.combo.count() != len(state.quizzes):
+        quiz_items = [(str(q.id), _quiz_label(q)) for q in state.quizzes]
+        if self._quiz_picker.items() != quiz_items:
             self._quiz_picker.set_items(
-                [(str(q.id), _quiz_label(q)) for q in state.quizzes],
+                quiz_items,
                 select=state.selected_consent_quiz_id or _likely_consent_quiz(state.quizzes),
             )
 

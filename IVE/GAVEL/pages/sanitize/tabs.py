@@ -1,25 +1,27 @@
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QPoint, Qt, QUrl
-from PyQt6.QtGui import QBrush, QColor, QDesktopServices
+from PyQt6.QtCore import QPoint, Qt
+from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QMenu,
+    QProgressBar,
     QPushButton,
+    QSizePolicy,
     QTreeWidget,
     QTreeWidgetItem,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -31,17 +33,21 @@ from GAVEL.app.dtos.course_summary import (
 )
 from GAVEL.app.workspace.layout import ANONYMIZED_DIR, ORIGINAL_DIR
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.sanitize.anonymize_card import AnonymizeCard, ask_to_replace
 from GAVEL.pages.sanitize.consent_review import ConsentReviewCard
+from GAVEL.pages.sanitize.file_manager import show_in_file_manager
 from GAVEL.pages.sanitize.viewmodel import (
     CourseFilter,
     SanitizeUiState,
     SanitizeViewModel,
     course_label,
+    page_status,
     term_label,
 )
 from GAVEL.theme.context import ThemeContext
-from GAVEL.ui_components.layout import set_spacing
+from GAVEL.ui_components.layout import set_h_margins, set_spacing
 from GAVEL.ui_components.section_card import SectionCard
+from GAVEL.ui_components.status_pill import StatusPill
 
 COURSE_COLUMNS = ("Course", "Term", "Consent form", "Last anonymized", "Status")
 _CONSENT_COLUMN = 2
@@ -55,15 +61,6 @@ _NODE_ROLE = Qt.ItemDataRole.UserRole + 1
 _PATH_ROLE = Qt.ItemDataRole.UserRole + 2
 
 OPEN_LOCATION_TEXT = "Open folder location"
-
-
-def show_in_file_manager(path: Path) -> None:
-    """Open the system file manager at a folder, or at a file's folder with the file selected."""
-    if path.is_file() and sys.platform == "win32":
-        subprocess.Popen(f'explorer /select,"{path}"')
-        return
-    folder = path if path.is_dir() else path.parent
-    QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
 
 _STATUS_TEXT = {
@@ -167,6 +164,7 @@ class SanitizeTab(ScrollableTab):
         theme: ThemeContext,
         vm: SanitizeViewModel,
         open_location: Callable[[Path], None] = show_in_file_manager,
+        confirm_replace: Callable[[QWidget, str], bool] = ask_to_replace,
     ) -> None:
         super().__init__(theme)
         self._theme = theme
@@ -181,10 +179,27 @@ class SanitizeTab(ScrollableTab):
         self._build_widgets()
         self._connect_signals()
 
-        self.add_section(self._build_courses_card())
+        self._busy_bar = QProgressBar()
+        self._busy_bar.setRange(0, 0)
+        self._busy_bar.setTextVisible(False)
+        self._busy_bar.setFixedHeight(6)
+        self._busy_bar.hide()
+        self.layout().insertWidget(0, self._busy_bar)
+
+        self._courses_card = self._build_courses_card()
+        self.add_section(self._courses_card)
         self._consent_card = ConsentReviewCard(theme, vm)
         self.add_section(self._consent_card)
+        self._anonymize_card = AnonymizeCard(theme, vm, open_location, confirm_replace)
+        self.add_section(self._anonymize_card)
         self.add_stretch()
+
+        # Pinned below the scroll area, as on the Download page.
+        status_host = QWidget()
+        status_layout = QVBoxLayout(status_host)
+        set_h_margins(status_layout, theme, 16, 8)
+        status_layout.addWidget(self._build_status_card())
+        self.layout().addWidget(status_host)
 
         self._vm.state_changed.connect(self.render)
         self.render(self._vm.get_state())
@@ -196,6 +211,47 @@ class SanitizeTab(ScrollableTab):
     @property
     def consent_card(self) -> ConsentReviewCard:
         return self._consent_card
+
+    @property
+    def anonymize_card(self) -> AnonymizeCard:
+        return self._anonymize_card
+
+    @property
+    def busy_bar(self) -> QProgressBar:
+        return self._busy_bar
+
+    @property
+    def status_pill(self) -> StatusPill:
+        return self._status_pill
+
+    @property
+    def status_message(self) -> QLabel:
+        return self._status_message
+
+    @property
+    def last_saved(self) -> QLabel:
+        return self._last_saved
+
+    def _build_status_card(self) -> QWidget:
+        card = SectionCard(self._theme, "Status")
+        self._status_pill = StatusPill(self._theme)
+        self._status_message = QLabel()
+        self._status_message.setWordWrap(True)
+        self._last_saved = QLabel()
+        self._last_saved.setProperty("role", "text_muted")
+        self._last_saved.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        # Long paths are cut off instead of squeezing the row labels; the tooltip has all of it.
+        self._last_saved.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+        host = QWidget()
+        form = QFormLayout(host)
+        form.setContentsMargins(0, 0, 0, 0)
+        set_spacing(form, self._theme, 8)
+        form.addRow("Status", self._status_pill)
+        form.addRow("Message", self._status_message)
+        form.addRow("Last Saved", self._last_saved)
+        card.add_row(host)
+        return card
 
     @property
     def workspace_input(self) -> QLineEdit:
@@ -400,6 +456,24 @@ class SanitizeTab(ScrollableTab):
             _set_role(self._banner, "warning" if critical else "caution")
 
         self._consent_card.render(state)
+        self._anonymize_card.render(state)
+
+        running = state.is_running
+        self._busy_bar.setVisible(running)
+        # The run is tied to the selected course and workspace; hold them still until it ends.
+        for widget in (
+            self._tree,
+            self._workspace_path,
+            self._change_workspace_btn,
+            self._reload_btn,
+        ):
+            widget.setEnabled(not running)
+
+        status, message, saved = page_status(state)
+        self._status_pill.set_status(status)
+        self._status_message.setText(message)
+        self._last_saved.setText(saved)
+        self._last_saved.setToolTip(saved)
 
     def _rebuild_tree(self, courses: tuple[CourseSummary, ...]) -> None:
         colors = self._theme.tokens.color
