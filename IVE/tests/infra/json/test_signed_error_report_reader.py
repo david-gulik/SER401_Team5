@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from GAVEL.infra.json.signed_error_report_reader import read_signed_errors
 
 
@@ -66,3 +68,32 @@ def test_an_empty_report_returns_no_values(tmp_path: Path) -> None:
     path.write_text(json.dumps(_report([])), encoding="utf-8")
 
     assert read_signed_errors(path) == ()
+
+
+def test_a_heat_map_report_raises_a_clear_error(tmp_path: Path) -> None:
+    path = tmp_path / "report.json"
+    path.write_text(
+        json.dumps(
+            {"rows": [{"criterion": "main menu", "human_points": 1.0, "proxy_points": 2.0}]}
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="not a signed-error report"):
+        read_signed_errors(path)
+
+
+def test_a_file_with_no_rows_raises_a_clear_error(tmp_path: Path) -> None:
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps({"not_rows": []}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not a report file"):
+        read_signed_errors(path)
+
+
+def test_a_file_whose_top_level_is_a_list_raises_a_clear_error(tmp_path: Path) -> None:
+    path = tmp_path / "rubric_assessments.json"
+    path.write_text(json.dumps([{"student_id": "a"}]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not a report file"):
+        read_signed_errors(path)
