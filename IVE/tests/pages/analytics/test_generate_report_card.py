@@ -76,9 +76,7 @@ def _card(theme, tmp_path: Path, view_model=None) -> GenerateReportCard:
 
 
 def test_refresh_courses_reports_an_unexpected_exception_without_crashing(qapp, theme, tmp_path):
-    card = GenerateReportCard(
-        theme, build_dataset_readers(), tmp_path, _RaisingCoursesViewModel()
-    )
+    card = GenerateReportCard(theme, build_dataset_readers(), tmp_path, _RaisingCoursesViewModel())
 
     card._refresh_courses()
 
@@ -87,9 +85,7 @@ def test_refresh_courses_reports_an_unexpected_exception_without_crashing(qapp, 
 
 
 def test_refresh_modules_reports_an_unexpected_exception_without_crashing(qapp, theme, tmp_path):
-    card = GenerateReportCard(
-        theme, build_dataset_readers(), tmp_path, _RaisingModulesViewModel()
-    )
+    card = GenerateReportCard(theme, build_dataset_readers(), tmp_path, _RaisingModulesViewModel())
 
     card._refresh_modules()
 
