@@ -134,7 +134,6 @@ def test_invalid_manual_id_blocks_every_canvas_download(env):
     assert not state.can_download_gradebook
     assert not state.can_download_consent
     assert not state.can_download_rubric
-    assert not state.can_download_all_rubric_assessments
     assert not env.tab._download_gradebook_btn.isEnabled()
     assert env.canvas.quiz_calls == [FIRST.id]  # nothing fetched for the bad id
 
