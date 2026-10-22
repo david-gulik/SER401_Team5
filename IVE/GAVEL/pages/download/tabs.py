@@ -704,9 +704,16 @@ class DownloadTab(ScrollableTab):
 
         folder_name = state.course_folder_name
         if folder_name:
-            self._course_folder_label.setText(f"Course folder: {folder_name}")
+            folder_text = f"Course folder: {folder_name}"
+            # The roster follows its own class, which may not be the Canvas course's.
+            roster_folder = state.roster_folder_name
+            if roster_folder and roster_folder != folder_name:
+                folder_text += f"\nRoster folder: {roster_folder}"
+            elif state.class_number and roster_folder is None:
+                folder_text += f"\nRoster folder: {state.roster_folder_error}"
         else:
-            self._course_folder_label.setText(f"Course folder: {state.course_folder_error}")
+            folder_text = f"Course folder: {state.course_folder_error}"
+        self._course_folder_label.setText(folder_text)
 
         self._roster_warning.setVisible(not state.roster_configured)
         self._term_input.set_picker_available(

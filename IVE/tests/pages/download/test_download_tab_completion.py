@@ -99,7 +99,7 @@ def test_quiz_reports_button_earns_a_mark_after_success(env):
 
 def test_roster_button_earns_a_mark_and_loses_it_on_a_new_class(qapp, env):
     env.vm.set_term("2267")
-    env.vm.set_class_number("37789")
+    env.vm.set_class_number("87275")  # in the selected SER 402 course, so it names the folder
     env.tab.download_button(ROSTER_DOWNLOAD).click()
     wait_for_workers(qapp)
     assert env.tab.download_button(ROSTER_DOWNLOAD).text() == f"Download Roster {DONE_MARK}"
