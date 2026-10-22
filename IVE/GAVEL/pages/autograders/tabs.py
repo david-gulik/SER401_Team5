@@ -1,5 +1,4 @@
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QFrame, QHBoxLayout
+from PyQt6.QtWidgets import QLabel, QWidget
 
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.theme.context import ThemeContext
@@ -20,6 +19,7 @@ class RunAutogradersTab(ScrollableTab):
         description.setWordWrap(True)
         card.add_row(description)
         return card
+
 
 class AutogradersDiagnosticsPage(ScrollableTab):
     def __init__(self, theme: ThemeContext) -> None:

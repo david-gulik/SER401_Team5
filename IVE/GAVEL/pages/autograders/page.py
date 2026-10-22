@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtWidgets import QVBoxLayout, QTabWidget
+from PyQt6.QtWidgets import QTabWidget, QVBoxLayout
 
 from GAVEL.app_context import AppContext
 from GAVEL.core.base_page import BasePage
 from GAVEL.core.page_registry import PageRegistry, PageSpec
-from GAVEL.pages.autograders.tabs import RunAutogradersTab, AutogradersDiagnosticsPage
-from GAVEL.pages.autograders.viewmodel import AutogradersViewModel
-
+from GAVEL.pages.autograders.tabs import AutogradersDiagnosticsPage, RunAutogradersTab
 
 _ICONS_DIR = Path(__file__).resolve().parents[2] / "assets" / "icons"
 
@@ -28,8 +26,6 @@ class AutogradersPage(BasePage):
 
         root = QVBoxLayout(self)
         root.addWidget(self._tabs)
-
-        vm = AutogradersViewModel()
 
     def build_tabs(self):
         return [
