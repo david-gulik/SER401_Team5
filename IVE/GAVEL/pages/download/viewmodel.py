@@ -226,10 +226,6 @@ class DownloadUiState:
         return bool(self.selected_course_id) and bool(self.assignment_ids.strip())
 
     @property
-    def can_download_all_rubric_assessments(self) -> bool:
-        return bool(self.selected_course_id)
-
-    @property
     def can_download_all(self) -> bool:
         return (
             self.can_download_roster
@@ -849,66 +845,6 @@ class DownloadViewModel(QObject):
             message=message,
             last_saved_path=str(saved[-1].saved_path),
             completed=self._state.completed | {RUBRIC_DOWNLOAD},
-        )
-        self.state_changed.emit(self._state)
-        if failed:
-            self.event_raised.emit(ShowError(message))
-        else:
-            self.event_raised.emit(ShowInfo(message))
-
-    def download_all_rubric_assessments(self) -> None:
-        if self._state.is_busy:
-            return
-        course_id = self._resolved_course_id()
-        if course_id is None:
-            return
-        folder = self._resolved_course_folder()
-        if folder is None:
-            return
-
-        self._set_busy(f"Downloading all rubric assessments for course {course_id}...")
-        try:
-            result = DownloadAllRubricAssessmentsUseCase(self._canvas_client).execute(
-                DownloadAllRubricAssessmentsRequest(course_id=course_id, folder=folder)
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._report_download_failure("Rubric assessment batch download failed", exc)
-            return
-
-        succeeded, skipped, failed = result.succeeded, result.skipped, result.failed
-        existing = result.already_downloaded
-        last_path = succeeded[-1].saved_path if succeeded else None
-
-        for outcome in skipped:
-            self._logger.warning(
-                f"Skipped rubric download for '{outcome.assignment_name}' "
-                f"(course {course_id}): no rubric attached."
-            )
-
-        message = (
-            f"Rubric assessments for course {course_id}: "
-            f"{len(succeeded)} succeeded, {len(skipped)} skipped, "
-            f"{len(existing)} already downloaded, {len(failed)} failed."
-        )
-        if failed:
-            message += " Failed: " + "; ".join(f"{o.assignment_name}: {o.error}" for o in failed)
-
-        status = Status.NOMINAL
-        if failed:
-            status = Status.WARNING if (succeeded or skipped or existing) else Status.CRITICAL
-        elif existing:
-            status = Status.WARNING
-
-        completed = self._state.completed
-        if succeeded or existing:
-            completed = completed | {RUBRIC_DOWNLOAD}
-        self._state = replace(
-            self._state,
-            is_busy=False,
-            status=status,
-            message=message,
-            last_saved_path=str(last_path) if last_path else self._state.last_saved_path,
-            completed=completed,
         )
         self.state_changed.emit(self._state)
         if failed:
