@@ -11,6 +11,7 @@ from GAVEL.bootstrap import build_asu_browser, build_canvas_client, build_roster
 from GAVEL.core.main_window import MainWindow
 from GAVEL.core.page_registry import PageRegistry
 from GAVEL.pages.analytics.page import AnalyticsPage  # noqa: F401
+from GAVEL.pages.autograders.page import AutogradersPage  # noqa: F401
 from GAVEL.pages.download.page import DownloadPage  # noqa: F401
 from GAVEL.pages.home.page import HomePage  # noqa: F401
 from GAVEL.pages.inspect_grades.page import InspectGradesPage  # noqa: F401
