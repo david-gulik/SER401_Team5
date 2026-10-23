@@ -6,7 +6,11 @@ import pytest
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse
 from GAVEL.app.dtos.roster import ClassSection
-from GAVEL.pages.download.section_match import class_numbers_in_course_code, section_mismatch
+from GAVEL.pages.download.section_match import (
+    class_numbers_in_course_code,
+    course_for_class,
+    section_mismatch,
+)
 
 SER402 = CanvasCourse(
     id=273116, name="SER 402: Computing Capstone II", course_code="2026FallC-X-SER402-87275"
@@ -71,3 +75,40 @@ def test_nothing_to_compare_against_stays_quiet(course):
 
 def test_no_class_number_stays_quiet():
     assert section_mismatch("", SER402) is None
+
+
+SPRING_SER402 = CanvasCourse(
+    id=255001, name="SER 402 (Spring)", course_code="2026SpringC-X-SER402-87275"
+)
+
+
+def test_course_for_class_finds_the_course_carrying_the_class():
+    assert course_for_class("87275", "2267", [SANDBOX, SER402, NO_CODE]) == SER402
+
+
+def test_course_for_class_matches_any_section_of_a_cross_listed_course():
+    assert course_for_class("88213", "2267", [SER402, CROSS_LISTED]) == CROSS_LISTED
+
+
+def test_course_for_class_is_none_without_a_match():
+    assert course_for_class("12345", "2267", [SER402, CROSS_LISTED, SANDBOX]) is None
+
+
+def test_course_for_class_uses_the_term_to_pick_between_reused_class_numbers():
+    courses = [SPRING_SER402, SER402]
+    assert course_for_class("87275", "2267", courses) == SER402
+    assert course_for_class("87275", "2261", courses) == SPRING_SER402
+
+
+def test_course_for_class_rejects_a_course_from_another_term():
+    assert course_for_class("87275", "2261", [SER402]) is None
+
+
+@pytest.mark.parametrize("term", ["", "22"])
+def test_course_for_class_without_a_usable_term_needs_a_unique_match(term):
+    assert course_for_class("87275", term, [SER402]) == SER402
+    assert course_for_class("87275", term, [SPRING_SER402, SER402]) is None
+
+
+def test_course_for_class_needs_a_class_number():
+    assert course_for_class("", "2267", [SER402]) is None

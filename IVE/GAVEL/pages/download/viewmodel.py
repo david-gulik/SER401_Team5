@@ -40,9 +40,13 @@ from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentResult,
     DownloadRubricAssessmentUseCase,
 )
-from GAVEL.app.workspace.layout import CourseFolder, Workspace
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
 from GAVEL.app.workspace.recording import ArtifactExistsError
-from GAVEL.app.workspace.resolve import NOTHING_TO_NAME_FROM, course_key_from_selections
+from GAVEL.app.workspace.resolve import (
+    NOTHING_TO_NAME_FROM,
+    course_key_from_selections,
+    roster_key_from_selections,
+)
 from GAVEL.core.status import Status
 from GAVEL.pages.download.section_match import section_mismatch
 from GAVEL.pages.download.sorting import course_sort_key
@@ -197,6 +201,32 @@ class DownloadUiState:
             self.selected_section,
             self.manual_course_folder,
         )
+        return why
+
+    def roster_key(self) -> tuple[CourseKey | None, str | None]:
+        """``(key, None)`` for the roster's own course folder, else ``(None, why)``."""
+        return roster_key_from_selections(
+            self.selected_course,
+            self.class_number,
+            self.selected_term,
+            self.selected_section,
+            self.manual_course_folder,
+        )
+
+    @property
+    def roster_folder_name(self) -> str | None:
+        """``courses/ser401_26f_11111`` for the roster class, or None.
+
+        The same as ``course_folder_name`` unless the roster class is not part
+        of the selected Canvas course.
+        """
+        key, _ = self.roster_key()
+        return None if key is None else f"courses/{key.folder_name}"
+
+    @property
+    def roster_folder_error(self) -> str | None:
+        """Why no folder can be named for the roster class yet, or None when one can."""
+        _, why = self.roster_key()
         return why
 
     @property
@@ -547,7 +577,7 @@ class DownloadViewModel(QObject):
         class_number = self._resolved_class_number()
         if class_number is None:
             return
-        folder = self._resolved_course_folder()
+        folder = self._resolved_roster_folder()
         if folder is None:
             return
 
@@ -934,6 +964,9 @@ class DownloadViewModel(QObject):
         folder = self._resolved_course_folder()
         if folder is None:
             return
+        roster_folder = self._resolved_roster_folder()
+        if roster_folder is None:
+            return
 
         self._set_busy("Downloading all data...")
         roster_client = self._client
@@ -965,7 +998,9 @@ class DownloadViewModel(QObject):
                 lambda: (
                     DownloadRosterUseCase(roster_client)
                     .execute(
-                        DownloadRosterRequest(term=term, class_number=class_number, folder=folder)
+                        DownloadRosterRequest(
+                            term=term, class_number=class_number, folder=roster_folder
+                        )
                     )
                     .saved_path
                 ),
@@ -1132,13 +1167,25 @@ class DownloadViewModel(QObject):
         ``DownloadUiState.course_folder_name``.
         """
         state = self._state
-        key, why = course_key_from_selections(
-            state.selected_course,
-            state.class_number,
-            state.selected_term,
-            state.selected_section,
-            state.manual_course_folder,
+        return self._course_folder_for(
+            *course_key_from_selections(
+                state.selected_course,
+                state.class_number,
+                state.selected_term,
+                state.selected_section,
+                state.manual_course_folder,
+            )
         )
+
+    def _resolved_roster_folder(self) -> CourseFolder | None:
+        """The course folder the roster download writes into, or None after an error.
+
+        Named for the roster class, never for a Canvas course it is not part
+        of; see ``roster_key_from_selections``.
+        """
+        return self._course_folder_for(*self._state.roster_key())
+
+    def _course_folder_for(self, key: CourseKey | None, why: str | None) -> CourseFolder | None:
         if key is None:
             self._emit_error(why or NOTHING_TO_NAME_FROM)
             self.event_raised.emit(FocusCourseFolder())

@@ -64,7 +64,7 @@ class HeatMapCard(QWidget):
         """Loads a report and displays its heat map, or reports why it could not."""
         try:
             data = self._view_model.load(report_path)
-        except (OSError, ValueError, KeyError) as exc:
+        except Exception as exc:
             self._status.setText(f"Could not read {report_path.name}: {exc}")
             self._canvas.clear()
             return
