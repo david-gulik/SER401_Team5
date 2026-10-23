@@ -44,10 +44,10 @@ def test_unlisted_groups_go_last_sorted_by_name():
     assert page_ids(registry) == ["analytics", "beta", "zeta"]
 
 
-def test_app_pages_put_analytics_last():
+def test_app_pages_put_inspect_grades_last():
     import GAVEL.app.main  # noqa: F401
 
     ids = page_ids(PageRegistry.get())
 
     assert ids[0] == "home"
-    assert ids[-1] == "analytics"
+    assert ids[-1] == "inspect_grades"
