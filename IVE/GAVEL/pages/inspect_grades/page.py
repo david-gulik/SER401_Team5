@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import os
@@ -22,9 +21,7 @@ class InspectGradesPage(BasePage):
 
         env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
         workspace_root = (
-            Path(env_dir).expanduser()
-            if env_dir
-            else Path.home() / "Downloads" / "GAVEL"
+            Path(env_dir).expanduser() if env_dir else Path.home() / "Downloads" / "GAVEL"
         )
 
         viewmodel = InspectGradesViewModel(

@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from PyQt6.QtWidgets import QLabel
-
 import GAVEL.pages.analytics.page  # noqa: F401
 from GAVEL.core.page_registry import PageRegistry
 from GAVEL.pages.inspect_grades.page import InspectGradesPage
 from GAVEL.pages.inspect_grades.tabs import InspectGradesTab
+from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 
 
 def test_inspect_grades_page_is_registered():
@@ -23,10 +22,17 @@ def test_inspect_grades_sits_directly_below_analytics():
     assert page_ids[page_ids.index("analytics") + 1] == "inspect_grades"
 
 
-def test_factory_builds_page_with_one_inspect_grades_tab(qapp, theme):
+def test_factory_builds_page_with_one_inspect_grades_tab(qapp, theme, tmp_path, monkeypatch):
+    monkeypatch.setenv("DEFAULT_OUTPUT_DIR", str(tmp_path))
+
     spec = PageRegistry.get().get_page("inspect_grades")
 
-    page = spec.factory(SimpleNamespace(theme=theme))
+    ctx = SimpleNamespace(
+        theme=theme,
+        services=SimpleNamespace(dataset_readers=None),
+    )
+
+    page = spec.factory(ctx)
 
     assert isinstance(page, InspectGradesPage)
     assert len(page.findChildren(InspectGradesTab)) == 1
@@ -34,11 +40,21 @@ def test_factory_builds_page_with_one_inspect_grades_tab(qapp, theme):
     page.deleteLater()
 
 
-def test_inspect_grades_tab_displays_placeholder(qapp, theme):
-    tab = InspectGradesTab(theme)
+def test_inspect_grades_tab_displays_selectors(qapp, theme, tmp_path):
+    vm = InspectGradesViewModel(
+        workspace_root=tmp_path,
+        dataset_readers=None,
+    )
 
-    labels = tab.findChildren(QLabel)
+    tab = InspectGradesTab(theme, vm)
 
-    assert any(label.text() == "TODO: Grade inspection features" for label in labels)
+    assert tab.course_combo.count() == 1
+    assert tab.course_combo.itemText(0) == "Select a course"
+
+    assert tab.assignment_combo.count() == 1
+    assert tab.assignment_combo.itemText(0) == "Select an assignment"
+
+    assert not tab.assignment_combo.isEnabled()
+    assert tab.status_label.text() == "Select a course to view assignments."
 
     tab.deleteLater()

@@ -1,7 +1,6 @@
-
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QFormLayout, QLabel, QWidget
+from PyQt6.QtWidgets import QComboBox, QFormLayout, QLabel, QPushButton, QWidget
 
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
@@ -24,6 +23,8 @@ class InspectGradesTab(ScrollableTab):
         self.assignment_combo = QComboBox()
         self.status_label = QLabel()
         self.status_label.setProperty("role", "text_muted")
+        self.refresh_button = QPushButton("Refresh Courses")
+        self.refresh_button.clicked.connect(self._load_courses)
 
         form_widget = QWidget()
         form = QFormLayout(form_widget)
@@ -31,21 +32,21 @@ class InspectGradesTab(ScrollableTab):
         form.addRow("Assignment", self.assignment_combo)
 
         card.add_row(form_widget)
+        card.add_row(self.refresh_button)
         card.add_row(self.status_label)
 
         self.add_section(card)
         self.add_stretch()
 
-        self.course_combo.currentIndexChanged.connect(
-            self._on_course_changed
-        )
-        self.assignment_combo.currentIndexChanged.connect(
-            self._on_assignment_changed
-        )
+        self.course_combo.currentIndexChanged.connect(self._on_course_changed)
+        self.assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
 
         self._load_courses()
 
     def _load_courses(self) -> None:
+        previous_course = self._viewmodel.selected_course
+        previous_assignment = self._viewmodel.selected_assignment
+
         self._viewmodel.load_courses()
 
         self.course_combo.blockSignals(True)
@@ -53,13 +54,28 @@ class InspectGradesTab(ScrollableTab):
         self.course_combo.addItem("Select a course", None)
 
         for course in self._viewmodel.courses:
-            self.course_combo.addItem(
-                course.key.folder_name, course
-            )
+            self.course_combo.addItem(course.key.folder_name, course)
 
+        selected_index = 0
+
+        if previous_course is not None:
+            for index, course in enumerate(self._viewmodel.courses, start=1):
+                if course.key == previous_course.key:
+                    selected_index = index
+                    break
+
+        self.course_combo.setCurrentIndex(selected_index)
         self.course_combo.blockSignals(False)
 
-        self._on_course_changed(0)
+        self._on_course_changed(selected_index)
+
+        if previous_assignment is not None and selected_index != 0:
+            for index in range(1, self.assignment_combo.count()):
+                assignment = self.assignment_combo.itemData(index)
+
+                if assignment.canvas_id == previous_assignment.canvas_id:
+                    self.assignment_combo.setCurrentIndex(index)
+                    break
 
     def _on_course_changed(self, index: int) -> None:
         course = self.course_combo.itemData(index)
@@ -70,9 +86,7 @@ class InspectGradesTab(ScrollableTab):
         self.assignment_combo.addItem("Select an assignment", None)
 
         for assignment in self._viewmodel.assignments:
-            self.assignment_combo.addItem(
-                assignment.name, assignment
-            )
+            self.assignment_combo.addItem(assignment.name, assignment)
 
         self.assignment_combo.blockSignals(False)
         self.assignment_combo.setEnabled(bool(self._viewmodel.assignments))

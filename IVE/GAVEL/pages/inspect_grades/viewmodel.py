@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,7 +12,6 @@ from GAVEL.app.workspace.manifest import AssignmentEntry, ManifestError
 
 
 class InspectGradesViewModel:
-
     def __init__(
         self,
         workspace_root: Path,
@@ -30,9 +28,7 @@ class InspectGradesViewModel:
         self.assignment_error: str | None = None
 
     def load_courses(self) -> None:
-        self.courses = tuple(
-            Workspace(self._workspace_root).list_courses()
-        )
+        self.courses = tuple(Workspace(self._workspace_root).list_courses())
 
         self.selected_course = None
         self.selected_assignment = None
