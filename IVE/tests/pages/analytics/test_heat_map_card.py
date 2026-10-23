@@ -52,3 +52,18 @@ def test_empty_report_shows_no_chart(qapp, theme, tmp_path: Path):
 
     canvas = card.findChild(ChartCanvas)
     assert not canvas.is_showing_chart()
+
+
+class _RaisingViewModel:
+    def load(self, report_path: Path):
+        raise RuntimeError("boom")
+
+
+def test_an_unexpected_exception_is_reported_without_crashing(qapp, theme, tmp_path: Path):
+    card = HeatMapCard(theme, _RaisingViewModel())
+
+    card.load_report(tmp_path / "whatever.json")
+
+    canvas = card.findChild(ChartCanvas)
+    assert not canvas.is_showing_chart()
+    assert "boom" in card._status.text()
