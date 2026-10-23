@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import QLabel
 
 from GAVEL.bootstrap import build_dataset_readers
 from GAVEL.pages.analytics.heat_map_card import HeatMapCard
+from GAVEL.pages.analytics.score_distribution_card import ScoreDistributionCard
 from GAVEL.pages.analytics.signed_error_histogram_card import SignedErrorHistogramCard
 from GAVEL.pages.analytics.tabs import (
     _PLACEHOLDER_VISUALIZATIONS,
@@ -24,7 +25,7 @@ def test_overview_tab_starts_with_empty_placeholder_charts(qapp, theme, tmp_path
 
     canvases = tab.findChildren(ChartCanvas)
 
-    assert len(canvases) == 2
+    assert len(canvases) == 3
     assert not any(canvas.is_showing_chart() for canvas in canvases)
 
 
@@ -44,6 +45,12 @@ def test_overview_tab_includes_the_heat_map_card(qapp, theme, tmp_path: Path):
     tab = _tab(theme, tmp_path)
 
     assert len(tab.findChildren(HeatMapCard)) == 1
+
+
+def test_overview_tab_includes_the_score_distribution_card(qapp, theme, tmp_path: Path):
+    tab = _tab(theme, tmp_path)
+
+    assert len(tab.findChildren(ScoreDistributionCard)) == 1
 
 
 def test_overview_tab_includes_a_placeholder_for_every_other_visualization(

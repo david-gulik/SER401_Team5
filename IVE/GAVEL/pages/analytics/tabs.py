@@ -19,13 +19,13 @@ from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.analytics.generate_report_viewmodel import GenerateReportViewModel
 from GAVEL.pages.analytics.heat_map_card import HeatMapCard
+from GAVEL.pages.analytics.score_distribution_card import ScoreDistributionCard
 from GAVEL.pages.analytics.signed_error_histogram_card import SignedErrorHistogramCard
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.hint_icon import hint_icon
 from GAVEL.ui_components.section_card import SectionCard
 
 _PLACEHOLDER_VISUALIZATIONS = (
-    "Signed Error Boxplot (Mann-Whitney U)",
     "Swiss Cheese Comparison Table",
     "Multi-Autograder Heat Map",
     "R² Chart",
@@ -45,12 +45,15 @@ class OverviewTab(ScrollableTab):
         generate_card = GenerateReportCard(theme, dataset_readers, workspace_root)
         histogram_card = SignedErrorHistogramCard(theme)
         heat_map_card = HeatMapCard(theme)
+        score_distribution_card = ScoreDistributionCard(theme)
         generate_card.signed_error_report_generated.connect(histogram_card.load_report)
         generate_card.heat_map_report_generated.connect(heat_map_card.load_report)
+        generate_card.heat_map_report_generated.connect(score_distribution_card.load_report)
 
         self.add_section(generate_card)
         self.add_section(histogram_card)
         self.add_section(heat_map_card)
+        self.add_section(score_distribution_card)
         for title in _PLACEHOLDER_VISUALIZATIONS:
             self.add_section(_PlaceholderCard(theme, title))
         self.add_stretch()
