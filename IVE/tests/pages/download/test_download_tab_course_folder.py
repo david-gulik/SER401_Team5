@@ -129,3 +129,17 @@ class TestFocus:
         env.vm._set_idle(env.vm.get_state().status, "done")
 
         assert env.tab.focusWidget() is button
+
+
+def test_preview_adds_the_roster_folder_when_the_class_is_elsewhere(env):
+    env.vm.set_course_id(str(SIS_COURSE.id))
+    env.vm.set_class_number("87275")
+    assert env.label.text() == "Course folder: courses/ser402_26fc_87275"
+
+    env.vm.set_class_number("12345")  # typed, and not part of SER 402
+    lines = env.label.text().splitlines()
+    assert lines[0] == "Course folder: courses/ser402_26fc_12345"
+    assert lines[1].startswith("Roster folder: Roster class 12345 is not part of")
+
+    env.vm.set_manual_course_folder("ser401_26fa_12345")
+    assert env.label.text() == "Course folder: courses/ser401_26fa_12345"

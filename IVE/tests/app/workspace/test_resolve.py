@@ -5,7 +5,11 @@ import pytest
 from GAVEL.app.dtos.canvas_course import CanvasCourse
 from GAVEL.app.dtos.roster import ClassSection
 from GAVEL.app.workspace.layout import CourseKey
-from GAVEL.app.workspace.resolve import NOTHING_TO_NAME_FROM, course_key_from_selections
+from GAVEL.app.workspace.resolve import (
+    NOTHING_TO_NAME_FROM,
+    course_key_from_selections,
+    roster_key_from_selections,
+)
 
 SIS_COURSE = CanvasCourse(id=1, name="SER 402", course_code="2026FallC-X-SER402-87275-87276")
 TRAINING_COURSE = CanvasCourse(id=2, name="IVE Capstone", course_code="TRN-2026Spring")
@@ -101,3 +105,53 @@ class TestManualName:
 
     def test_nothing_message_mentions_typing_a_name(self):
         assert "type a course folder name" in NOTHING_TO_NAME_FROM
+
+
+class TestRosterKey:
+    """The roster's folder follows the roster class, not whatever Canvas course is selected."""
+
+    SPRING_COURSE = CanvasCourse(id=3, name="SER 402", course_code="2026SpringC-X-SER402-87275")
+    SECTION_87275 = ClassSection("87275", "SER", "402", "Capstone II", "Acuna", "TTh", session="A")
+
+    def test_searched_section_beats_a_different_canvas_course(self):
+        key, why = roster_key_from_selections(SIS_COURSE, "11111", "2267", SECTION)
+        assert why is None
+        assert key == CourseKey("SER", "401", 2026, "f", "c", "11111")
+
+    def test_session_comes_from_the_catalog(self):
+        section = ClassSection("11111", "SER", "401", "Capstone I", "Gary", "TTh", session="A")
+        key, _ = roster_key_from_selections(SIS_COURSE, "11111", "2267", section)
+        assert key is not None and key.session == "a"
+        assert key.folder_name == "ser401_26fa_11111"
+
+    def test_canvas_course_carrying_the_class_shares_its_folder(self):
+        roster_key, why = roster_key_from_selections(SIS_COURSE, "87276", "2267", None)
+        course_key, _ = course_key_from_selections(SIS_COURSE, "87276", "2267", None)
+        assert why is None
+        assert roster_key == course_key == CourseKey("SER", "402", 2026, "f", "c", "87276")
+
+    def test_canvas_course_from_another_term_is_not_the_roster_course(self):
+        key, why = roster_key_from_selections(
+            self.SPRING_COURSE, "87275", "2267", self.SECTION_87275
+        )
+        assert why is None
+        assert key == CourseKey("SER", "402", 2026, "f", "a", "87275")
+
+    def test_typed_class_outside_the_canvas_course_is_explained(self):
+        key, why = roster_key_from_selections(SIS_COURSE, "12345", "2267", None)
+        assert key is None
+        assert why is not None
+        assert "Roster class 12345 is not part of the selected Canvas course" in why
+        assert "type a course folder name" in why
+
+    def test_typed_class_without_a_canvas_course_needs_more(self):
+        key, why = roster_key_from_selections(None, "12345", "2267", None)
+        assert key is None
+        assert why == NOTHING_TO_NAME_FROM
+
+    def test_typed_name_still_wins(self):
+        key, why = roster_key_from_selections(
+            SIS_COURSE, "11111", "2267", SECTION, "cse110_25ua_55555"
+        )
+        assert why is None
+        assert key is not None and key.folder_name == "cse110_25ua_55555"
