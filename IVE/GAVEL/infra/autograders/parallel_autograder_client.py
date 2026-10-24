@@ -9,6 +9,7 @@ import zipfile
 from enum import Enum
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
+import logging
 
 #TODO: figure out C stuff
 
@@ -130,7 +131,15 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
 
 def autograde_submissions_folder(lang, input_folder, output_folder, autograder_folder_arg):
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s"
+    )
+    log = logging.getLogger("autograder_client")
+    log.info(f"Autograding started on {input_folder}...")
+
     start = time.perf_counter()
+
     config_file_location = os.path.join(autograder_folder_arg, "config.json")
 
     with open(config_file_location) as file:
@@ -148,12 +157,12 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
         if f.endswith(".java") or f.endswith(".c") or f.endswith(".zip")
     ]
 
-    print(f"Found {len(submissions)} submissions.")
+    log.info(f"Found {len(submissions)} submissions.")
 
     # Parallel execution
     #TODO: is this max_workers count acceptable? Problems would start here...
 
-    with ProcessPoolExecutor(max_workers=os.cpu_count() * 2) as pool:
+    with ProcessPoolExecutor(max_workers=os.cpu_count() * 3) as pool:
         futures = [
             pool.submit(
                 grade_one_submission,
@@ -176,7 +185,7 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
 if __name__ == "__main__":
     autograde_submissions_folder(
         Language.JAVA,
-        "data_original/10_22_autograder_test",
-        "data_original/10_22_autograder_test/parallel_output4",
-        "data_original/10_22_autograder"
+        "../../../../data_original/10_22_autograder_test",
+        "../../../../data_original/10_22_autograder_test/output",
+        "../../../../data_original/10_22_autograder"
     )
