@@ -323,8 +323,9 @@ class http_gradescope_client:
             if link and ".zip" in link["href"]:
                 log.info("Downloading autograder for assignment: %s", name)
                 autograder_download = session.get(link["href"])
+                autograder_name = link["href"].split("/")[-1].split("?", 1)[0]
                 written.append(
-                    self._save(f"{safe_name}_autograder.zip", autograder_download.content)
+                    self._save(autograder_name, autograder_download.content)
                 )
 
             # The bulk export of submissions: reuse an existing export or trigger one.
@@ -374,21 +375,3 @@ class http_gradescope_client:
 def main():
     return
 
-
-#     if len(sys.argv) != 2 or not sys.argv[1].isdigit():
-#         log.error("ERROR: Must enter courseID as integer for argument!")
-#         return
-#
-#     course_id = int(sys.argv[1])
-#     client = GradescopeClient(
-#         course_url=f"https://canvas.asu.edu/courses/{course_id}", headless=False
-#     )
-#
-#     client.download_all_assignments(
-#         username=os.getenv("CANVAS_USERNAME"),
-#         password=os.getenv("CANVAS_PASSWORD"),
-#     )
-#
-#
-# if __name__ == "__main__":
-#     main()
