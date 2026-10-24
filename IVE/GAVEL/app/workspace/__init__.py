@@ -33,7 +33,7 @@ from GAVEL.app.workspace.recording import (
     note_course,
     record,
 )
-from GAVEL.app.workspace.resolve import course_key_from_selections
+from GAVEL.app.workspace.resolve import course_key_from_selections, roster_key_from_selections
 
 __all__ = [
     "ArtifactEntry",
@@ -57,5 +57,6 @@ __all__ = [
     "note_assignment",
     "note_course",
     "record",
+    "roster_key_from_selections",
     "save_manifest",
 ]

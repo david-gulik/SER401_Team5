@@ -13,19 +13,19 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from GAVEL.app.workspace.dataset import DatasetReaders, MissingArtifactError
+from GAVEL.app.workspace.dataset import DatasetReaders
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.analytics.generate_report_viewmodel import GenerateReportViewModel
 from GAVEL.pages.analytics.heat_map_card import HeatMapCard
+from GAVEL.pages.analytics.score_distribution_card import ScoreDistributionCard
 from GAVEL.pages.analytics.signed_error_histogram_card import SignedErrorHistogramCard
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.hint_icon import hint_icon
 from GAVEL.ui_components.section_card import SectionCard
 
 _PLACEHOLDER_VISUALIZATIONS = (
-    "Signed Error Boxplot (Mann-Whitney U)",
     "Swiss Cheese Comparison Table",
     "Multi-Autograder Heat Map",
     "R² Chart",
@@ -45,12 +45,15 @@ class OverviewTab(ScrollableTab):
         generate_card = GenerateReportCard(theme, dataset_readers, workspace_root)
         histogram_card = SignedErrorHistogramCard(theme)
         heat_map_card = HeatMapCard(theme)
+        score_distribution_card = ScoreDistributionCard(theme)
         generate_card.signed_error_report_generated.connect(histogram_card.load_report)
         generate_card.heat_map_report_generated.connect(heat_map_card.load_report)
+        generate_card.heat_map_report_generated.connect(score_distribution_card.load_report)
 
         self.add_section(generate_card)
         self.add_section(histogram_card)
         self.add_section(heat_map_card)
+        self.add_section(score_distribution_card)
         for title in _PLACEHOLDER_VISUALIZATIONS:
             self.add_section(_PlaceholderCard(theme, title))
         self.add_stretch()
@@ -190,7 +193,11 @@ class GenerateReportCard(QWidget):
 
     def _refresh_courses(self) -> None:
         previous = self._course_box.currentText()
-        self._courses = self._view_model.list_courses(self._workspace_root)
+        try:
+            self._courses = self._view_model.list_courses(self._workspace_root)
+        except Exception as exc:
+            self._status.setText(f"Could not read the workspace: {exc}")
+            return
         self._course_box.clear()
         self._course_box.addItems([c.key.folder_name for c in self._courses])
         if self._courses:
@@ -207,7 +214,11 @@ class GenerateReportCard(QWidget):
         course = self._selected_course()
         if course is None:
             return
-        modules = self._view_model.list_modules(course)
+        try:
+            modules = self._view_model.list_modules(course)
+        except Exception as exc:
+            self._status.setText(f"Could not read the workspace: {exc}")
+            return
         self._module_box.addItems([str(m) for m in modules])
         index = self._module_box.findText(previous)
         if index >= 0:
@@ -226,7 +237,7 @@ class GenerateReportCard(QWidget):
             return
         try:
             columns = self._view_model.list_gradebook_columns(course, int(module_text))
-        except (MissingArtifactError, OSError, ValueError) as exc:
+        except Exception as exc:
             self._status.setText(f"Could not read the gradebook: {exc}")
             return
         self._column_box.addItems(columns)
@@ -246,7 +257,7 @@ class GenerateReportCard(QWidget):
             self._rubric_assignments = self._view_model.list_rubric_assignments(
                 course, int(module_text)
             )
-        except (MissingArtifactError, OSError, ValueError) as exc:
+        except Exception as exc:
             self._status.setText(f"Could not read the manifest: {exc}")
             return
         self._rubric_box.addItems([a.name for a in self._rubric_assignments])
@@ -295,7 +306,7 @@ class GenerateReportCard(QWidget):
             outcome = self._view_model.generate(
                 self._workspace_root, course, module_number, mapping_name, gradebook_column
             )
-        except (MissingArtifactError, OSError, ValueError) as exc:
+        except Exception as exc:
             self._status.setText(f"Could not generate the report: {exc}")
             return
 
@@ -317,7 +328,7 @@ class GenerateReportCard(QWidget):
             outcome = self._view_model.generate_heat_map(
                 self._workspace_root, course, module_number, mapping_name, rubric_assignment
             )
-        except (MissingArtifactError, OSError, ValueError) as exc:
+        except Exception as exc:
             self._status.setText(f"Could not generate the report: {exc}")
             return
 

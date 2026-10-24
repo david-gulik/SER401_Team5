@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQuiz
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.download.section_match import course_for_class
 from GAVEL.pages.download.section_picker import SectionSearchPicker
 from GAVEL.pages.download.viewmodel import (
     CONSENT_DOWNLOAD,
@@ -271,7 +272,8 @@ class DownloadTab(ScrollableTab):
             manual_field_label="Course ID",
             picker_label="Choose from list",
             manual_label="Enter ID",
-            picker_hint="Courses load from Canvas when this page opens.",
+            picker_hint="Courses load from Canvas when this page opens. Picking a class in "
+            "myASU selects its course here when exactly one matches.",
             manual_hint="Press Enter after typing the ID to load its quizzes and assignments.",
             manual_placeholder="e.g. 213877",
             validator=course_id_error,
@@ -399,6 +401,7 @@ class DownloadTab(ScrollableTab):
         self._section_picker.load_requested.connect(self._vm.find_sections)
         # Single writer of the class number, whichever mode produced it.
         self._section_input.value_changed.connect(self._vm.set_class_number)
+        self._section_input.value_changed.connect(self._select_course_for_class)
         self._download_roster_btn.clicked.connect(self._vm.download_roster)
 
         self._course_input.value_changed.connect(self._on_course_changed)
@@ -613,6 +616,23 @@ class DownloadTab(ScrollableTab):
         )
         return answer == QMessageBox.StandardButton.Yes
 
+    def _select_course_for_class(self, _class_number: str) -> None:
+        """Pre-select the Canvas course that carries the roster class just picked.
+
+        Runs after the view model has the new class number, and goes through
+        the course picker so quizzes and assignments load as for a user pick.
+        Nothing changes without a single match, while the course is typed by
+        hand, or while the current course has downloads half done.
+        """
+        if self._course_input.mode() is not InputMode.PICKER:
+            return
+        state = self._vm.get_state()
+        if state.canvas_downloads_partial:
+            return
+        course = course_for_class(state.class_number, state.selected_term, state.courses)
+        if course is not None and str(course.id) != state.selected_course_id:
+            self._select_course_in_picker(str(course.id))
+
     def _select_course_in_picker(self, course_id: str) -> None:
         combo = self._course_picker.combo
         index = combo.findData(course_id)
@@ -704,9 +724,16 @@ class DownloadTab(ScrollableTab):
 
         folder_name = state.course_folder_name
         if folder_name:
-            self._course_folder_label.setText(f"Course folder: {folder_name}")
+            folder_text = f"Course folder: {folder_name}"
+            # The roster follows its own class, which may not be the Canvas course's.
+            roster_folder = state.roster_folder_name
+            if roster_folder and roster_folder != folder_name:
+                folder_text += f"\nRoster folder: {roster_folder}"
+            elif state.class_number and roster_folder is None:
+                folder_text += f"\nRoster folder: {state.roster_folder_error}"
         else:
-            self._course_folder_label.setText(f"Course folder: {state.course_folder_error}")
+            folder_text = f"Course folder: {state.course_folder_error}"
+        self._course_folder_label.setText(folder_text)
 
         self._roster_warning.setVisible(not state.roster_configured)
         self._term_input.set_picker_available(
