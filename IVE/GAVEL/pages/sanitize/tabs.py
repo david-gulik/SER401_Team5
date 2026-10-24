@@ -139,9 +139,14 @@ def _file_tooltip(file: TrackedFile, side: str) -> str:
     if state is FileState.MISSING:
         return f"Not in {side}/"
     moment = file.original_at if side == ORIGINAL_DIR else file.anonymized_at
-    note = (
-        "\nThe original changed after this was written." if state is FileState.OUT_OF_DATE else ""
-    )
+    note = ""
+    if state is FileState.OUT_OF_DATE:
+        note = "\nThe original changed after this was written."
+    elif file.saved_again_unchanged:
+        note = (
+            "\nThe original was saved again after the last anonymization, "
+            "but its contents are unchanged."
+        )
     return f"Modified {_when(moment)}{note}"
 
 

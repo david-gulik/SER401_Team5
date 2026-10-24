@@ -65,6 +65,16 @@ class TrackedFile:
         return FileState.CURRENT
 
     @property
+    def saved_again_unchanged(self) -> bool:
+        """The original was saved after its copy was written, with the same contents."""
+        return (
+            self.anonymized_state is FileState.CURRENT
+            and self.original_at is not None
+            and self.anonymized_at is not None
+            and self.original_at > self.anonymized_at
+        )
+
+    @property
     def needs_anonymizing(self) -> bool:
         """The original exists but its anonymized copy is missing or stale."""
         return self.original_at is not None and self.anonymized_state is not FileState.CURRENT

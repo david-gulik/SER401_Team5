@@ -104,6 +104,18 @@ class TestTrackedFiles:
 
         assert file.original_at == CHANGED_AFTER
         assert file.anonymized_state is FileState.CURRENT
+        assert file.saved_again_unchanged
+
+    def test_freshly_anonymized_copy_is_not_saved_again(self, tmp_path: Path):
+        build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED)
+
+        assert not only_course(tmp_path).file("roster.csv").saved_again_unchanged
+
+    def test_changed_original_is_not_saved_again_unchanged(self, tmp_path: Path):
+        course_dir = build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED)
+        change_original(course_dir, "roster.csv")
+
+        assert not only_course(tmp_path).file("roster.csv").saved_again_unchanged
 
     def test_copy_without_a_recorded_hash_is_out_of_date(self, tmp_path: Path):
         build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED, record_hashes=False)
