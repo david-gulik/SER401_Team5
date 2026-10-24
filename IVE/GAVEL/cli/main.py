@@ -18,7 +18,10 @@ from GAVEL.cli.commands.canvas_course_dataset import (
 from GAVEL.cli.commands.canvas_gradebook import handle_canvas_gradebook_download
 from GAVEL.cli.commands.consent_form import handle_consent_form_download
 from GAVEL.cli.commands.gradescope_download import handle_gradescope_download
-from GAVEL.cli.commands.proxy_grade_report import handle_proxy_grade_report
+from GAVEL.cli.commands.proxy_grade_report import (
+    handle_proxy_grade_heat_map_report,
+    handle_proxy_grade_report,
+)
 from GAVEL.cli.commands.quiz_analysis import handle_quiz_analysis_download
 from GAVEL.cli.commands.roster import handle_roster_download, handle_roster_list_terms
 from GAVEL.cli.commands.rubric_assessment import (
@@ -217,6 +220,33 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output", "-o", required=True, help="Path where the JSON report will be written"
     )
     proxy_grade_report.set_defaults(handler=handle_proxy_grade_report)
+
+    proxy_grade_heat_map_report = proxy_grade_subparsers.add_parser(
+        "heat-map-report",
+        help="Generate a heat map report from real Gradescope submissions and a rubric",
+    )
+    proxy_grade_heat_map_report.add_argument(
+        "--submissions-dir", required=True, help="Folder of Gradescope submission YAML files"
+    )
+    proxy_grade_heat_map_report.add_argument(
+        "--mapping",
+        required=True,
+        choices=sorted(MAPPINGS),
+        help="Proxy-grade mapping that matches the assignment",
+    )
+    proxy_grade_heat_map_report.add_argument(
+        "--gradebook", required=True, help="Path to the Canvas gradebook CSV"
+    )
+    proxy_grade_heat_map_report.add_argument(
+        "--rubric-definition", required=True, help="Path to the rubric_definition.json file"
+    )
+    proxy_grade_heat_map_report.add_argument(
+        "--rubric-assessments", required=True, help="Path to the rubric_assessments.json file"
+    )
+    proxy_grade_heat_map_report.add_argument(
+        "--output", "-o", required=True, help="Path where the JSON report will be written"
+    )
+    proxy_grade_heat_map_report.set_defaults(handler=handle_proxy_grade_heat_map_report)
 
     # anonymize commands
     anonymize_parser = subparsers.add_parser(
