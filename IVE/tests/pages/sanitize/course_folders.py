@@ -1,7 +1,8 @@
-"""Build course folders on disk for Sanitize tests, with controlled file times."""
+"""Build course folders on disk for Sanitize tests, with controlled file times and hashes."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from datetime import datetime
@@ -71,12 +72,16 @@ def build_course(
     consented: int = 3,
     inputs_at: datetime = DOWNLOADED,
     anonymized_at: datetime | None = None,
+    record_hashes: bool = True,
     canvas_course_name: str | None = None,
 ) -> Path:
     """Course folder under ``workspace_root/courses`` holding the files asked for.
 
     Every student responds to the consent form; the first ``consented`` say yes.
-    With ``anonymized_at``, each original file gets an anonymized copy written then.
+    With ``anonymized_at``, each original file gets an anonymized copy written
+    then, and the manifest records each original's hash as the anonymizer
+    does, unless ``record_hashes`` is False (anonymized copies with no
+    recorded hashes).
     """
     course = workspace_root / "courses" / folder_name
     original = course / "original"
@@ -97,12 +102,36 @@ def build_course(
         if anonymized_at is not None:
             _write(course / "anonymized" / relative, anonymized_at, text)
 
-    if canvas_course_name is not None:
-        _write_manifest(course, folder_name, canvas_course_name)
+    anonymization = None
+    if anonymized_at is not None and record_hashes:
+        anonymization = {
+            "anonymized_at": "2026-09-27T14:02:00+00:00",
+            "sources": [
+                {"path": f"original/{relative}", "sha256": _sha256(original / relative)}
+                for relative in sorted(files)
+            ],
+        }
+    if canvas_course_name is not None or anonymization is not None:
+        _write_manifest(course, folder_name, canvas_course_name, anonymization)
     return course
 
 
-def _write_manifest(course: Path, folder_name: str, canvas_course_name: str) -> None:
+def change_original(course: Path, relative: str, when: datetime = CHANGED_AFTER) -> None:
+    """Give an original file different content, as a fresh download with new data would."""
+    path = course / "original" / relative
+    _write(path, when, path.read_text(encoding="utf-8") + "\n")
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_manifest(
+    course: Path,
+    folder_name: str,
+    canvas_course_name: str | None,
+    anonymization: dict[str, object] | None,
+) -> None:
     # Only the fields a manifest must carry, taken from the folder name.
     subject_catalog, term_part, class_number = folder_name.split("_")
     subject = "".join(ch for ch in subject_catalog if ch.isalpha()).upper()
@@ -121,6 +150,7 @@ def _write_manifest(course: Path, folder_name: str, canvas_course_name: str) -> 
         },
         "created_at": "2026-09-20T09:00:00+00:00",
         "updated_at": "2026-09-20T09:00:00+00:00",
+        "anonymization": anonymization,
     }
     (course / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 

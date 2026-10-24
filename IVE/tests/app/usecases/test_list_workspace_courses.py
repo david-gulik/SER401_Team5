@@ -17,6 +17,7 @@ from tests.pages.sanitize.course_folders import (
     CHANGED_AFTER,
     DOWNLOADED,
     build_course,
+    change_original,
     set_modified,
 )
 
@@ -83,14 +84,39 @@ class TestTrackedFiles:
         assert roster.anonymized_at == ANONYMIZED
         assert roster.anonymized_state is FileState.CURRENT
 
-    def test_original_changed_after_its_copy_makes_the_copy_out_of_date(self, tmp_path: Path):
+    def test_original_whose_content_changed_makes_the_copy_out_of_date(self, tmp_path: Path):
         course_dir = build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED)
-        set_modified(course_dir / "original" / "roster.csv", CHANGED_AFTER)
+        change_original(course_dir, "roster.csv")
 
         course = only_course(tmp_path)
 
         assert course.file("roster.csv").anonymized_state is FileState.OUT_OF_DATE
         assert course.file("consent_form.csv").anonymized_state is FileState.CURRENT
+
+    def test_identical_redownload_keeps_the_copy_current(self, tmp_path: Path):
+        course_dir = build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED)
+        roster = course_dir / "original" / "roster.csv"
+        # Same bytes written again, newer than the anonymized copy.
+        roster.write_bytes(roster.read_bytes())
+        set_modified(roster, CHANGED_AFTER)
+
+        file = only_course(tmp_path).file("roster.csv")
+
+        assert file.original_at == CHANGED_AFTER
+        assert file.anonymized_state is FileState.CURRENT
+
+    def test_copy_without_a_recorded_hash_is_out_of_date(self, tmp_path: Path):
+        build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED, record_hashes=False)
+
+        roster = only_course(tmp_path).file("roster.csv")
+
+        assert roster.anonymized_from_sha256 is None
+        assert roster.anonymized_state is FileState.OUT_OF_DATE
+
+    def test_originals_are_not_hashed_without_a_record_to_compare(self, tmp_path: Path):
+        build_course(tmp_path, "ser222_26f_11111")
+
+        assert all(file.original_sha256 is None for file in only_course(tmp_path).files)
 
     def test_copy_left_behind_by_a_deleted_original_is_out_of_date(self, tmp_path: Path):
         course_dir = build_course(
@@ -152,6 +178,12 @@ class TestManifest:
 
         assert only_course(tmp_path).canvas_course_name is None
 
+    def test_unreadable_manifest_makes_anonymized_copies_out_of_date(self, tmp_path: Path):
+        course_dir = build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED)
+        (course_dir / "manifest.json").write_text("{not json", encoding="utf-8")
+
+        assert only_course(tmp_path).status is AnonymizationStatus.OUT_OF_DATE
+
 
 class TestStatus:
     def test_missing_consent_form_cannot_be_anonymized(self, tmp_path: Path):
@@ -177,7 +209,19 @@ class TestStatus:
 
     def test_one_changed_input_makes_the_course_out_of_date(self, tmp_path: Path):
         course_dir = build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED)
-        set_modified(course_dir / "original" / "gradebook.csv", CHANGED_AFTER)
+        change_original(course_dir, "gradebook.csv")
+
+        assert only_course(tmp_path).status is AnonymizationStatus.OUT_OF_DATE
+
+    def test_inputs_touched_but_unchanged_stay_up_to_date(self, tmp_path: Path):
+        course_dir = build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED)
+        for path in (course_dir / "original").iterdir():
+            set_modified(path, CHANGED_AFTER)
+
+        assert only_course(tmp_path).status is AnonymizationStatus.UP_TO_DATE
+
+    def test_anonymized_copies_without_recorded_hashes_are_out_of_date(self, tmp_path: Path):
+        build_course(tmp_path, "ser222_26f_11111", anonymized_at=ANONYMIZED, record_hashes=False)
 
         assert only_course(tmp_path).status is AnonymizationStatus.OUT_OF_DATE
 

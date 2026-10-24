@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt
 
 from GAVEL.pages.sanitize.tabs import OPEN_LOCATION_TEXT, SanitizeTab
 from GAVEL.pages.sanitize.viewmodel import CourseFilter, SanitizeViewModel
-from tests.pages.sanitize.course_folders import ANONYMIZED, CHANGED_AFTER, build_course
+from tests.pages.sanitize.course_folders import ANONYMIZED, build_course, change_original
 
 NEW = "ser222_26f_11111"
 STALE = "ser316_26s_33333"
@@ -17,7 +17,9 @@ BLOCKED = "ser334_26u_44444"
 @pytest.fixture
 def vm(qapp, tmp_path: Path) -> SanitizeViewModel:
     build_course(tmp_path, NEW, gradebook=False, rubric_assessments=2)
-    build_course(tmp_path, STALE, inputs_at=CHANGED_AFTER, anonymized_at=ANONYMIZED)
+    stale = build_course(tmp_path, STALE, anonymized_at=ANONYMIZED)
+    for relative in ("consent_form.csv", "roster.csv", "gradebook.csv"):
+        change_original(stale, relative)
     build_course(tmp_path, BLOCKED, consent_form=False)
     vm = SanitizeViewModel(default_workspace_root=tmp_path)
     vm.reload()

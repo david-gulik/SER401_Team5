@@ -9,9 +9,11 @@ from GAVEL.app.dtos.canvas_course import CanvasModule
 from GAVEL.app.workspace.layout import CourseKey
 from GAVEL.app.workspace.manifest import (
     MANIFEST_SCHEMA_VERSION,
+    AnonymizationEntry,
     ArtifactEntry,
     AssignmentEntry,
     ManifestError,
+    SourceEntry,
     load_manifest,
     manifest_from_dict,
     manifest_to_dict,
@@ -19,6 +21,7 @@ from GAVEL.app.workspace.manifest import (
     record_artifact,
     record_assignment,
     save_manifest,
+    set_anonymization,
     set_course_metadata,
 )
 
@@ -111,6 +114,22 @@ class TestRecording:
         assert m.modules == (CanvasModule(5, "Module 1"),)
         assert m.updated_at == T1
 
+    def test_set_anonymization_replaces_the_last_run(self) -> None:
+        m = new_manifest(KEY, now=T0)
+        m = set_anonymization(
+            m, AnonymizationEntry(T0, (SourceEntry("original/roster.csv", "a" * 64),))
+        )
+        m = set_anonymization(
+            m, AnonymizationEntry(T1, (SourceEntry("original/gradebook.csv", "b" * 64),)), now=T1
+        )
+        assert m.anonymization.anonymized_at == T1
+        assert m.anonymization.source("original/gradebook.csv").sha256 == "b" * 64
+        assert m.anonymization.source("original/roster.csv") is None
+        assert m.updated_at == T1
+
+    def test_new_manifest_has_no_anonymization(self) -> None:
+        assert new_manifest(KEY, now=T0).anonymization is None
+
 
 def full_manifest():
     m = new_manifest(
@@ -137,6 +156,17 @@ def full_manifest():
         ),
         now=T1,
     )
+    m = set_anonymization(
+        m,
+        AnonymizationEntry(
+            T1,
+            (
+                SourceEntry("original/roster.csv", "a" * 64),
+                SourceEntry("original/consent_form.csv", "b" * 64),
+            ),
+        ),
+        now=T1,
+    )
     return m
 
 
@@ -157,6 +187,16 @@ class TestSerialisation:
             d["artifacts"][0]["path"] == "original/assignments/7216983_m4/rubric_assessments.json"
         )
         assert d["artifacts"][0]["source_id"] == 7216983
+        assert d["anonymization"]["anonymized_at"] == T1
+        assert [s["path"] for s in d["anonymization"]["sources"]] == [
+            "original/consent_form.csv",
+            "original/roster.csv",
+        ]
+
+    def test_manifest_without_anonymization_loads(self) -> None:
+        d = manifest_to_dict(full_manifest())
+        del d["anonymization"]
+        assert manifest_from_dict(d).anonymization is None
 
     def test_dict_matches_schema_keys(self) -> None:
         """Every key we write is declared in docs/manifest.schema.json, and vice versa."""
@@ -175,6 +215,11 @@ class TestSerialisation:
             schema["properties"]["artifacts"]["items"]["properties"]
         )
         assert set(d["modules"][0]) == set(schema["properties"]["modules"]["items"]["properties"])
+        anonymization = schema["properties"]["anonymization"]
+        assert set(d["anonymization"]) == set(anonymization["properties"])
+        assert set(d["anonymization"]["sources"][0]) == set(
+            anonymization["properties"]["sources"]["items"]["properties"]
+        )
 
     def test_save_and_load(self, tmp_path: Path) -> None:
         path = tmp_path / "courses" / "ser222_25sc_12345" / "manifest.json"

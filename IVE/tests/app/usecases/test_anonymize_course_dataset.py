@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from GAVEL.app.dtos.consent_decision import ConsentStatus
+from GAVEL.app.dtos.course_summary import AnonymizationStatus
 from GAVEL.app.usecases.anonymize_consent_form import AnonymizeConsentFormUseCase
 from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetRequest,
@@ -24,6 +25,13 @@ from GAVEL.app.usecases.generate_anonymous_id_map import (
     GenerateAnonymousIdMapRequest,
     GenerateAnonymousIdMapUseCase,
 )
+from GAVEL.app.usecases.list_workspace_courses import (
+    ListWorkspaceCoursesRequest,
+    ListWorkspaceCoursesUseCase,
+)
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey
+from GAVEL.app.workspace.manifest import load_manifest
+from GAVEL.app.workspace.recording import record, sha256_of
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
     CanvasConsentFormCSVReader,
 )
@@ -549,3 +557,53 @@ class TestReplaceExisting:
             use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path))
 
         assert not (tmp_path / "anonymized").exists()
+
+
+class TestRecordsSources:
+    @pytest.fixture
+    def course_dir(self, tmp_path: Path) -> Path:
+        course_dir = tmp_path / "courses" / "ser222_26f_11111"
+        write_consent_form(course_dir)
+        write_roster(course_dir)
+        write_rubric(course_dir)
+        return course_dir
+
+    def test_hash_of_each_input_is_recorded_in_the_manifest(self, use_case, course_dir: Path):
+        use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        anonymization = load_manifest(course_dir / "manifest.json").anonymization
+        assert {s.path: s.sha256 for s in anonymization.sources} == {
+            path: sha256_of(course_dir / path)
+            for path in (
+                "original/assignments/7216983_m1/rubric_assessments.json",
+                "original/consent_form.csv",
+                "original/roster.csv",
+            )
+        }
+
+    def test_existing_manifest_keeps_its_downloads(self, use_case, course_dir: Path):
+        folder = CourseFolder(course_dir, CourseKey.parse(course_dir.name))
+        record(folder, "roster", course_dir / "original" / "roster.csv")
+
+        use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        manifest = load_manifest(course_dir / "manifest.json")
+        assert manifest.artifact("original/roster.csv") is not None
+        assert manifest.anonymization is not None
+
+    def test_folder_not_named_like_a_course_gets_no_manifest(self, use_case, tmp_path: Path):
+        write_consent_form(tmp_path)
+
+        use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path, seed=42))
+
+        assert not (tmp_path / "manifest.json").exists()
+
+    def test_freshly_anonymized_course_lists_as_up_to_date(self, use_case, course_dir: Path):
+        use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        (course,) = (
+            ListWorkspaceCoursesUseCase()
+            .execute(ListWorkspaceCoursesRequest(course_dir.parents[1]))
+            .courses
+        )
+        assert course.status is AnonymizationStatus.UP_TO_DATE
