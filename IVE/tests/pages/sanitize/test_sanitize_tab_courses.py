@@ -7,17 +7,27 @@ from PyQt6.QtCore import Qt
 
 from GAVEL.pages.sanitize.tabs import OPEN_LOCATION_TEXT, SanitizeTab
 from GAVEL.pages.sanitize.viewmodel import CourseFilter, SanitizeViewModel
-from tests.pages.sanitize.course_folders import ANONYMIZED, CHANGED_AFTER, build_course
+from tests.pages.sanitize.course_folders import (
+    ANONYMIZED,
+    CHANGED_AFTER,
+    build_course,
+    change_original,
+    set_modified,
+)
 
 NEW = "ser222_26f_11111"
 STALE = "ser316_26s_33333"
 BLOCKED = "ser334_26u_44444"
+RESAVED = "ser440_26f_55555"
+SIDES = ("original/", "anonymized/")
 
 
 @pytest.fixture
 def vm(qapp, tmp_path: Path) -> SanitizeViewModel:
     build_course(tmp_path, NEW, gradebook=False, rubric_assessments=2)
-    build_course(tmp_path, STALE, inputs_at=CHANGED_AFTER, anonymized_at=ANONYMIZED)
+    stale = build_course(tmp_path, STALE, anonymized_at=ANONYMIZED)
+    for relative in ("consent_form.csv", "roster.csv", "gradebook.csv"):
+        change_original(stale, relative)
     build_course(tmp_path, BLOCKED, consent_form=False)
     vm = SanitizeViewModel(default_workspace_root=tmp_path)
     vm.reload()
@@ -43,6 +53,13 @@ def course_item(tab: SanitizeTab, folder_name: str):
         if item.data(0, Qt.ItemDataRole.UserRole) == folder_name:
             return item
     raise AssertionError(f"{folder_name} not in tree")
+
+
+def child(item, text: str):
+    for i in range(item.childCount()):
+        if item.child(i).text(0) == text:
+            return item.child(i)
+    raise AssertionError(f"{text} not under {item.text(0)}")
 
 
 def dump(item, depth: int = 0) -> list[str]:
@@ -103,6 +120,23 @@ class TestTree:
             "  roster.csv | ●  Out of date",
             "  gradebook.csv | ●  Out of date",
         ]
+
+    def test_original_saved_again_unchanged_is_explained_on_hover(self, tab, vm, tmp_path):
+        course = build_course(tmp_path, RESAVED, anonymized_at=ANONYMIZED)
+        roster = course / "original" / "roster.csv"
+        roster.write_bytes(roster.read_bytes())
+        set_modified(roster, CHANGED_AFTER)
+        vm.reload()
+
+        original, anonymized = (child(course_item(tab, RESAVED), side) for side in SIDES)
+
+        assert child(original, "roster.csv").toolTip(0) == (
+            "Modified 2026-10-01 08:30\nThe original was saved again after the last "
+            "anonymization, but its contents are unchanged."
+        )
+        assert child(anonymized, "roster.csv").toolTip(0).endswith("contents are unchanged.")
+        assert child(anonymized, "roster.csv").text(4) == "●  Up to date"
+        assert child(original, "gradebook.csv").toolTip(0) == "Modified 2026-09-20 09:00"
 
     def test_expanded_folders_stay_expanded_after_a_reload(self, tab, vm, tmp_path):
         course_item(tab, NEW).child(0).setExpanded(True)

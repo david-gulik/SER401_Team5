@@ -35,6 +35,8 @@ from GAVEL.app.usecases.generate_anonymous_id_map import (
     GenerateAnonymousIdMapRequest,
     GenerateAnonymousIdMapUseCase,
 )
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey
+from GAVEL.app.workspace.recording import hash_sources, note_anonymization
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
     CanvasConsentFormCSVReader,
 )
@@ -115,6 +117,18 @@ class AnonymizeCourseDatasetUseCase:
 
         if not consent_form_path.exists():
             raise ValueError("Consent form is missing from the dataset")
+
+        # One rubric_assessments.json per assignment folder; see docs/workspace_layout.md.
+        rubric_files = sorted(assignments_dir.rglob("rubric_assessments.json"))
+
+        course_folder = _course_folder(request.snapshot_dir)
+        inputs = [
+            path
+            for path in (consent_form_path, roster_path, gradebook_path, *rubric_files)
+            if path.exists()
+        ]
+        # Hashed before reading, so an input that changes mid-run reads as out of date.
+        sources = hash_sources(course_folder, inputs) if course_folder is not None else ()
 
         if request.replace_existing and output_dir.exists():
             shutil.rmtree(output_dir)
@@ -332,9 +346,6 @@ class AnonymizeCourseDatasetUseCase:
                 skipped_count=1,
             )
 
-        # One rubric_assessments.json per assignment folder; see docs/workspace_layout.md.
-        rubric_files = sorted(assignments_dir.rglob("rubric_assessments.json"))
-
         rubric_results = []
 
         for rubric_path in rubric_files:
@@ -423,6 +434,9 @@ class AnonymizeCourseDatasetUseCase:
                         )
                     )
 
+        if course_folder is not None:
+            note_anonymization(course_folder, sources)
+
         return AnonymizeCourseDatasetResult(
             output_dir=output_dir,
             consent_form=ArtifactReport(
@@ -439,6 +453,19 @@ class AnonymizeCourseDatasetUseCase:
             ),
             consent_decisions=consent_result.decisions,
         )
+
+
+def _course_folder(snapshot_dir: Path) -> CourseFolder | None:
+    """The course folder being anonymized, or None for a folder not named like one.
+
+    The CLI accepts any folder; only workspace course folders have a manifest
+    to record into, and only they are shown in the course browser.
+    """
+    try:
+        key = CourseKey.parse(snapshot_dir.name)
+    except ValueError:
+        return None
+    return CourseFolder(snapshot_dir, key)
 
 
 def build_anonymize_course_dataset_use_case() -> AnonymizeCourseDatasetUseCase:

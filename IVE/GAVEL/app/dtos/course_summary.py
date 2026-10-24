@@ -33,12 +33,18 @@ class TrackedFile:
 
     path is relative to either folder, with "/" separators, so
     "assignments/7216983_m1/rubric_assessments.json" names both copies.
-    The timestamps are file modification times; None means the copy is missing.
+    The timestamps are file modification times, shown to the user; None means
+    the copy is missing. Whether a copy is current is decided by comparing
+    hashes, so re-downloading an identical file does not make it out of date.
     """
 
     path: str
     original_at: datetime | None = None
     anonymized_at: datetime | None = None
+    # The original's hash now, and as recorded when its copy was last written.
+    # None when there is nothing to compare: no record, or a copy is missing.
+    original_sha256: str | None = None
+    anonymized_from_sha256: str | None = None
 
     @property
     def original_state(self) -> FileState:
@@ -48,10 +54,25 @@ class TrackedFile:
     def anonymized_state(self) -> FileState:
         if self.anonymized_at is None:
             return FileState.MISSING
-        # A copy whose original changed later, or is gone, no longer matches it.
-        if self.original_at is None or self.original_at > self.anonymized_at:
+        # A copy matches only the original it was made from. One whose
+        # original changed since, is gone, or has no recorded hash does not.
+        if (
+            self.original_at is None
+            or self.anonymized_from_sha256 is None
+            or self.original_sha256 != self.anonymized_from_sha256
+        ):
             return FileState.OUT_OF_DATE
         return FileState.CURRENT
+
+    @property
+    def saved_again_unchanged(self) -> bool:
+        """The original was saved after its copy was written, with the same contents."""
+        return (
+            self.anonymized_state is FileState.CURRENT
+            and self.original_at is not None
+            and self.anonymized_at is not None
+            and self.original_at > self.anonymized_at
+        )
 
     @property
     def needs_anonymizing(self) -> bool:

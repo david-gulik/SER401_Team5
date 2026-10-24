@@ -26,14 +26,17 @@ from GAVEL.app.workspace.layout import (
     CourseFolder,
 )
 from GAVEL.app.workspace.manifest import (
+    AnonymizationEntry,
     ArtifactEntry,
     AssignmentEntry,
     CourseManifest,
+    SourceEntry,
     load_manifest,
     new_manifest,
     record_artifact,
     record_assignment,
     save_manifest,
+    set_anonymization,
     set_course_metadata,
     utc_now_iso,
 )
@@ -184,5 +187,29 @@ def note_assignment(
     stamp = now or utc_now_iso()
     manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
     manifest = record_assignment(manifest, entry, now=stamp)
+    save_manifest(folder.manifest_path, manifest)
+    return manifest
+
+
+def hash_sources(folder: CourseFolder, sources: list[Path]) -> tuple[SourceEntry, ...]:
+    """Hash the ``original/`` files an anonymization is about to read."""
+    return tuple(
+        SourceEntry(path=relative_posix(folder, path), sha256=sha256_of(path)) for path in sources
+    )
+
+
+def note_anonymization(
+    folder: CourseFolder,
+    sources: tuple[SourceEntry, ...],
+    *,
+    gavel_version: str | None = None,
+    now: str | None = None,
+) -> CourseManifest:
+    """Record which originals ``anonymized/`` was just written from, and save the manifest."""
+    stamp = now or utc_now_iso()
+    manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
+    manifest = set_anonymization(
+        manifest, AnonymizationEntry(anonymized_at=stamp, sources=sources), now=stamp
+    )
     save_manifest(folder.manifest_path, manifest)
     return manifest

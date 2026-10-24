@@ -77,6 +77,27 @@
           "label": { "type": ["string", "null"] }
         }
       }
+    },
+    "anonymization": {
+      "description": "The last run that wrote anonymized/. Null or absent until the course is anonymized.",
+      "type": ["object", "null"],
+      "required": ["anonymized_at", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "anonymized_at": { "type": "string", "format": "date-time" },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "sha256"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "pattern": "^original/[^\\\\:]+$" },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
     }
   }
 }

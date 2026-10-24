@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from GAVEL.pages.sanitize.viewmodel import CourseFilter, SanitizeViewModel
-from tests.pages.sanitize.course_folders import ANONYMIZED, CHANGED_AFTER, build_course
+from tests.pages.sanitize.course_folders import ANONYMIZED, build_course, change_original
 
 NEW = "ser222_26f_11111"
 CURRENT = "ser222_26f_22222"
@@ -17,7 +17,7 @@ BLOCKED = "ser334_26u_44444"
 def workspace(tmp_path: Path) -> Path:
     build_course(tmp_path, NEW, canvas_course_name="Data Structures and Algorithms")
     build_course(tmp_path, CURRENT, anonymized_at=ANONYMIZED)
-    build_course(tmp_path, STALE, inputs_at=CHANGED_AFTER, anonymized_at=ANONYMIZED)
+    change_original(build_course(tmp_path, STALE, anonymized_at=ANONYMIZED), "gradebook.csv")
     build_course(tmp_path, BLOCKED, consent_form=False)
     return tmp_path
 

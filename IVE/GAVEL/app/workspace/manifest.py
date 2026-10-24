@@ -2,8 +2,10 @@
 
 The manifest is written by GAVEL. Every download records the
 file it produced (relative path, timestamp, checksum) and every rubric
-download records the assignment it belongs to. Downstream tooling loads this
-one file instead of guessing from filenames.
+download records the assignment it belongs to. Anonymizing records a
+checksum of each original it read, so the course browser can tell when
+``anonymized/`` falls behind. Downstream tooling loads this one file instead
+of guessing from filenames.
 """
 
 from __future__ import annotations
@@ -86,6 +88,30 @@ class AssignmentEntry:
 
 
 @dataclass(frozen=True)
+class SourceEntry:
+    """One ``original/`` file as the anonymizer read it."""
+
+    path: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class AnonymizationEntry:
+    """The last run that wrote ``anonymized/``.
+
+    A copy in ``anonymized/`` is current while its original still hashes to
+    the ``sha256`` recorded here, so re-downloading a byte-identical file
+    does not mark the course out of date.
+    """
+
+    anonymized_at: str
+    sources: tuple[SourceEntry, ...] = ()
+
+    def source(self, path: str) -> SourceEntry | None:
+        return next((s for s in self.sources if s.path == path), None)
+
+
+@dataclass(frozen=True)
 class CourseManifest:
     schema_version: int
     key: CourseKey
@@ -99,6 +125,8 @@ class CourseManifest:
     modules: tuple[CanvasModule, ...] = ()
     assignments: tuple[AssignmentEntry, ...] = ()
     artifacts: tuple[ArtifactEntry, ...] = ()
+    # None when no anonymization is recorded for the course.
+    anonymization: AnonymizationEntry | None = None
 
     def artifact(self, path: str) -> ArtifactEntry | None:
         return next((a for a in self.artifacts if a.path == path), None)
@@ -155,6 +183,16 @@ def record_assignment(
         manifest,
         assignments=tuple(sorted((*kept, entry), key=lambda a: a.canvas_id)),
         updated_at=now or utc_now_iso(),
+    )
+
+
+def set_anonymization(
+    manifest: CourseManifest, entry: AnonymizationEntry, *, now: str | None = None
+) -> CourseManifest:
+    """Manifest with ``entry`` as the last anonymization, replacing any earlier one."""
+    sources = tuple(sorted(entry.sources, key=lambda s: s.path))
+    return replace(
+        manifest, anonymization=replace(entry, sources=sources), updated_at=now or utc_now_iso()
     )
 
 
@@ -228,7 +266,31 @@ def manifest_to_dict(manifest: CourseManifest) -> dict[str, Any]:
             }
             for a in sorted(manifest.artifacts, key=lambda a: a.path)
         ],
+        "anonymization": _anonymization_to_dict(manifest.anonymization),
     }
+
+
+def _anonymization_to_dict(entry: AnonymizationEntry | None) -> dict[str, Any] | None:
+    if entry is None:
+        return None
+    return {
+        "anonymized_at": entry.anonymized_at,
+        "sources": [
+            {"path": s.path, "sha256": s.sha256}
+            for s in sorted(entry.sources, key=lambda s: s.path)
+        ],
+    }
+
+
+def _anonymization_from_dict(data: dict[str, Any] | None) -> AnonymizationEntry | None:
+    if data is None:
+        return None
+    return AnonymizationEntry(
+        anonymized_at=str(data["anonymized_at"]),
+        sources=tuple(
+            SourceEntry(path=str(s["path"]), sha256=str(s["sha256"])) for s in data["sources"]
+        ),
+    )
 
 
 def manifest_from_dict(data: dict[str, Any]) -> CourseManifest:
@@ -285,6 +347,7 @@ def manifest_from_dict(data: dict[str, Any]) -> CourseManifest:
                 )
                 for a in data.get("artifacts", [])
             ),
+            anonymization=_anonymization_from_dict(data.get("anonymization")),
         )
     except (KeyError, TypeError, ValueError) as exc:
         if isinstance(exc, ManifestError):
