@@ -324,9 +324,7 @@ class http_gradescope_client:
                 log.info("Downloading autograder for assignment: %s", name)
                 autograder_download = session.get(link["href"])
                 autograder_name = link["href"].split("/")[-1].split("?", 1)[0]
-                written.append(
-                    self._save(autograder_name, autograder_download.content)
-                )
+                written.append(self._save(autograder_name, autograder_download.content))
 
             # The bulk export of submissions: reuse an existing export or trigger one.
             review_url = f"{assignment_url}{self.review_grades_suffix}"
@@ -374,4 +372,3 @@ class http_gradescope_client:
 
 def main():
     return
-
