@@ -1,39 +1,25 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from GAVEL.app.workspace.dataset import (
     CourseDataset,
     DatasetReaders,
     MissingArtifactError,
 )
-from GAVEL.app.workspace.layout import CourseFolder, Workspace
+from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.app.workspace.manifest import AssignmentEntry, ManifestError
 
 
 class InspectGradesViewModel:
-    def __init__(
-        self,
-        workspace_root: Path,
-        dataset_readers: DatasetReaders,
-    ) -> None:
-        self._workspace_root = workspace_root
+    """Assignments of the active course; the page passes the course in via select_course."""
+
+    def __init__(self, dataset_readers: DatasetReaders) -> None:
         self._dataset_readers = dataset_readers
 
-        self.courses: tuple[CourseFolder, ...] = ()
         self.assignments: tuple[AssignmentEntry, ...] = ()
 
         self.selected_course: CourseFolder | None = None
         self.selected_assignment: AssignmentEntry | None = None
         self.assignment_error: str | None = None
-
-    def load_courses(self) -> None:
-        self.courses = tuple(Workspace(self._workspace_root).list_courses())
-
-        self.selected_course = None
-        self.selected_assignment = None
-        self.assignments = ()
-        self.assignment_error = None
 
     def select_course(self, course: CourseFolder | None) -> None:
         self.selected_course = course

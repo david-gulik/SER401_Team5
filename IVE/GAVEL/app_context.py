@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from GAVEL.app_services import AppServices
+from GAVEL.core.active_course import ActiveCourse
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger
 from GAVEL.theme.context import ThemeContext
@@ -14,3 +15,4 @@ class AppContext:
     config: ConfigService
     logger: AppLogger
     services: AppServices
+    active_course: ActiveCourse

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QComboBox, QFormLayout, QLabel, QPushButton, QWidget
 
+from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 from GAVEL.theme.context import ThemeContext
@@ -9,6 +10,8 @@ from GAVEL.ui_components.section_card import SectionCard
 
 
 class InspectGradesTab(ScrollableTab):
+    """Picks an assignment of the active course; the page supplies the course."""
+
     def __init__(
         self,
         theme: ThemeContext,
@@ -17,18 +20,16 @@ class InspectGradesTab(ScrollableTab):
         super().__init__(theme)
         self._viewmodel = viewmodel
 
-        card = SectionCard(theme, "Course and Assignment Selection")
+        card = SectionCard(theme, "Assignment Selection")
 
-        self.course_combo = QComboBox()
         self.assignment_combo = QComboBox()
         self.status_label = QLabel()
         self.status_label.setProperty("role", "text_muted")
-        self.refresh_button = QPushButton("Refresh Courses")
-        self.refresh_button.clicked.connect(self._load_courses)
+        self.refresh_button = QPushButton("Refresh Assignments")
+        self.refresh_button.clicked.connect(self.refresh)
 
         form_widget = QWidget()
         form = QFormLayout(form_widget)
-        form.addRow("Course", self.course_combo)
         form.addRow("Assignment", self.assignment_combo)
 
         card.add_row(form_widget)
@@ -38,49 +39,31 @@ class InspectGradesTab(ScrollableTab):
         self.add_section(card)
         self.add_stretch()
 
-        self.course_combo.currentIndexChanged.connect(self._on_course_changed)
         self.assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
 
-        self._load_courses()
+        self._render_assignments()
 
-    def _load_courses(self) -> None:
-        previous_course = self._viewmodel.selected_course
+    def set_course(self, course: CourseFolder | None) -> None:
+        """The active course, from the page: when the tab is built and on every change."""
+        self._viewmodel.select_course(course)
+        self._render_assignments()
+
+    def refresh(self) -> None:
+        """Reread the course's assignments, keeping the selected one if it is still there."""
         previous_assignment = self._viewmodel.selected_assignment
 
-        self._viewmodel.load_courses()
+        self.set_course(self._viewmodel.selected_course)
 
-        self.course_combo.blockSignals(True)
-        self.course_combo.clear()
-        self.course_combo.addItem("Select a course", None)
+        if previous_assignment is None:
+            return
+        for index in range(1, self.assignment_combo.count()):
+            assignment = self.assignment_combo.itemData(index)
 
-        for course in self._viewmodel.courses:
-            self.course_combo.addItem(course.key.folder_name, course)
+            if assignment.canvas_id == previous_assignment.canvas_id:
+                self.assignment_combo.setCurrentIndex(index)
+                break
 
-        selected_index = 0
-
-        if previous_course is not None:
-            for index, course in enumerate(self._viewmodel.courses, start=1):
-                if course.key == previous_course.key:
-                    selected_index = index
-                    break
-
-        self.course_combo.setCurrentIndex(selected_index)
-        self.course_combo.blockSignals(False)
-
-        self._on_course_changed(selected_index)
-
-        if previous_assignment is not None and selected_index != 0:
-            for index in range(1, self.assignment_combo.count()):
-                assignment = self.assignment_combo.itemData(index)
-
-                if assignment.canvas_id == previous_assignment.canvas_id:
-                    self.assignment_combo.setCurrentIndex(index)
-                    break
-
-    def _on_course_changed(self, index: int) -> None:
-        course = self.course_combo.itemData(index)
-        self._viewmodel.select_course(course)
-
+    def _render_assignments(self) -> None:
         self.assignment_combo.blockSignals(True)
         self.assignment_combo.clear()
         self.assignment_combo.addItem("Select an assignment", None)
@@ -91,8 +74,8 @@ class InspectGradesTab(ScrollableTab):
         self.assignment_combo.blockSignals(False)
         self.assignment_combo.setEnabled(bool(self._viewmodel.assignments))
 
-        if course is None:
-            self.status_label.setText("Select a course to view assignments.")
+        if self._viewmodel.selected_course is None:
+            self.status_label.setText("Choose a course to view its assignments.")
         elif self._viewmodel.assignment_error:
             self.status_label.setText(
                 f"Could not load assignments: {self._viewmodel.assignment_error}"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from GAVEL.app.dtos.course_summary import AnonymizationStatus
 from GAVEL.theme.context import ThemeContext
 
 
@@ -32,3 +33,18 @@ def get_status_style(theme: ThemeContext, status: Status) -> StatusStyle:
     if status == Status.CRITICAL:
         return StatusStyle(label="Critical", icon="●", color=c["status_critical"])
     return StatusStyle(label="Unknown", icon="●", color=c["status_unknown"])
+
+
+# How a course folder's anonymization stands, wherever a page lists courses.
+ANONYMIZATION_STATUS_TEXT = {
+    AnonymizationStatus.NO_CONSENT_FORM: "No consent form",
+    AnonymizationStatus.NOT_ANONYMIZED: "Not anonymized",
+    AnonymizationStatus.OUT_OF_DATE: "Out of date",
+    AnonymizationStatus.UP_TO_DATE: "Up to date",
+}
+ANONYMIZATION_STATUS_COLOR_TOKEN = {
+    AnonymizationStatus.NO_CONSENT_FORM: "status_critical",
+    AnonymizationStatus.NOT_ANONYMIZED: "interactive",
+    AnonymizationStatus.OUT_OF_DATE: "status_caution",
+    AnonymizationStatus.UP_TO_DATE: "status_nominal",
+}

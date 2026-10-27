@@ -13,6 +13,8 @@ from GAVEL.ui_components.chart_canvas import ChartCanvas
 from GAVEL.ui_components.hint_icon import hint_icon
 from GAVEL.ui_components.section_card import SectionCard
 
+_NO_REPORT = "No report chosen yet."
+
 
 class SignedErrorHistogramCard(QWidget):
     """Loads a signed-error report, chosen by the user, and charts its distribution."""
@@ -34,7 +36,7 @@ class SignedErrorHistogramCard(QWidget):
         choose_button.clicked.connect(self._choose_report)
         self._card.add_action(choose_button)
 
-        self._status = QLabel("No report chosen yet.")
+        self._status = QLabel(_NO_REPORT)
         self._status.setProperty("role", "text_muted")
         self._card.add_row(self._status)
 
@@ -66,6 +68,11 @@ class SignedErrorHistogramCard(QWidget):
 
         self._status.setText(f"Showing {report_path.name}")
         self.display(data)
+
+    def clear(self) -> None:
+        """Back to the empty state, as before any report was chosen."""
+        self._status.setText(_NO_REPORT)
+        self._canvas.clear()
 
     def display(self, data: SignedErrorHistogramData) -> None:
         self._canvas.clear()

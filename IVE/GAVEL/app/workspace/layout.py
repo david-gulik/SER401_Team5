@@ -31,6 +31,7 @@ See ``docs/workspace_layout.md`` for the rules behind each name.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -434,6 +435,12 @@ class CourseFolder:
 
     def exists(self) -> bool:
         return self.path.is_dir()
+
+
+def default_workspace_root() -> Path:
+    """``DEFAULT_OUTPUT_DIR`` from the environment, else ``~/Downloads/GAVEL``."""
+    env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
+    return Path(env_dir).expanduser() if env_dir else Path.home() / "Downloads" / "GAVEL"
 
 
 @dataclass(frozen=True)

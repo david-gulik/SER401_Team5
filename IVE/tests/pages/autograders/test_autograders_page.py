@@ -14,6 +14,7 @@ def test_sanitize_page_is_registered():
     spec = PageRegistry.get().get_page("autograders")
 
     assert spec.title == "Autograders"
+    assert spec.uses_active_course
 
 
 def test_sanitize_icon_is_a_valid_svg(qapp):
