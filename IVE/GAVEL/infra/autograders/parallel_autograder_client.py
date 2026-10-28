@@ -46,41 +46,56 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     )
     shutil.copytree(autograder_root, worker_root)
 
-
-    config_proj_loc = config["project_location"][:-1].replace("/", os.sep)
-
-    if lang == Language.JAVA:
-        worker_src = os.path.join(worker_root, config_proj_loc[19:])
-    else:
-        worker_src = os.path.join(worker_root, config_proj_loc[12:])
+    #
+    # config_proj_loc = config["project_location"][:-1].replace("/", os.sep)
+    #
+    # if lang == Language.JAVA:
+    #     worker_src = os.path.join(worker_root, config_proj_loc[19:])
+    # else:
+    #     worker_src = os.path.join(worker_root, config_proj_loc[12:])
+    project_location = config["project_location"].rstrip("/").replace("/", os.sep)
+    worker_src = os.path.join(worker_root, project_location)
 
 
     os.makedirs(worker_src, exist_ok=True)
 
     required_files = config["files_required"]
     submission_path = os.path.join(input_folder, filename)
-
-    if filename.endswith(".java") or filename.endswith(".c"):
-        target_file = os.path.join(worker_src, required_files[0])
-        if os.path.exists(target_file):
-            os.remove(target_file)
-        shutil.copy(submission_path, target_file)
-
-    else:
+    if os.path.isdir(submission_path):
+        # Folder submission
         for req in required_files:
-            p = os.path.join(worker_src, req)
-            if os.path.exists(p):
-                os.remove(p)
+            src = os.path.join(submission_path, req)
+            dst = os.path.join(worker_src, req)
 
-        with zipfile.ZipFile(submission_path, "r") as zipf:
-            compressed = zipf.namelist()
-            selected = [x for x in compressed if x in required_files]
-            skipped = [x for x in compressed if x not in required_files]
+            if os.path.exists(dst):
+                os.remove(dst)
 
-            if skipped:
-                print(f"  Skipping {len(skipped)} files in ZIP ({skipped})")
+            if os.path.exists(src):
+                shutil.copy(src, dst)
+            else:
+                print(f"  Missing required file: {req} in {filename}")
+    else:
+        if filename.endswith(".java") or filename.endswith(".c"):
+            target_file = os.path.join(worker_src, required_files[0])
+            if os.path.exists(target_file):
+                os.remove(target_file)
+            shutil.copy(submission_path, target_file)
 
-            zipf.extractall(worker_src, members=selected)
+        else:
+            for req in required_files:
+                p = os.path.join(worker_src, req)
+                if os.path.exists(p):
+                    os.remove(p)
+
+            with zipfile.ZipFile(submission_path, "r") as zipf:
+                compressed = zipf.namelist()
+                selected = [x for x in compressed if x in required_files]
+                skipped = [x for x in compressed if x not in required_files]
+
+                if skipped:
+                    print(f"  Skipping {len(skipped)} files in ZIP ({skipped})")
+
+                zipf.extractall(worker_src, members=selected)
 
 
     output_filename = filename.split(".")[0] + ".json"
@@ -102,6 +117,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
             )
 
             parsed = json.loads(result.stdout)
+            parsed.append("hello!")
             with open(output_path, "w") as out:
                 json.dump(parsed, out, indent=4)
 
@@ -152,9 +168,13 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
     os.makedirs(output_folder, exist_ok=True)
 
     # Collect submissions
+    # submissions = [
+    #     f for f in os.listdir(input_folder)
+    #     if f.endswith(".java") or f.endswith(".c") or f.endswith(".zip")
+    # ]
     submissions = [
         f for f in os.listdir(input_folder)
-        if f.endswith(".java") or f.endswith(".c") or f.endswith(".zip")
+        if os.path.isdir(os.path.join(input_folder, f))
     ]
 
     log.info(f"Found {len(submissions)} submissions.")
@@ -162,7 +182,7 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
     # Parallel execution
     #TODO: is this max_workers count acceptable? Problems would start here...
 
-    with ProcessPoolExecutor(max_workers=os.cpu_count() * 3) as pool:
+    with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
         futures = [
             pool.submit(
                 grade_one_submission,
@@ -185,7 +205,7 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
 if __name__ == "__main__":
     autograde_submissions_folder(
         Language.JAVA,
-        "../../../../data_original/10_22_autograder_test",
-        "../../../../data_original/10_22_autograder_test/output",
+        "../../../../data_original/10_24_autograder_test",
+        "../../../../data_original/10_24_autograder_test/output",
         "../../../../data_original/10_22_autograder"
     )
