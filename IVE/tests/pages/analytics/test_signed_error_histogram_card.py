@@ -61,6 +61,7 @@ def test_an_empty_report_shows_no_chart(qapp, theme, tmp_path: Path):
 
     canvas = card.findChildren(ChartCanvas)[0]
     assert not canvas.is_showing_chart()
+    assert "no scored submissions" in card._status.text()
 
 
 class _RaisingViewModel:

@@ -75,7 +75,10 @@ class ScoreDistributionCard(QWidget):
             self._canvas.clear()
             return
 
-        self._status.setText(f"Showing {report_path.name}")
+        if data.groups:
+            self._status.setText(f"Showing {report_path.name}")
+        else:
+            self._status.setText(f"{report_path.name} has no scored submissions to chart.")
         self.display(data)
 
     def display(self, data: ScoreDistributionData) -> None:

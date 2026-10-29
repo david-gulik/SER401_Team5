@@ -23,8 +23,8 @@ class _RaisingViewModel:
     def list_modules(self, course: CourseFolder) -> tuple[int, ...]:
         return (1,)
 
-    def mapping_names(self) -> tuple[str, ...]:
-        return ("ser334_m9",)
+    def resolve_mapping_name(self, course: CourseFolder, module_number: int) -> str | None:
+        return "ser334_m9"
 
     def list_gradebook_columns(self, course: CourseFolder, module_number: int) -> tuple[str, ...]:
         raise RuntimeError("boom")
