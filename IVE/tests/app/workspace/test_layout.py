@@ -310,8 +310,8 @@ class TestWorkspaceAreas:
         folder = Workspace(tmp_path).course(KEY)
         assert folder.workspace_root == tmp_path
 
-    def test_autograder_snapshot_path(self, tmp_path: Path) -> None:
-        path = Workspace(tmp_path).autograder_snapshot(KEY, 2)
-        assert path == (
-            tmp_path / "autograders" / "ser222" / "m2" / "ser222_25sc_12345" / "autograder.zip"
-        )
+    def test_course_autograders_dir_is_per_course_not_per_section(self, tmp_path: Path) -> None:
+        workspace = Workspace(tmp_path)
+        path = workspace.course_autograders_dir(KEY)
+        assert path == tmp_path / "autograders" / "ser222"
+        assert workspace.course_autograders_dir(CourseKey.parse("ser222_26sc_67890")) == path

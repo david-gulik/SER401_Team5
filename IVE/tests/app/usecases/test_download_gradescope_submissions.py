@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import zipfile
 from pathlib import Path
@@ -40,11 +41,23 @@ def export_zip(*names: str) -> bytes:
     return buffer.getvalue()
 
 
-class FakeScraper:
-    """Stands in for http_gradescope_client: writes canned zips into submissions_folder."""
+UPLOADED_NAME = "SER222Module2Autograder_SEP10b_hotfix1.zip"
 
-    def __init__(self, exports: dict[str, bytes]) -> None:
+
+class FakeScraper:
+    """Stands in for http_gradescope_client: writes canned zips into submissions_folder.
+
+    ``autograders`` maps a Gradescope assignment name to the uploaded filename and bytes
+    of its autograder.
+    """
+
+    def __init__(
+        self,
+        exports: dict[str, bytes],
+        autograders: dict[str, tuple[str, bytes]] | None = None,
+    ) -> None:
         self.exports = exports
+        self.autograders = autograders or {}
         self.kwargs: dict = {}
         self.downloads = 0
 
@@ -58,6 +71,11 @@ class FakeScraper:
         written = []
         for name, content in self.exports.items():
             path = folder / f"{name}.zip"
+            path.write_bytes(content)
+            written.append(str(path))
+        for name, (uploaded, content) in self.autograders.items():
+            path = folder / "autograders" / name / uploaded
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
             written.append(str(path))
         return written
@@ -151,42 +169,42 @@ class TestFiling:
         assert (extracted / "alice_1" / "Main.java").read_text() == "class Main {}"
         assert (extracted / "bob_2" / "Main.java").exists()
 
-    def test_autograder_goes_to_the_workspace_autograders_area(self, canvas, folder, tmp_path):
+    def test_autograder_keeps_its_uploaded_name_in_the_course_autograders_area(
+        self, canvas, folder, tmp_path
+    ):
         result = run(
             canvas,
             folder,
             FakeScraper(
-                {
-                    "Module 2 Programming": export_zip("alice_1"),
-                    "Module 2 Programming_autograder": b"GRADER",
-                }
+                {"Module 2 Programming": export_zip("alice_1")},
+                autograders={"Module 2 Programming": (UPLOADED_NAME, b"GRADER")},
             ),
         )
-        snapshot = (
-            tmp_path / "autograders" / "ser222" / "m2" / "ser222_25sc_12345" / "autograder.zip"
-        )
-        assert snapshot.read_bytes() == b"GRADER"
+        kept = tmp_path / "autograders" / "ser222" / UPLOADED_NAME
+        assert kept.read_bytes() == b"GRADER"
         assert not (folder.path / "autograders").exists()
+        assert not (folder.original.submissions_dir / "_unmatched").exists()
         grader = next(a for a in result.artifacts if a.kind == "autograder")
-        assert grader.saved_path == snapshot and grader.module_number == 2
+        assert grader.saved_path == kept and grader.module_number == 2
+        assert grader.gradescope_name == "Module 2 Programming"
 
     def test_manifest_records_everything_with_the_right_bases(self, canvas, folder):
         run(
             canvas,
             folder,
             FakeScraper(
-                {
-                    "Module 3 Programming": export_zip("alice_1"),
-                    "Module 3 Programming_autograder": b"GRADER",
-                }
+                {"Module 3 Programming": export_zip("alice_1")},
+                autograders={"Module 3 Programming": ("SER222Module3Autograder.zip", b"GRADER")},
             ),
         )
         manifest = load_manifest(folder.manifest_path)
         subs = manifest.artifact("original/submissions/m3/submissions.zip")
-        grader = manifest.artifact("autograders/ser222/m3/ser222_25sc_12345/autograder.zip")
+        grader = manifest.artifact("autograders/ser222/SER222Module3Autograder.zip")
         assert subs is not None and subs.kind == "submissions"
         assert subs.source_id == 7216972 and subs.label == "Module 3 Programming"
         assert grader is not None and grader.kind == "autograder"
+        assert grader.source_id == 7216972 and grader.label == "Module 3 Programming"
+        assert grader.sha256 == hashlib.sha256(b"GRADER").hexdigest()
         assert artifact_path(folder, grader).exists()
         entry = manifest.assignment(7216972)
         assert entry is not None and entry.module_number == 3
@@ -214,8 +232,60 @@ class TestFiling:
         assert entry.kind == "submissions" and entry.source_id is None
         assert entry.label == "Practice Exam"
 
+    def test_autograder_without_a_module_is_still_filed_under_its_course(
+        self, canvas, folder, tmp_path
+    ):
+        result = run(
+            canvas, folder, FakeScraper({}, autograders={"Practice Exam": ("grader.zip", b"G")})
+        )
+        assert (tmp_path / "autograders" / "ser222" / "grader.zip").read_bytes() == b"G"
+        assert result.unmatched == ()
+        assert [(a.kind, a.module_number) for a in result.matched] == [("autograder", None)]
+
+    def test_two_assignments_sharing_an_uploaded_name_keep_both(self, canvas, folder, tmp_path):
+        result = run(
+            canvas,
+            folder,
+            FakeScraper(
+                {},
+                autograders={
+                    "Module 2 Programming": ("autograder.zip", b"TWO"),
+                    "Module 3 Programming": ("autograder.zip", b"THREE"),
+                },
+            ),
+        )
+        directory = tmp_path / "autograders" / "ser222"
+        suffixed = f"autograder_{hashlib.sha256(b'THREE').hexdigest()[:8]}.zip"
+        assert sorted(p.name for p in directory.iterdir()) == ["autograder.zip", suffixed]
+        assert (directory / "autograder.zip").read_bytes() == b"TWO"
+        assert (directory / suffixed).read_bytes() == b"THREE"
+        assert {a.module_number: a.saved_path.name for a in result.artifacts} == {
+            2: "autograder.zip",
+            3: suffixed,
+        }
+        manifest = load_manifest(folder.manifest_path)
+        assert len(manifest.artifacts_of_kind("autograder")) == 2
+
+    def test_autograder_another_section_brought_is_shared_not_copied(
+        self, canvas, folder, tmp_path
+    ):
+        other = Workspace(tmp_path).course(CourseKey.parse("ser222_26sc_67890"))
+        autograders = {"Module 2 Programming": (UPLOADED_NAME, b"GRADER")}
+        run(canvas, folder, FakeScraper({}, autograders=autograders))
+        result = run(canvas, other, FakeScraper({}, autograders=autograders))
+
+        directory = tmp_path / "autograders" / "ser222"
+        assert [p.name for p in directory.iterdir()] == [UPLOADED_NAME]
+        assert result.artifacts[0].saved_path == directory / UPLOADED_NAME
+        for course in (folder, other):
+            manifest = load_manifest(course.manifest_path)
+            assert manifest.artifact(f"autograders/ser222/{UPLOADED_NAME}") is not None
+
     def test_scraper_is_pointed_at_the_staging_folder_which_is_removed_after(self, canvas, folder):
-        scraper = FakeScraper({"Module 3 Programming": export_zip("x")})
+        scraper = FakeScraper(
+            {"Module 3 Programming": export_zip("x")},
+            autograders={"Module 3 Programming": ("grader.zip", b"G")},
+        )
         run(canvas, folder, scraper, headless=True)
         staging = Path(scraper.kwargs["submissions_folder"])
         assert staging == folder.original.submissions_dir / "_staging"

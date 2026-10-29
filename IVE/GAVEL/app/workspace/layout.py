@@ -23,7 +23,7 @@ The layout, with one course as an example:
     │       │       ├── submissions.zip                      Gradescope bulk export
     │       │       └── extracted/                           the same, unzipped
     │       └── anonymized/             DataTree, same shape as original/
-    ├── autograders/<subject><catalog>/m<module>/<course folder>/autograder.zip
+    ├── autograders/<subject><catalog>/<uploaded filename>.zip
     └── runs/
 
 See ``docs/workspace_layout.md`` for the rules behind each name.
@@ -57,7 +57,6 @@ RUBRIC_ASSESSMENTS_FILE = "rubric_assessments.json"
 SUBMISSIONS_DIR = "submissions"
 SUBMISSIONS_FILE = "submissions.zip"
 EXTRACTED_DIR = "extracted"
-AUTOGRADER_FILE = "autograder.zip"
 
 # myASU term code digit -> folder letter. 2267 is Fall 2026.
 TERM_DIGIT_LETTERS = {"1": "s", "4": "u", "7": "f", "9": "w"}
@@ -454,21 +453,14 @@ class Workspace:
     def runs_dir(self) -> Path:
         return self.root / RUNS_DIR
 
-    def autograder_snapshot(self, key: CourseKey, module_number: int) -> Path:
-        """Where the Gradescope autograder zip for one module of one offering is kept.
+    def course_autograders_dir(self, key: CourseKey) -> Path:
+        """Where the Gradescope autograder zips for a course are kept, e.g. ``autograders/ser222/``.
 
-        ``autograders/ser222/m2/ser222_25sc_12345/autograder.zip``. Grouped by
-        course and module so snapshots of the same grader across offerings sit
-        side by side; the module UID mapping the sponsor maintains will replace
-        the ``m<module>`` level once it exists.
+        Autograders belong to the course, not to one offering: any section can
+        run any of them. Each keeps the filename it was uploaded under, which
+        changes with every version, so versions sit side by side.
         """
-        return (
-            self.autograders_dir
-            / f"{key.subject.lower()}{key.catalog_number.lower()}"
-            / f"m{module_number}"
-            / key.folder_name
-            / AUTOGRADER_FILE
-        )
+        return self.autograders_dir / f"{key.subject.lower()}{key.catalog_number.lower()}"
 
     def course(self, key: CourseKey) -> CourseFolder:
         return CourseFolder(self.courses_dir / key.folder_name, key)
