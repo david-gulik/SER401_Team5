@@ -127,13 +127,10 @@ class GenerateReportCard(QWidget):
         self._course_box.currentIndexChanged.connect(self._refresh_modules)
         self._module_box = QComboBox()
         self._module_box.currentIndexChanged.connect(self._refresh_module_dependents)
-        self._mapping_box = QComboBox()
-        self._mapping_box.addItems(self._view_model.mapping_names())
 
         common_form = QFormLayout()
         common_form.addRow("Course", self._course_box)
         common_form.addRow("Module", self._module_box)
-        common_form.addRow("Proxy Mapping", self._mapping_box)
         self._common_fields = QWidget()
         self._common_fields.setLayout(common_form)
         self._card.add_row(self._common_fields)
@@ -281,16 +278,23 @@ class GenerateReportCard(QWidget):
         report_type = self._report_type_box.currentText()
         course = self._selected_course()
         module_text = self._module_box.currentText()
-        mapping_name = self._mapping_box.currentText()
 
-        if course is None or not module_text or not mapping_name:
-            self._status.setText("Choose a course, module, and proxy mapping.")
+        if course is None or not module_text:
+            self._status.setText("Choose a course and module.")
+            return
+
+        module_number = int(module_text)
+        mapping_name = self._view_model.resolve_mapping_name(course, module_number)
+        if mapping_name is None:
+            self._status.setText(
+                f"No proxy mapping is defined for {course.key.folder_name} module {module_number}."
+            )
             return
 
         if report_type == self._SIGNED_ERROR:
-            self._generate_signed_error_report(course, int(module_text), mapping_name)
+            self._generate_signed_error_report(course, module_number, mapping_name)
         elif report_type == self._HEAT_MAP:
-            self._generate_heat_map_report(course, int(module_text), mapping_name)
+            self._generate_heat_map_report(course, module_number, mapping_name)
         else:
             self._status.setText("Choose a report type.")
 
