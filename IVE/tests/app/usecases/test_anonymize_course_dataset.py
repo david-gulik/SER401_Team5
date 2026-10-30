@@ -414,6 +414,54 @@ class TestFullPipeline:
         assert result.rubric_assessment.processed_count == 1
         assert result.rubric_assessment.skipped_count == 0
 
+    def test_rubric_definition_is_copied_alongside_assessments(
+        self,
+        use_case,
+        tmp_path: Path,
+    ):
+        write_consent_form(tmp_path)
+        write_rubric(tmp_path)
+        definition_text = json.dumps({"rubric_id": "1", "criteria": []})
+        (
+            tmp_path / "original" / "assignments" / "7216983_m1" / "rubric_definition.json"
+        ).write_text(definition_text, encoding="utf-8")
+
+        use_case.execute(
+            AnonymizeCourseDatasetRequest(
+                snapshot_dir=tmp_path,
+                seed=42,
+            )
+        )
+
+        definition_output = (
+            tmp_path / "anonymized" / "assignments" / "7216983_m1" / "rubric_definition.json"
+        )
+
+        assert definition_output.exists()
+        assert definition_output.read_text(encoding="utf-8") == definition_text
+
+    def test_missing_rubric_definition_does_not_block_anonymization(
+        self,
+        use_case,
+        tmp_path: Path,
+    ):
+        write_consent_form(tmp_path)
+        write_rubric(tmp_path)
+
+        result = use_case.execute(
+            AnonymizeCourseDatasetRequest(
+                snapshot_dir=tmp_path,
+                seed=42,
+            )
+        )
+
+        definition_output = (
+            tmp_path / "anonymized" / "assignments" / "7216983_m1" / "rubric_definition.json"
+        )
+
+        assert not definition_output.exists()
+        assert result.rubric_assessment.processed_count == 1
+
     def test_rubric_excludes_declined_student(
         self,
         use_case,
