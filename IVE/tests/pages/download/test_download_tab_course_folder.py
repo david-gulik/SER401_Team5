@@ -6,9 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PyQt6.QtWidgets import QMessageBox
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse
+from GAVEL.pages.download import tabs
 from GAVEL.pages.download.tabs import DownloadTab
 from GAVEL.pages.download.viewmodel import GRADEBOOK_DOWNLOAD, DownloadViewModel
 from GAVEL.services.logger import AppLogger
@@ -33,8 +33,11 @@ def pump(qapp) -> None:
 def env(qapp, theme, tmp_path: Path, monkeypatch) -> SimpleNamespace:
     monkeypatch.setenv("CANVAS_TOKEN", "test-token")
     dialogs: list[str] = []
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: dialogs.append("info"))
-    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: dialogs.append("error"))
+    monkeypatch.setattr(
+        tabs,
+        "show_message",
+        lambda *a, critical=False, **k: dialogs.append("error" if critical else "info"),
+    )
     canvas = GradebookCanvasClient(courses=[SIS_COURSE, TRAINING])
     vm = DownloadViewModel(
         roster_client=FakeRosterClient(),

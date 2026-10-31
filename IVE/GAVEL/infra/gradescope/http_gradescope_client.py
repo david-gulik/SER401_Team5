@@ -12,15 +12,18 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.support.ui import WebDriverWait
 
+from GAVEL.app.progress import ProgressCallback, report
 from GAVEL.infra.asu_auth.browser_session import BROWSER_ERRORS, AsuBrowserSession, host_of
+from GAVEL.infra.http_logging import log_http_calls
 from GAVEL.services.env_service import SCHEMA_DEFAULTS
 
 # -------------------------
 # Logging Setup
 # -------------------------
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("GradescopeClient")
+
+PROGRESS_LABEL = "Downloading Gradescope assignments"
 
 
 def _env_or_default(name: str) -> str | None:
@@ -120,21 +123,21 @@ class http_gradescope_client:
     # -------------------------
 
     def _open_gradescope_from_course_nav(self, wait: WebDriverWait, starting_tabs: list[str]):
-        log.debug("Waiting for Canvas course nav to load...")
+        log.info("Waiting for Canvas course nav to load...")
         wait.until(ec.presence_of_element_located((By.ID, "section-tabs")))
 
-        log.debug("Clicking Gradescope nav link...")
+        log.info("Clicking Gradescope nav link...")
         nav_link = wait.until(
             ec.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Gradescope')]"))
         )
         nav_link.click()
 
-        log.debug("Waiting for new Gradescope tab...")
+        log.info("Waiting for new Gradescope tab...")
         wait.until(lambda d: any(h not in starting_tabs for h in d.window_handles))
 
         new_tab = next(h for h in self._driver.window_handles if h not in starting_tabs)
         self._driver.switch_to.window(new_tab)
-        log.debug("Switched to Gradescope tab...")
+        log.info("Switched to Gradescope tab...")
 
     def _close_extra_tabs(self, starting_tabs: list[str], home_tab: str) -> None:
         """Leave the shared browser as it was found: one tab, focused."""
@@ -152,7 +155,7 @@ class http_gradescope_client:
     # -------------------------
 
     def _extract_session(self) -> GradescopeSession:
-        log.debug("Extracting Gradescope cookies...")
+        log.info("Extracting Gradescope cookies...")
 
         raw_cookies = self._driver.get_cookies()
         cookies = {c["name"]: c["value"] for c in raw_cookies}
@@ -205,7 +208,7 @@ class http_gradescope_client:
         home_tab = driver.current_window_handle
 
         try:
-            log.debug("Navigating to Canvas course: %s", self.course_url)
+            log.info("Navigating to Canvas course: %s", self.course_url)
             driver.get(self.course_url)
 
             # Lands on the course page straight away when already signed in;
@@ -217,13 +220,13 @@ class http_gradescope_client:
             self._open_gradescope_from_course_nav(wait, starting_tabs)
 
             # Wait for Gradescope
-            log.debug("Waiting for Gradescope to load...")
+            log.info("Waiting for Gradescope to load...")
             wait.until(lambda d: host_of(d.current_url) == self.GRADESCOPE_DOMAIN)
 
             time.sleep(2)
 
             gs_course_id = self._extract_gradescope_course_id()
-            log.debug("Detected Gradescope course ID: %s", gs_course_id)
+            log.info("Detected Gradescope course ID: %s", gs_course_id)
 
             return self._extract_session(), gs_course_id
 
@@ -262,6 +265,7 @@ class http_gradescope_client:
         self, gs_session: GradescopeSession, course_id: int | str
     ) -> requests.Session:
         session = requests.Session()
+        log_http_calls(session)
 
         # Copy all cookies from Selenium
         for name, value in gs_session.all_cookies.items():
@@ -285,13 +289,16 @@ class http_gradescope_client:
 
         return session
 
-    def download_all_assignments(self, username: str, password: str) -> list[str]:
+    def download_all_assignments(
+        self, username: str, password: str, on_progress: ProgressCallback | None = None
+    ) -> list[str]:
         """Log in, then save every assignment's bulk export and autograder to submissions_folder.
 
         Files are named ``<assignment name>.zip`` and ``<assignment name>_autograder.zip``
         (illegal filename characters removed). Where they belong in the workspace is the
         caller's business: DownloadGradescopeSubmissionsUseCase files them by Canvas
-        assignment. Returns the paths written.
+        assignment. Returns the paths written. ``on_progress`` hears once the
+        assignment list is known and again as each assignment is saved.
         """
         log.info("Downloading all assignments...")
         gs_session, gs_course_id = self.capture_session(username, password)
@@ -307,9 +314,13 @@ class http_gradescope_client:
             attrs={"data-assignment-id": True, "aria-describedby": f"course-{gs_course_id}"}
         )
         assignments = {e.get_text(strip=True): e["data-assignment-id"] for e in elements}
+        total = len(assignments)
+        log.info("Found %d Gradescope assignment(s) in course %s", total, gs_course_id)
+        report(on_progress, PROGRESS_LABEL, 0, total)
 
         written: list[str] = []
-        for name, assignment_id in assignments.items():
+        for index, (name, assignment_id) in enumerate(assignments.items(), start=1):
+            log.info("Gradescope assignment %d of %d: %s", index, total, name)
             safe_name = remove_illegal_download_characters(name)
             assignment_url = (
                 f"{self.base_url}{self.courses_suffix}/{gs_course_id}"
@@ -358,7 +369,8 @@ class http_gradescope_client:
                 zip_resp = session.get(f"{generated}.zip")
 
             written.append(self._save(f"{safe_name}.zip", zip_resp.content))
-            log.info("Assignment %s downloaded!", name)
+            log.info("Assignment %s downloaded (%d of %d)", name, index, total)
+            report(on_progress, PROGRESS_LABEL, index, total, name)
 
         log.info("Download of class %s complete!", gs_course_id)
         return written

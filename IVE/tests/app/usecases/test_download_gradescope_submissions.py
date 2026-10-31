@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from GAVEL.app.dtos.canvas_course import CanvasAssignment
+from GAVEL.app.progress import DownloadProgress
 from GAVEL.app.usecases.download_gradescope_submissions import (
     DownloadGradescopeSubmissionsRequest,
     DownloadGradescopeSubmissionsUseCase,
@@ -52,14 +53,16 @@ class FakeScraper:
         self.kwargs = kwargs
         return self
 
-    def download_all_assignments(self, username: str, password: str) -> list[str]:
+    def download_all_assignments(self, username: str, password: str, on_progress=None) -> list[str]:
         self.downloads += 1
         folder = Path(self.kwargs["submissions_folder"])
         written = []
-        for name, content in self.exports.items():
+        for index, (name, content) in enumerate(self.exports.items(), start=1):
             path = folder / f"{name}.zip"
             path.write_bytes(content)
             written.append(str(path))
+            if on_progress is not None:
+                on_progress(DownloadProgress("Downloading", index, len(self.exports), name))
         return written
 
 
@@ -281,3 +284,21 @@ class TestGuard:
             make_use_case(canvas, FakeScraper({})).execute(
                 DownloadGradescopeSubmissionsRequest(course_id=0, folder=folder)
             )
+
+
+class TestProgress:
+    def test_scraper_progress_reaches_the_caller(self, canvas, folder) -> None:
+        scraper = FakeScraper(
+            {"Module 2 Programming": export_zip("alice_1"), "Mystery": export_zip("bob_2")}
+        )
+        seen = []
+
+        make_use_case(canvas, scraper).execute(
+            DownloadGradescopeSubmissionsRequest(course_id=COURSE_ID, folder=folder),
+            on_progress=seen.append,
+        )
+
+        assert [(p.done, p.total, p.item) for p in seen] == [
+            (1, 2, "Module 2 Programming"),
+            (2, 2, "Mystery"),
+        ]

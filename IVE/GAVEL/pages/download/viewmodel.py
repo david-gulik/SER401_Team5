@@ -6,15 +6,17 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
-from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtWidgets import QApplication
 
 from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQuiz
 from GAVEL.app.dtos.roster import ClassSection, TermInfo
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
+from GAVEL.app.progress import DownloadProgress, ProgressCallback
 from GAVEL.app.usecases.download_all_quizzes import (
     DownloadAllQuizzesRequest,
+    DownloadAllQuizzesResult,
     DownloadAllQuizzesUseCase,
 )
 from GAVEL.app.usecases.download_all_rubric_assessments import (
@@ -28,6 +30,7 @@ from GAVEL.app.usecases.download_consent_form import (
 from GAVEL.app.usecases.download_gradebook import DownloadGradebookRequest, DownloadGradebookUseCase
 from GAVEL.app.usecases.download_gradescope_submissions import (
     DownloadGradescopeSubmissionsRequest,
+    DownloadGradescopeSubmissionsResult,
     DownloadGradescopeSubmissionsUseCase,
 )
 from GAVEL.app.usecases.download_roster import (
@@ -47,6 +50,7 @@ from GAVEL.app.workspace.resolve import (
     course_key_from_selections,
     roster_key_from_selections,
 )
+from GAVEL.core.background import run_in_background
 from GAVEL.core.status import Status
 from GAVEL.pages.download.section_match import section_mismatch
 from GAVEL.pages.download.sorting import course_sort_key
@@ -156,6 +160,8 @@ class DownloadUiState:
     is_busy: bool = False
     status: Status = Status.UNKNOWN
     message: str = "Enter search criteria or a class number."
+    # How far the running batch download has got; None when there is no count yet.
+    progress: DownloadProgress | None = None
     last_saved_path: str | None = None
     output_dir: str = ""
     # A course folder name typed by the user; overrides the name derived from selections.
@@ -302,31 +308,23 @@ class _DownloadAllResult:
     skipped: tuple[str, ...] = ()
 
 
-class _WorkerSignals(QObject):
-    result = pyqtSignal(object)
-    error = pyqtSignal(object)
+@dataclass(frozen=True)
+class _RubricBatchResult:
+    saved: tuple[DownloadRubricAssessmentResult, ...]
+    skipped: tuple[str, ...]
+    existing: tuple[str, ...]
+    failed: tuple[str, ...]
 
 
-class _BackgroundTask(QRunnable):
-    """Runs a callable on QThreadPool, marshalling result/error back via signals."""
-
-    def __init__(self, fn: Callable[[], object]) -> None:
-        super().__init__()
-        self._fn = fn
-        self.signals = _WorkerSignals()
-
-    def run(self) -> None:
-        try:
-            value = self._fn()
-        except Exception as exc:  # noqa: BLE001
-            self.signals.error.emit(exc)
-        else:
-            self.signals.result.emit(value)
+RUBRIC_PROGRESS_LABEL = "Downloading rubric assessments"
+DOWNLOAD_ALL_STEPS = 6
 
 
 class DownloadViewModel(QObject):
     state_changed = pyqtSignal(object)  # DownloadUiState
     event_raised = pyqtSignal(object)  # ShowError | ShowInfo
+    # Use cases report progress on the worker thread; this carries it to the GUI thread.
+    _progress_reported = pyqtSignal(object)  # DownloadProgress
 
     def __init__(
         self,
@@ -359,6 +357,7 @@ class DownloadViewModel(QObject):
             output_dir=str(default_output_dir),
             roster_configured=roster_configured,
         )
+        self._progress_reported.connect(self._on_progress)
 
     def get_state(self) -> DownloadUiState:
         return self._state
@@ -479,10 +478,19 @@ class DownloadViewModel(QObject):
         on_error: Callable[[object], None],
     ) -> None:
         """Run `fn` on QThreadPool; result/error fire on the GUI thread."""
-        task = _BackgroundTask(fn)
-        task.signals.result.connect(on_result)
-        task.signals.error.connect(on_error)
-        QThreadPool.globalInstance().start(task)
+        run_in_background(fn, on_result, on_error)
+
+    def _report_progress(self, progress: DownloadProgress) -> None:
+        """Progress callback handed to use cases; safe to call from the worker thread."""
+        self._progress_reported.emit(progress)
+
+    def _on_progress(self, progress: object) -> None:
+        if not self._state.is_busy:
+            return
+        p: DownloadProgress = progress  # type: ignore[assignment]
+        message = p.text if p.item is None else f"{p.text}. Last finished: {p.item}"
+        self._state = replace(self._state, progress=p, message=message)
+        self.state_changed.emit(self._state)
 
     # Actions
 
@@ -714,18 +722,26 @@ class DownloadViewModel(QObject):
         if folder is None:
             return
 
-        self._set_busy(f"Downloading Gradescope submissions for course {course_id}...")
-        try:
-            result = DownloadGradescopeSubmissionsUseCase(
-                self._canvas_client, browser=self._asu_browser
-            ).execute(DownloadGradescopeSubmissionsRequest(course_id=course_id, folder=folder))
-        except Exception as exc:  # noqa: BLE001
-            self._report_download_failure("Gradescope submissions download failed", exc)
-            return
+        label = f"Signing in to Gradescope for course {course_id}"
+        self._set_busy(f"{label}...", DownloadProgress(label, 0, 0))
+        use_case = DownloadGradescopeSubmissionsUseCase(
+            self._canvas_client, browser=self._asu_browser
+        )
+        request = DownloadGradescopeSubmissionsRequest(course_id=course_id, folder=folder)
+        self._run_async(
+            lambda: use_case.execute(request, on_progress=self._report_progress),
+            self._on_gradescope_downloaded,
+            lambda exc: self._report_download_failure(
+                "Gradescope submissions download failed", exc
+            ),
+        )
 
+    def _on_gradescope_downloaded(self, value: object) -> None:
+        result: DownloadGradescopeSubmissionsResult = value  # type: ignore[assignment]
         self._state = replace(
             self._state,
             is_busy=False,
+            progress=None,
             status=Status.WARNING if result.unmatched else Status.NOMINAL,
             message=result.message,
             last_saved_path=str(result.saved_path),
@@ -782,7 +798,8 @@ class DownloadViewModel(QObject):
 
         ids_text = ", ".join(str(a) for a in assignment_ids)
         self._set_busy(
-            f"Downloading rubric assessment(s) for course {course_id}, assignment(s) {ids_text}..."
+            f"Downloading rubric assessment(s) for course {course_id}, assignment(s) {ids_text}...",
+            DownloadProgress(RUBRIC_PROGRESS_LABEL, 0, len(assignment_ids)),
         )
         # Each assignment is attempted on its own so one bad ID does not
         # block the rest, mirroring the Download All batch.
@@ -790,38 +807,72 @@ class DownloadViewModel(QObject):
         # Only assignments loaded from Canvas carry has_rubric and a name for
         # the folder tag; a typed ID that was never loaded is attempted as-is.
         known = {a.id: a for a in self._state.assignments}
-        saved: list[DownloadRubricAssessmentResult] = []
-        skipped: list[str] = []
-        existing: list[str] = []
-        failed: list[str] = []
-        for assignment_id in assignment_ids:
-            assignment = known.get(assignment_id)
-            if assignment is not None and not assignment.has_rubric:
-                self._logger.warning(
-                    f"Skipped rubric download for '{assignment.name}' "
-                    f"(course {course_id}): no rubric attached."
+        logger = self._logger
+        report_progress = self._report_progress
+        total = len(assignment_ids)
+
+        def work() -> _RubricBatchResult:
+            saved: list[DownloadRubricAssessmentResult] = []
+            skipped: list[str] = []
+            existing: list[str] = []
+            failed: list[str] = []
+            for index, assignment_id in enumerate(assignment_ids, start=1):
+                assignment = known.get(assignment_id)
+                name = assignment.name if assignment is not None else ""
+                logger.info(
+                    f"Rubric assessment {index} of {total}: "
+                    f"'{name or assignment_id}' (course {course_id})"
                 )
-                skipped.append(f"'{assignment.name}' has no rubric attached")
-                continue
-            if assignment is None:
-                assignment = CanvasAssignment(id=assignment_id, name="")
-            try:
-                result = use_case.execute(
-                    DownloadRubricAssessmentRequest(
-                        course_id=course_id, assignment=assignment, folder=folder
+                if assignment is not None and not assignment.has_rubric:
+                    logger.warning(
+                        f"Skipped rubric download for '{assignment.name}' "
+                        f"(course {course_id}): no rubric attached."
+                    )
+                    skipped.append(f"'{assignment.name}' has no rubric attached")
+                else:
+                    if assignment is None:
+                        assignment = CanvasAssignment(id=assignment_id, name="")
+                    try:
+                        result = use_case.execute(
+                            DownloadRubricAssessmentRequest(
+                                course_id=course_id, assignment=assignment, folder=folder
+                            )
+                        )
+                    except ArtifactExistsError as exc:
+                        logger.warning(
+                            f"Rubric assessment {assignment_id} already downloaded: {exc}"
+                        )
+                        existing.append(str(exc))
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error(
+                            f"Rubric assessment download failed for assignment "
+                            f"{assignment_id}: {exc}"
+                        )
+                        failed.append(f"{assignment_id}: {exc}")
+                    else:
+                        logger.info(f"Rubric assessment saved to {result.saved_path}")
+                        saved.append(result)
+                report_progress(
+                    DownloadProgress(
+                        RUBRIC_PROGRESS_LABEL, index, total, name or str(assignment_id)
                     )
                 )
-            except ArtifactExistsError as exc:
-                self._logger.warning(f"Rubric assessment {assignment_id} already downloaded: {exc}")
-                existing.append(str(exc))
-                continue
-            except Exception as exc:  # noqa: BLE001
-                self._logger.error(
-                    f"Rubric assessment download failed for assignment {assignment_id}: {exc}"
-                )
-                failed.append(f"{assignment_id}: {exc}")
-                continue
-            saved.append(result)
+            return _RubricBatchResult(
+                saved=tuple(saved),
+                skipped=tuple(skipped),
+                existing=tuple(existing),
+                failed=tuple(failed),
+            )
+
+        self._run_async(
+            work,
+            lambda value: self._on_rubric_downloaded(course_id, value),
+            lambda exc: self._report_download_failure("Rubric assessment download failed", exc),
+        )
+
+    def _on_rubric_downloaded(self, course_id: int, value: object) -> None:
+        res: _RubricBatchResult = value  # type: ignore[assignment]
+        saved, skipped, existing, failed = res.saved, res.skipped, res.existing, res.failed
 
         if not saved and failed:
             message = "; ".join(failed)
@@ -845,7 +896,7 @@ class DownloadViewModel(QObject):
                 parts.append("Already downloaded: " + "; ".join(existing))
             message = " ".join(parts)
             self._state = replace(
-                self._state, is_busy=False, status=Status.WARNING, message=message
+                self._state, is_busy=False, progress=None, status=Status.WARNING, message=message
             )
             self.state_changed.emit(self._state)
             self.event_raised.emit(ShowInfo(message))
@@ -871,6 +922,7 @@ class DownloadViewModel(QObject):
         self._state = replace(
             self._state,
             is_busy=False,
+            progress=None,
             status=Status.WARNING if (failed or skipped or existing) else Status.NOMINAL,
             message=message,
             last_saved_path=str(saved[-1].saved_path),
@@ -892,15 +944,18 @@ class DownloadViewModel(QObject):
         if folder is None:
             return
 
-        self._set_busy(f"Downloading all quiz reports for course {course_id}...")
-        try:
-            result = DownloadAllQuizzesUseCase(self._canvas_client).execute(
-                DownloadAllQuizzesRequest(course_id=course_id, folder=folder)
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._report_download_failure("Quiz report batch download failed", exc)
-            return
+        label = f"Listing quizzes for course {course_id}"
+        self._set_busy(f"{label}...", DownloadProgress(label, 0, 0))
+        use_case = DownloadAllQuizzesUseCase(self._canvas_client)
+        request = DownloadAllQuizzesRequest(course_id=course_id, folder=folder)
+        self._run_async(
+            lambda: use_case.execute(request, on_progress=self._report_progress),
+            lambda value: self._on_quizzes_downloaded(course_id, folder, value),
+            lambda exc: self._report_download_failure("Quiz report batch download failed", exc),
+        )
 
+    def _on_quizzes_downloaded(self, course_id: int, folder: CourseFolder, value: object) -> None:
+        result: DownloadAllQuizzesResult = value  # type: ignore[assignment]
         succeeded, skipped, failed = result.succeeded, result.skipped, result.failed
         existing = result.already_downloaded
         for outcome in skipped:
@@ -931,6 +986,7 @@ class DownloadViewModel(QObject):
         self._state = replace(
             self._state,
             is_busy=False,
+            progress=None,
             status=status,
             message=message,
             last_saved_path=str(quizzes_dir) if succeeded else self._state.last_saved_path,
@@ -968,10 +1024,12 @@ class DownloadViewModel(QObject):
         if roster_folder is None:
             return
 
-        self._set_busy("Downloading all data...")
+        self._set_busy("Downloading all data...", DownloadProgress("Starting Download All", 0, 0))
         roster_client = self._client
         canvas_client = self._canvas_client
         asu_browser = self._asu_browser
+        report_progress = self._report_progress
+        logger = self._logger
 
         def work() -> _DownloadAllResult:
             successes: list[str] = []
@@ -979,11 +1037,22 @@ class DownloadViewModel(QObject):
             failures: list[str] = []
             completed: set[str] = set()
             last_path: Path | None = None
+            step_number = 0
 
-            def step(name: str, action: Callable[[], Path]) -> None:
+            def begin(name: str) -> ProgressCallback:
+                """Announce the next step; returns a callback that tags its item counts."""
+                nonlocal step_number
+                step_number += 1
+                stage = f"Step {step_number} of {DOWNLOAD_ALL_STEPS}"
+                logger.info(f"Download All {stage}: {name}")
+                report_progress(DownloadProgress(f"{stage}: {name}", 0, 0))
+                return lambda p: report_progress(replace(p, label=f"{stage}: {p.label}"))
+
+            def step(name: str, action: Callable[[ProgressCallback], Path]) -> None:
                 nonlocal last_path
+                on_progress = begin(name)
                 try:
-                    last_path = action()
+                    last_path = action(on_progress)
                 except ArtifactExistsError as exc:
                     skipped.append(f"{name}: {exc}")
                     completed.add(name)
@@ -995,7 +1064,7 @@ class DownloadViewModel(QObject):
 
             step(
                 ROSTER_DOWNLOAD,
-                lambda: (
+                lambda _: (
                     DownloadRosterUseCase(roster_client)
                     .execute(
                         DownloadRosterRequest(
@@ -1007,7 +1076,7 @@ class DownloadViewModel(QObject):
             )
             step(
                 GRADEBOOK_DOWNLOAD,
-                lambda: (
+                lambda _: (
                     DownloadGradebookUseCase(canvas_client)
                     .execute(DownloadGradebookRequest(course_id=course_id, folder=folder))
                     .saved_path
@@ -1015,17 +1084,18 @@ class DownloadViewModel(QObject):
             )
             step(
                 GRADESCOPE_DOWNLOAD,
-                lambda: (
+                lambda on_progress: (
                     DownloadGradescopeSubmissionsUseCase(canvas_client, browser=asu_browser)
                     .execute(
-                        DownloadGradescopeSubmissionsRequest(course_id=course_id, folder=folder)
+                        DownloadGradescopeSubmissionsRequest(course_id=course_id, folder=folder),
+                        on_progress=on_progress,
                     )
                     .saved_path
                 ),
             )
             step(
                 CONSENT_DOWNLOAD,
-                lambda: (
+                lambda _: (
                     DownloadConsentFormUseCase(canvas_client)
                     .execute(
                         DownloadConsentFormRequest(
@@ -1036,9 +1106,11 @@ class DownloadViewModel(QObject):
                 ),
             )
 
+            on_progress = begin(QUIZ_REPORTS_DOWNLOAD)
             try:
                 quiz_result = DownloadAllQuizzesUseCase(canvas_client).execute(
-                    DownloadAllQuizzesRequest(course_id=course_id, folder=folder)
+                    DownloadAllQuizzesRequest(course_id=course_id, folder=folder),
+                    on_progress=on_progress,
                 )
                 for outcome in quiz_result.succeeded:
                     successes.append(f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name})")
@@ -1059,9 +1131,11 @@ class DownloadViewModel(QObject):
             except Exception as exc:  # noqa: BLE001
                 failures.append(f"{QUIZ_REPORTS_DOWNLOAD}: {exc}")
 
+            on_progress = begin(RUBRIC_DOWNLOAD)
             try:
                 rubric_result = DownloadAllRubricAssessmentsUseCase(canvas_client).execute(
-                    DownloadAllRubricAssessmentsRequest(course_id=course_id, folder=folder)
+                    DownloadAllRubricAssessmentsRequest(course_id=course_id, folder=folder),
+                    on_progress=on_progress,
                 )
                 for outcome in rubric_result.succeeded:
                     successes.append(f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name})")
@@ -1121,6 +1195,7 @@ class DownloadViewModel(QObject):
         self._state = replace(
             self._state,
             is_busy=False,
+            progress=None,
             status=status,
             message=message,
             last_saved_path=last_saved,
@@ -1144,15 +1219,20 @@ class DownloadViewModel(QObject):
 
     # Helpers
 
-    def _set_busy(self, message: str) -> None:
-        self._state = replace(self._state, is_busy=True, status=Status.WARNING, message=message)
+    def _set_busy(self, message: str, progress: DownloadProgress | None = None) -> None:
+        """``progress`` marks a batch download, which the tab shows in its progress panel."""
+        self._state = replace(
+            self._state, is_busy=True, progress=progress, status=Status.WARNING, message=message
+        )
         self.state_changed.emit(self._state)
         # Flush a paint so the busy bar shows before the synchronous fetch
         # blocks the GUI thread. Drop this once blocking calls move off-thread.
         QApplication.processEvents()
 
     def _set_idle(self, status: Status, message: str) -> None:
-        self._state = replace(self._state, is_busy=False, status=status, message=message)
+        self._state = replace(
+            self._state, is_busy=False, progress=None, status=status, message=message
+        )
         self.state_changed.emit(self._state)
 
     def _emit_error(self, message: str) -> None:

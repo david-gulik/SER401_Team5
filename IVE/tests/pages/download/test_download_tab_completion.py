@@ -6,9 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PyQt6.QtWidgets import QMessageBox
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasQuiz
+from GAVEL.pages.download import tabs
 from GAVEL.pages.download.tabs import DONE_MARK, DownloadTab
 from GAVEL.pages.download.viewmodel import (
     GRADEBOOK_DOWNLOAD,
@@ -63,8 +63,7 @@ def env(qapp, theme, tmp_path: Path, monkeypatch) -> SimpleNamespace:
         return answers.pop(0)
 
     monkeypatch.setattr(tab, "_confirm_course_switch", fake_confirm)
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
-    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    monkeypatch.setattr(tabs, "show_message", lambda *a, **k: None)
     return SimpleNamespace(
         tab=tab,
         vm=vm,
@@ -89,8 +88,9 @@ def test_gradebook_button_earns_a_mark_after_success(env):
     assert env.tab.download_button(GRADEBOOK_DOWNLOAD).text() == f"Download Gradebook {DONE_MARK}"
 
 
-def test_quiz_reports_button_earns_a_mark_after_success(env):
+def test_quiz_reports_button_earns_a_mark_after_success(qapp, env):
     env.tab.download_button(QUIZ_REPORTS_DOWNLOAD).click()
+    wait_for_workers(qapp)
     assert (
         env.tab.download_button(QUIZ_REPORTS_DOWNLOAD).text()
         == f"Download All Quiz Reports {DONE_MARK}"

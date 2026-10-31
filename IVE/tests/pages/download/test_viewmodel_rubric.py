@@ -19,6 +19,7 @@ from GAVEL.pages.download.viewmodel import (
 )
 from GAVEL.services.logger import AppLogger
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
+from tests.pages.download.test_viewmodel_roster import wait_for_workers
 
 COURSE_ID = "213877"
 COURSE = CanvasCourse(id=213877, name="SER 401", course_code="2026FallC-X-SER401-12345")
@@ -137,10 +138,11 @@ def test_rubric_download_rejects_non_numeric_assignment_ids(vm, canvas):
     assert canvas.rubric_calls == []
 
 
-def test_single_assignment_download_keeps_the_use_case_message(vm, canvas, tmp_path):
+def test_single_assignment_download_keeps_the_use_case_message(qapp, vm, canvas, tmp_path):
     vm.set_assignment_ids("7")
     seen = events(vm)
     vm.download_rubric_assessment()
+    wait_for_workers(qapp)
     assert canvas.rubric_calls == [7]
     state = vm.get_state()
     assert state.status is Status.NOMINAL
@@ -150,10 +152,11 @@ def test_single_assignment_download_keeps_the_use_case_message(vm, canvas, tmp_p
     assert "assignment 7" in state.message
 
 
-def test_multiple_assignments_download_one_file_each(vm, canvas, tmp_path):
+def test_multiple_assignments_download_one_file_each(qapp, vm, canvas, tmp_path):
     vm.set_assignment_ids("9, 7")
     seen = events(vm)
     vm.download_rubric_assessment()
+    wait_for_workers(qapp)
     assert canvas.rubric_calls == [9, 7]
     assert (rubric_path(tmp_path, 9)).exists()
     assert (rubric_path(tmp_path, 7)).exists()
@@ -170,6 +173,7 @@ def test_one_failing_assignment_does_not_stop_the_others(qapp, tmp_path):
     vm.set_assignment_ids("9, 7")
     seen = events(vm)
     vm.download_rubric_assessment()
+    wait_for_workers(qapp)
     assert canvas.rubric_calls == [9, 7]
     state = vm.get_state()
     assert state.status is Status.WARNING
@@ -185,6 +189,7 @@ def test_every_assignment_failing_is_critical(qapp, tmp_path):
     vm.set_assignment_ids("7,9")
     seen = events(vm)
     vm.download_rubric_assessment()
+    wait_for_workers(qapp)
     state = vm.get_state()
     assert state.status is Status.CRITICAL
     assert state.message == "7: no rubric on 7; 9: no rubric on 9"
@@ -210,6 +215,7 @@ def test_loaded_assignment_without_a_rubric_is_skipped_not_fetched(qapp, tmp_pat
     vm.set_assignment_ids("12, 7")
     seen = events(vm)
     vm.download_rubric_assessment()
+    wait_for_workers(qapp)
     assert canvas.rubric_calls == [7]
     state = vm.get_state()
     assert state.status is Status.WARNING
@@ -228,6 +234,7 @@ def test_every_assignment_skipped_fetches_and_writes_nothing(qapp, tmp_path):
     vm.set_assignment_ids("12")
     seen = events(vm)
     vm.download_rubric_assessment()
+    wait_for_workers(qapp)
     assert canvas.rubric_calls == []
     state = vm.get_state()
     assert state.status is Status.WARNING
@@ -244,5 +251,6 @@ def test_typed_id_that_was_never_loaded_is_still_attempted(qapp, tmp_path):
     vm = make_vm(qapp, canvas, tmp_path)
     vm.set_assignment_ids("12")  # never loaded, so has_rubric is unknown here
     vm.download_rubric_assessment()
+    wait_for_workers(qapp)
     assert canvas.rubric_calls == [12]
     assert vm.get_state().status is Status.NOMINAL

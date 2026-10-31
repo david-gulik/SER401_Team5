@@ -80,30 +80,34 @@ def test_successful_gradebook_download_is_recorded(vm):
     assert state.canvas_downloads_partial
 
 
-def test_successful_quiz_reports_download_is_recorded(vm):
+def test_successful_quiz_reports_download_is_recorded(qapp, vm):
     vm.download_all_quizzes()
+    wait_for_workers(qapp)
     state = vm.get_state()
     assert state.completed == {QUIZ_REPORTS_DOWNLOAD}
     assert "2 saved" in state.message
 
 
-def test_quiz_reports_already_in_the_folder_still_count_as_done(vm):
+def test_quiz_reports_already_in_the_folder_still_count_as_done(qapp, vm):
     vm.download_all_quizzes()
+    wait_for_workers(qapp)
     # Leaving and coming back forgets the mark; the CSVs stay in the folder.
     vm.set_course_id(str(OTHER.id))
     vm.set_course_id(str(COURSE.id))
     assert vm.get_state().completed == frozenset()
 
     vm.download_all_quizzes()
+    wait_for_workers(qapp)
 
     state = vm.get_state()
     assert state.completed == {QUIZ_REPORTS_DOWNLOAD}
     assert "0 saved" in state.message and "2 already downloaded" in state.message
 
 
-def test_quiz_reports_with_no_report_on_canvas_are_not_recorded(vm, canvas):
+def test_quiz_reports_with_no_report_on_canvas_are_not_recorded(qapp, vm, canvas):
     canvas.unavailable_quiz_ids = {q.id for q in QUIZZES}
     vm.download_all_quizzes()
+    wait_for_workers(qapp)
     state = vm.get_state()
     assert state.completed == frozenset()
     assert "0 already downloaded, 2 skipped" in state.message
@@ -125,8 +129,9 @@ def test_download_all_includes_quiz_reports(qapp, vm, monkeypatch):
         assert f"{QUIZ_REPORTS_DOWNLOAD} ({quiz.name})" in state.message
 
 
-def test_changing_the_course_forgets_quiz_reports(vm):
+def test_changing_the_course_forgets_quiz_reports(qapp, vm):
     vm.download_all_quizzes()
+    wait_for_workers(qapp)
     vm.set_course_id(str(OTHER.id))
     assert QUIZ_REPORTS_DOWNLOAD not in vm.get_state().completed
 
