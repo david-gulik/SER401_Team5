@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from GAVEL.app.usecases.proxy_grade.mappings.ser334_m9 import SER334_M9
-from GAVEL.app.workspace.dataset import DatasetReaders
+from GAVEL.app.workspace.dataset import DatasetReaders, MissingArtifactError
 from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
 from GAVEL.app.workspace.manifest import (
     AssignmentEntry,
@@ -272,3 +272,21 @@ def test_generate_heat_map_writes_a_report_to_the_runs_folder(
         outcome.output_path
         != vm.generate(workspace_root, course, 9, "ser334_m9", _MODULE_9_COLUMN).output_path
     )
+
+
+def test_generate_heat_map_names_the_missing_rubric_definition_file(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    workspace_root = _build_course(tmp_path, with_rubric=True)
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+    rubric_assignment = vm.list_rubric_assignments(course, 9)[0]
+    expected_path = course.anonymized.assignment(
+        rubric_assignment.canvas_id, module_number=9
+    ).rubric_definition_json
+    expected_path.unlink()
+
+    with pytest.raises(MissingArtifactError) as exc_info:
+        vm.generate_heat_map(workspace_root, course, 9, "ser334_m9", rubric_assignment)
+
+    assert str(expected_path) in str(exc_info.value)
