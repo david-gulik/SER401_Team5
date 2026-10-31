@@ -678,8 +678,7 @@ class DownloadTab(ScrollableTab):
         )
         if already_loaded:
             return
-        self._vm.load_quizzes(course_id)
-        self._vm.load_assignments(course_id)
+        self._vm.load_course_lists(course_id)
 
     def _on_reload_quizzes(self) -> None:
         course_id = self._vm.get_state().selected_course_id

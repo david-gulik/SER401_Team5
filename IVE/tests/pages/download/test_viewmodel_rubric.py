@@ -71,6 +71,7 @@ def make_vm(qapp, canvas: FakeCanvasClient, tmp_path: Path) -> DownloadViewModel
         roster_configured=True,
     )
     vm.load_courses()
+    wait_for_workers(qapp)
     vm.set_course_id(COURSE_ID)
     return vm
 
@@ -197,8 +198,9 @@ def test_every_assignment_failing_is_critical(qapp, tmp_path):
     assert seen == [ShowError(state.message)]
 
 
-def test_changing_course_clears_the_assignment_choice(vm):
+def test_changing_course_clears_the_assignment_choice(qapp, vm):
     vm.load_assignments(COURSE_ID)
+    wait_for_workers(qapp)
     vm.set_assignment_ids("7,9")
     assert vm.get_state().can_download_rubric
     vm.set_course_id("209555")
@@ -212,6 +214,7 @@ def test_loaded_assignment_without_a_rubric_is_skipped_not_fetched(qapp, tmp_pat
     canvas = RubricCanvasClient(assignments=[*ASSIGNMENTS, NO_RUBRIC])
     vm = make_vm(qapp, canvas, tmp_path)
     vm.load_assignments(COURSE_ID)
+    wait_for_workers(qapp)
     vm.set_assignment_ids("12, 7")
     seen = events(vm)
     vm.download_rubric_assessment()
@@ -231,6 +234,7 @@ def test_every_assignment_skipped_fetches_and_writes_nothing(qapp, tmp_path):
     canvas = RubricCanvasClient(assignments=[NO_RUBRIC])
     vm = make_vm(qapp, canvas, tmp_path)
     vm.load_assignments(COURSE_ID)
+    wait_for_workers(qapp)
     vm.set_assignment_ids("12")
     seen = events(vm)
     vm.download_rubric_assessment()

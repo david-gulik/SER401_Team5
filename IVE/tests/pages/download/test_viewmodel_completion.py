@@ -64,6 +64,7 @@ def vm(qapp, canvas: GradebookCanvasClient, tmp_path: Path) -> DownloadViewModel
         roster_configured=True,
     )
     vm.load_courses()
+    wait_for_workers(qapp)
     vm.set_course_id(str(COURSE.id))
     return vm
 
@@ -73,8 +74,9 @@ def test_nothing_is_completed_at_first(vm):
     assert not vm.get_state().canvas_downloads_partial
 
 
-def test_successful_gradebook_download_is_recorded(vm):
+def test_successful_gradebook_download_is_recorded(qapp, vm):
     vm.download_gradebook()
+    wait_for_workers(qapp)
     state = vm.get_state()
     assert state.completed == {GRADEBOOK_DOWNLOAD}
     assert state.canvas_downloads_partial
@@ -136,9 +138,10 @@ def test_changing_the_course_forgets_quiz_reports(qapp, vm):
     assert QUIZ_REPORTS_DOWNLOAD not in vm.get_state().completed
 
 
-def test_failed_download_is_not_recorded(vm):
+def test_failed_download_is_not_recorded(qapp, vm):
     vm.set_consent_quiz_id("11")
     vm.download_consent()  # the fake raises on fetch
+    wait_for_workers(qapp)
     assert vm.get_state().completed == frozenset()
 
 
@@ -157,6 +160,7 @@ def test_changing_the_course_forgets_canvas_downloads_only(qapp, vm):
     vm.download_roster()
     wait_for_workers(qapp)
     vm.download_gradebook()
+    wait_for_workers(qapp)
     assert vm.get_state().completed == {ROSTER_DOWNLOAD, GRADEBOOK_DOWNLOAD}
 
     vm.set_course_id(str(OTHER.id))
@@ -169,6 +173,7 @@ def test_changing_the_class_number_or_term_forgets_the_roster_only(qapp, vm):
     vm.download_roster()
     wait_for_workers(qapp)
     vm.download_gradebook()
+    wait_for_workers(qapp)
 
     vm.set_class_number("12345")
     assert vm.get_state().completed == {GRADEBOOK_DOWNLOAD}
@@ -179,8 +184,9 @@ def test_changing_the_class_number_or_term_forgets_the_roster_only(qapp, vm):
     assert vm.get_state().completed == {GRADEBOOK_DOWNLOAD}
 
 
-def test_reselecting_the_same_course_keeps_completion(vm):
+def test_reselecting_the_same_course_keeps_completion(qapp, vm):
     vm.download_gradebook()
+    wait_for_workers(qapp)
     vm.set_course_id(str(COURSE.id))
     assert GRADEBOOK_DOWNLOAD in vm.get_state().completed
 

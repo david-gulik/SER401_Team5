@@ -13,6 +13,7 @@ from GAVEL.pages.download.tabs import DownloadTab
 from GAVEL.pages.download.viewmodel import GRADEBOOK_DOWNLOAD, DownloadViewModel
 from GAVEL.services.logger import AppLogger
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
+from tests.pages.download.test_viewmodel_roster import wait_for_workers
 
 SIS_COURSE = CanvasCourse(id=273116, name="SER 402", course_code="2026FallC-X-SER402-87275")
 TRAINING = CanvasCourse(id=213877, name="IVE Capstone", course_code="TRN-2026Spring-IVECapstone")
@@ -27,6 +28,8 @@ class GradebookCanvasClient(FakeCanvasClient):
 def pump(qapp) -> None:
     for _ in range(5):
         qapp.processEvents()
+        # The tab's loads run on the thread pool; let them finish and report back.
+        wait_for_workers(qapp)
 
 
 @pytest.fixture
@@ -50,6 +53,7 @@ def env(qapp, theme, tmp_path: Path, monkeypatch) -> SimpleNamespace:
     tab.show()
     pump(qapp)
     vm.load_courses()
+    wait_for_workers(qapp)
     pump(qapp)
     return SimpleNamespace(
         tab=tab, vm=vm, canvas=canvas, label=tab._course_folder_label, dialogs=dialogs
@@ -95,24 +99,26 @@ def test_state_changes_are_reflected_in_the_field(env):
 
 
 class TestFocus:
-    def test_naming_failure_focuses_the_override_field(self, env):
+    def test_naming_failure_focuses_the_override_field(self, qapp, env):
         env.vm.set_course_id(str(TRAINING.id))
         button = env.tab.download_button(GRADEBOOK_DOWNLOAD)
         button.setFocus()
         assert env.tab.focusWidget() is button
 
         button.click()
+        wait_for_workers(qapp)
 
         assert env.dialogs == ["error"]
         assert env.tab.focusWidget() is env.tab.course_folder_input
         assert env.canvas.download_calls == []
 
-    def test_focus_stays_on_the_clicked_button_through_a_download(self, env):
+    def test_focus_stays_on_the_clicked_button_through_a_download(self, qapp, env):
         env.vm.set_course_id(str(SIS_COURSE.id))
         button = env.tab.download_button(GRADEBOOK_DOWNLOAD)
         button.setFocus()
 
         button.click()
+        wait_for_workers(qapp)
 
         assert env.dialogs == ["info"]
         assert env.canvas.download_calls == ["fetch_gradebook_csv"]

@@ -7,7 +7,6 @@ from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QApplication
 
 from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQuiz
 from GAVEL.app.dtos.roster import ClassSection, TermInfo
@@ -25,9 +24,14 @@ from GAVEL.app.usecases.download_all_rubric_assessments import (
 )
 from GAVEL.app.usecases.download_consent_form import (
     DownloadConsentFormRequest,
+    DownloadConsentFormResult,
     DownloadConsentFormUseCase,
 )
-from GAVEL.app.usecases.download_gradebook import DownloadGradebookRequest, DownloadGradebookUseCase
+from GAVEL.app.usecases.download_gradebook import (
+    DownloadGradebookRequest,
+    DownloadGradebookResult,
+    DownloadGradebookUseCase,
+)
 from GAVEL.app.usecases.download_gradescope_submissions import (
     DownloadGradescopeSubmissionsRequest,
     DownloadGradescopeSubmissionsResult,
@@ -314,6 +318,14 @@ class _RubricBatchResult:
     skipped: tuple[str, ...]
     existing: tuple[str, ...]
     failed: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _CourseLists:
+    """A course's quiz and assignment lists; None when not asked for, the error if it failed."""
+
+    quizzes: Sequence[CanvasQuiz] | Exception | None
+    assignments: Sequence[CanvasAssignment] | Exception | None
 
 
 RUBRIC_PROGRESS_LABEL = "Downloading rubric assessments"
@@ -615,50 +627,70 @@ class DownloadViewModel(QObject):
         self._report_download_failure("Roster download failed", exc)
 
     def load_quizzes(self, course_id: str) -> None:
-        if self._state.is_busy or not course_id:
-            return
-        try:
-            cid = int(course_id)
-        except ValueError:
-            return
-        self._set_busy("Loading quizzes...")
-        try:
-            quizzes = self._canvas_client.list_quizzes(cid)
-        except Exception as exc:  # noqa: BLE001
-            self._logger.error(f"Failed to load quizzes: {exc}")
-            self._set_idle(Status.CRITICAL, str(exc))
-            return
-        quizzes = sorted(quizzes, key=lambda q: q.name.lower())
-        self._state = replace(
-            self._state,
-            quizzes=quizzes,
-            is_busy=False,
-            status=Status.NOMINAL,
-            message=f"Loaded {len(quizzes)} quiz(zes).",
-        )
-        self.state_changed.emit(self._state)
+        self._load_course_lists(course_id, quizzes=True, assignments=False)
 
     def load_assignments(self, course_id: str) -> None:
+        self._load_course_lists(course_id, quizzes=False, assignments=True)
+
+    def load_course_lists(self, course_id: str) -> None:
+        """Quizzes and assignments for a newly picked course, in one background job.
+
+        One job rather than two calls: a second call would find the first
+        still running and be turned away by the busy check.
+        """
+        self._load_course_lists(course_id, quizzes=True, assignments=True)
+
+    def _load_course_lists(self, course_id: str, quizzes: bool, assignments: bool) -> None:
         if self._state.is_busy or not course_id:
             return
         try:
             cid = int(course_id)
         except ValueError:
             return
-        self._set_busy("Loading assignments...")
-        try:
-            assignments = self._canvas_client.list_assignments(cid)
-        except Exception as exc:  # noqa: BLE001
-            self._logger.error(f"Failed to load assignments: {exc}")
-            self._set_idle(Status.CRITICAL, str(exc))
-            return
-        assignments = sorted(assignments, key=lambda a: a.name.lower())
+        wanted = [name for name, on in (("quizzes", quizzes), ("assignments", assignments)) if on]
+        self._set_busy(f"Loading {' and '.join(wanted)}...")
+        client = self._canvas_client
+
+        def fetch(load: Callable[[int], Sequence]) -> Sequence | Exception:
+            # Each list stands alone: a failed quiz list still lets assignments load.
+            try:
+                return load(cid)
+            except Exception as exc:  # noqa: BLE001
+                return exc
+
+        def work() -> _CourseLists:
+            return _CourseLists(
+                quizzes=fetch(client.list_quizzes) if quizzes else None,
+                assignments=fetch(client.list_assignments) if assignments else None,
+            )
+
+        self._run_async(work, self._on_course_lists_loaded, self._on_list_load_error)
+
+    def _on_course_lists_loaded(self, value: object) -> None:
+        lists: _CourseLists = value  # type: ignore[assignment]
+        changes: dict[str, object] = {}
+        loaded: list[str] = []
+        errors: list[str] = []
+        if isinstance(lists.quizzes, Exception):
+            self._logger.error(f"Failed to load quizzes: {lists.quizzes}")
+            errors.append(str(lists.quizzes))
+        elif lists.quizzes is not None:
+            changes["quizzes"] = sorted(lists.quizzes, key=lambda q: q.name.lower())
+            loaded.append(f"Loaded {len(lists.quizzes)} quiz(zes).")
+        if isinstance(lists.assignments, Exception):
+            self._logger.error(f"Failed to load assignments: {lists.assignments}")
+            errors.append(str(lists.assignments))
+        elif lists.assignments is not None:
+            changes["assignments"] = sorted(lists.assignments, key=lambda a: a.name.lower())
+            loaded.append(f"Loaded {len(lists.assignments)} assignment(s).")
+
         self._state = replace(
             self._state,
-            assignments=assignments,
+            **changes,
             is_busy=False,
-            status=Status.NOMINAL,
-            message=f"Loaded {len(assignments)} assignment(s).",
+            progress=None,
+            status=Status.CRITICAL if errors else Status.NOMINAL,
+            message="; ".join(errors) if errors else " ".join(loaded),
         )
         self.state_changed.emit(self._state)
 
@@ -666,13 +698,14 @@ class DownloadViewModel(QObject):
         if self._state.is_busy:
             return
         self._set_busy("Loading courses...")
-        try:
-            courses = self._canvas_client.list_courses()
-        except Exception as exc:  # noqa: BLE001
-            self._logger.error(f"Failed to load courses: {exc}")
-            self._set_idle(Status.CRITICAL, str(exc))
-            return
-        courses = sorted(courses, key=course_sort_key)
+        self._run_async(
+            self._canvas_client.list_courses,
+            self._on_courses_loaded,
+            self._on_list_load_error,
+        )
+
+    def _on_courses_loaded(self, value: object) -> None:
+        courses = sorted(value, key=course_sort_key)  # type: ignore[call-overload]
         self._state = replace(
             self._state,
             courses=courses,
@@ -681,6 +714,10 @@ class DownloadViewModel(QObject):
             message=f"Loaded {len(courses)} course(s).",
         )
         self.state_changed.emit(self._state)
+
+    def _on_list_load_error(self, exc: object) -> None:
+        self._logger.error(f"Failed to load from Canvas: {exc}")
+        self._set_idle(Status.CRITICAL, str(exc))
 
     def download_gradebook(self) -> None:
         if self._state.is_busy:
@@ -692,25 +729,30 @@ class DownloadViewModel(QObject):
         if folder is None:
             return
 
-        self._set_busy(f"Downloading gradebook for course {course_id}...")
-        try:
-            result = DownloadGradebookUseCase(self._canvas_client).execute(
-                DownloadGradebookRequest(course_id=course_id, folder=folder)
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._report_download_failure("Gradebook download failed", exc)
-            return
+        label = f"Downloading gradebook for course {course_id}"
+        self._set_busy(f"{label}...", DownloadProgress(label, 0, 0))
+        use_case = DownloadGradebookUseCase(self._canvas_client)
+        request = DownloadGradebookRequest(course_id=course_id, folder=folder)
+        self._run_async(
+            lambda: use_case.execute(request),
+            lambda result: self._on_single_download(GRADEBOOK_DOWNLOAD, result),
+            lambda exc: self._report_download_failure("Gradebook download failed", exc),
+        )
 
+    def _on_single_download(self, name: str, result: object) -> None:
+        """Finish a one-file download: the gradebook or the consent form."""
+        res: DownloadGradebookResult | DownloadConsentFormResult = result  # type: ignore[assignment]
         self._state = replace(
             self._state,
             is_busy=False,
+            progress=None,
             status=Status.NOMINAL,
-            message=result.message,
-            last_saved_path=str(result.saved_path),
-            completed=self._state.completed | {GRADEBOOK_DOWNLOAD},
+            message=res.message,
+            last_saved_path=str(res.saved_path),
+            completed=self._state.completed | {name},
         )
         self.state_changed.emit(self._state)
-        self.event_raised.emit(ShowInfo(result.message))
+        self.event_raised.emit(ShowInfo(res.message))
 
     def download_gradescope_submissions(self) -> None:
         if self._state.is_busy:
@@ -763,25 +805,15 @@ class DownloadViewModel(QObject):
         if folder is None:
             return
 
-        self._set_busy(f"Downloading consent form for course {course_id}...")
-        try:
-            result = DownloadConsentFormUseCase(self._canvas_client).execute(
-                DownloadConsentFormRequest(course_id=course_id, quiz_id=quiz_id, folder=folder)
-            )
-        except Exception as exc:  # noqa: BLE001
-            self._report_download_failure("Consent form download failed", exc)
-            return
-
-        self._state = replace(
-            self._state,
-            is_busy=False,
-            status=Status.NOMINAL,
-            message=result.message,
-            last_saved_path=str(result.saved_path),
-            completed=self._state.completed | {CONSENT_DOWNLOAD},
+        label = f"Downloading consent form for course {course_id}"
+        self._set_busy(f"{label}...", DownloadProgress(label, 0, 0))
+        use_case = DownloadConsentFormUseCase(self._canvas_client)
+        request = DownloadConsentFormRequest(course_id=course_id, quiz_id=quiz_id, folder=folder)
+        self._run_async(
+            lambda: use_case.execute(request),
+            lambda result: self._on_single_download(CONSENT_DOWNLOAD, result),
+            lambda exc: self._report_download_failure("Consent form download failed", exc),
         )
-        self.state_changed.emit(self._state)
-        self.event_raised.emit(ShowInfo(result.message))
 
     def download_rubric_assessment(self) -> None:
         if self._state.is_busy:
@@ -1225,9 +1257,6 @@ class DownloadViewModel(QObject):
             self._state, is_busy=True, progress=progress, status=Status.WARNING, message=message
         )
         self.state_changed.emit(self._state)
-        # Flush a paint so the busy bar shows before the synchronous fetch
-        # blocks the GUI thread. Drop this once blocking calls move off-thread.
-        QApplication.processEvents()
 
     def _set_idle(self, status: Status, message: str) -> None:
         self._state = replace(
