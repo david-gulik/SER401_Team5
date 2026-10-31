@@ -139,7 +139,9 @@ class GenerateReportViewModel:
         rubric_definition = dataset.rubric_definition(rubric_assignment.canvas_id)
         if rubric_definition is None:
             raise MissingArtifactError(
-                dataset.tree, f"rubric definition for {rubric_assignment.name}", dataset.tree.root
+                dataset.tree,
+                f"rubric definition for {rubric_assignment.name}",
+                dataset.assignment_folder(rubric_assignment.canvas_id).rubric_definition_json,
             )
         rubric_assessments = dataset.rubric_assessments(rubric_assignment.canvas_id)
 
