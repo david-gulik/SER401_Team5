@@ -47,15 +47,11 @@ from GAVEL.infra.json.rubric_assessment_json_reader import (
 )
 from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 
-# A fixed default keeps anonymized IDs reproducible across runs.
-# Pass seed=None explicitly for true random IDs.
-DEFAULT_ANONYMIZATION_SEED = 100
-
 
 @dataclass(frozen=True)
 class AnonymizeCourseDatasetRequest:
     snapshot_dir: Path
-    seed: int | None = DEFAULT_ANONYMIZATION_SEED
+    seed: int | None = None
     replace_existing: bool = False
 
 
