@@ -10,7 +10,11 @@ class YamlGradescopeReader(GradescopeReader):
     """Prototype reader for Gradescope YAML exports."""
 
     def read(self, path: Path) -> list[GradescopeSubmission]:
-        data = yaml.safe_load(path.read_text())
+
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except UnicodeDecodeError:
+            data = yaml.safe_load(path.read_text(encoding="latin-1"))
 
         submissions = []
 

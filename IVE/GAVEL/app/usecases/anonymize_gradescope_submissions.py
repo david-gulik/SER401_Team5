@@ -148,7 +148,7 @@ class AnonymizeGradescopeSubmissionsUseCase:
 
             # Build output path
             rel = path.relative_to(input_path)
-            anon_name = rel.with_name(rel.stem + "_anon" + rel.suffix)
+            anon_name = rel.with_name(rel.stem + rel.suffix)
             out_path = output_path / anon_name
 
             out_path.parent.mkdir(parents=True, exist_ok=True)
