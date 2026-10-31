@@ -95,6 +95,19 @@ class ScoreDistributionCard(QWidget):
         for i, box in enumerate(boxes["boxes"]):
             box.set_facecolor(_HUMAN_COLOR if i % 2 == 0 else _PROXY_COLOR)
 
+        for i, (group, result) in enumerate(zip(data.groups, data.significance, strict=True)):
+            group_max = max(*group.human_points, *group.proxy_points)
+            axes.text(
+                i * _GROUP_WIDTH + 1.5,
+                group_max,
+                f"U={result.u_statistic:g}\np={result.p_value:.3f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+
+        axes.margins(y=0.15)  # headroom so the significance text isn't clipped
+
         group_centers = [i * _GROUP_WIDTH + 1.5 for i in range(len(data.groups))]
         axes.set_xticks(group_centers)
         axes.set_xticklabels([group.group for group in data.groups], rotation=30, ha="right")
