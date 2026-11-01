@@ -8,7 +8,8 @@ from PyQt6.QtWidgets import QWidget
 
 from GAVEL.app_context import AppContext
 
-GROUP_ORDER: tuple[str, ...] = ("General", "Integrations", "Analytics")
+# Sidebar sections, top to bottom; each name is also the heading drawn above its pages.
+GROUP_ORDER: tuple[str, ...] = ("General", "Preparation", "Verification", "Analysis")
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,9 @@ class PageSpec:
     order: int = 100
     group: str = "General"
     icon_path: Path | None = None
+    # The page works on the course picked in the status bar (see ActiveCourse): the
+    # shell shows the course chip on it, and a "choose a course" card until one is picked.
+    uses_active_course: bool = False
 
 
 class PageRegistry:

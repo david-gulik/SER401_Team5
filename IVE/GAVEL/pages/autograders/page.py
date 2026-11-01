@@ -41,7 +41,8 @@ PageRegistry.get().register(
         icon_text="⏵",
         factory=lambda ctx: AutogradersPage(ctx),
         order=40,
-        group="Analytics",
+        group="Verification",
         icon_path=_ICONS_DIR / "autograders.svg",
+        uses_active_course=True,
     )
 )

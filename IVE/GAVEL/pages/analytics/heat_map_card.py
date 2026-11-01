@@ -12,6 +12,7 @@ from GAVEL.ui_components.hint_icon import hint_icon
 from GAVEL.ui_components.section_card import SectionCard
 
 _CATEGORIES = tuple(DisagreementCategory)
+_NO_REPORT = "No report chosen yet."
 
 
 class HeatMapCard(QWidget):
@@ -39,7 +40,7 @@ class HeatMapCard(QWidget):
         choose_button.clicked.connect(self._choose_report)
         self._card.add_action(choose_button)
 
-        self._status = QLabel("No report chosen yet.")
+        self._status = QLabel(_NO_REPORT)
         self._status.setProperty("role", "text_muted")
         self._card.add_row(self._status)
 
@@ -74,6 +75,11 @@ class HeatMapCard(QWidget):
         else:
             self._status.setText(f"{report_path.name} has no scored submissions to chart.")
         self.display(data)
+
+    def clear(self) -> None:
+        """Back to the empty state, as before any report was chosen."""
+        self._status.setText(_NO_REPORT)
+        self._canvas.clear()
 
     def display(self, data: HeatMapData) -> None:
         self._canvas.clear()

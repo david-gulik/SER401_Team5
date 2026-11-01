@@ -1,13 +1,15 @@
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QSettings, Qt
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import QApplication, QSplashScreen
 
+from GAVEL.app.workspace.layout import Workspace, default_workspace_root
 from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_asu_browser, build_canvas_client, build_roster_client
+from GAVEL.core.active_course import ActiveCourse
 from GAVEL.core.main_window import MainWindow
 from GAVEL.core.page_registry import PageRegistry
 from GAVEL.pages.analytics.page import AnalyticsPage  # noqa: F401
@@ -65,11 +67,15 @@ def main() -> None:
     # The login browser stays open between downloads; close it with the app.
     app.aboutToQuit.connect(asu_browser.close)
 
+    # The last pick is kept with the user's other per-app settings (the registry on Windows).
+    active_course = ActiveCourse(Workspace(default_workspace_root()), QSettings("GAVEL", "GAVEL"))
+
     ctx = AppContext(
         theme=theme,
         config=config_service,
         logger=logger,
         services=services,
+        active_course=active_course,
     )
 
     registry = PageRegistry.get()
