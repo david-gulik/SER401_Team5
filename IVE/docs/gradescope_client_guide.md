@@ -48,13 +48,14 @@ Exports are staged under the course folder and then filed by module
 ```
 <workspace>/courses/<course folder>/original/submissions/m<module>/submissions.zip
 <workspace>/courses/<course folder>/original/submissions/m<module>/extracted/
-<workspace>/autograders/<subject><catalog>/m<module>/<course folder>/autograder.zip
+<workspace>/autograders/<subject><catalog>/<uploaded filename>.zip
 ```
 
 The module comes from the Gradescope assignment name (`Module 2: Programming`), or
 failing that from the Canvas assignment with the same name. An export whose module
 cannot be told is kept in `original/submissions/_unmatched/` and still recorded in
-`manifest.json`, so nothing downloaded is lost.
+`manifest.json`, so nothing downloaded is lost. Autograders are filed by course only and
+keep their uploaded filename, so they never need a module.
 
 `gradescope download` takes the shared `--workspace`, `--course-folder` and
 `--overwrite` arguments. The course folder is derived from `--course-id` through the

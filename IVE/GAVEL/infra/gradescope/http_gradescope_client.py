@@ -3,6 +3,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 import requests
 from bs4 import BeautifulSoup
@@ -23,6 +24,7 @@ from GAVEL.services.env_service import SCHEMA_DEFAULTS
 
 log = logging.getLogger("GradescopeClient")
 
+AUTOGRADERS_SUBFOLDER = "autograders"
 PROGRESS_LABEL = "Downloading Gradescope assignments"
 
 
@@ -294,11 +296,14 @@ class http_gradescope_client:
     ) -> list[str]:
         """Log in, then save every assignment's bulk export and autograder to submissions_folder.
 
-        Files are named ``<assignment name>.zip`` and ``<assignment name>_autograder.zip``
-        (illegal filename characters removed). Where they belong in the workspace is the
-        caller's business: DownloadGradescopeSubmissionsUseCase files them by Canvas
-        assignment. Returns the paths written. ``on_progress`` hears once the
-        assignment list is known and again as each assignment is saved.
+        Exports are named ``<assignment name>.zip``. Autograders keep the filename the
+        instructor uploaded, since it carries the version, and go in
+        ``autograders/<assignment name>/`` so the assignment they came from is still known
+        and two assignments sharing an uploaded name do not collide. Illegal filename
+        characters are removed. Where they belong in the workspace is the caller's
+        business: DownloadGradescopeSubmissionsUseCase files them by Canvas assignment.
+        Returns the paths written. ``on_progress`` hears once the assignment list is
+        known and again as each assignment is saved.
         """
         log.info("Downloading all assignments...")
         gs_session, gs_course_id = self.capture_session(username, password)
@@ -334,8 +339,15 @@ class http_gradescope_client:
             if link and ".zip" in link["href"]:
                 log.info("Downloading autograder for assignment: %s", name)
                 autograder_download = session.get(link["href"])
-                autograder_name = link["href"].split("/")[-1].split("?", 1)[0]
-                written.append(self._save(autograder_name, autograder_download.content))
+                autograder_name = remove_illegal_download_characters(
+                    unquote(link["href"].split("/")[-1].split("?", 1)[0])
+                )
+                written.append(
+                    self._save(
+                        os.path.join(AUTOGRADERS_SUBFOLDER, safe_name, autograder_name),
+                        autograder_download.content,
+                    )
+                )
 
             # The bulk export of submissions: reuse an existing export or trigger one.
             review_url = f"{assignment_url}{self.review_grades_suffix}"
@@ -377,6 +389,7 @@ class http_gradescope_client:
 
     def _save(self, filename: str, content: bytes) -> str:
         output_path = os.path.join(self.submissions_folder, filename)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "wb") as f:
             f.write(content)
         return output_path

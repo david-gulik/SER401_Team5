@@ -75,7 +75,10 @@ class ScoreDistributionCard(QWidget):
             self._canvas.clear()
             return
 
-        self._status.setText(f"Showing {report_path.name}")
+        if data.groups:
+            self._status.setText(f"Showing {report_path.name}")
+        else:
+            self._status.setText(f"{report_path.name} has no scored submissions to chart.")
         self.display(data)
 
     def display(self, data: ScoreDistributionData) -> None:
@@ -94,6 +97,19 @@ class ScoreDistributionCard(QWidget):
         boxes = axes.boxplot(box_data, positions=positions, patch_artist=True, widths=0.6)
         for i, box in enumerate(boxes["boxes"]):
             box.set_facecolor(_HUMAN_COLOR if i % 2 == 0 else _PROXY_COLOR)
+
+        for i, (group, result) in enumerate(zip(data.groups, data.significance, strict=True)):
+            group_max = max(*group.human_points, *group.proxy_points)
+            axes.text(
+                i * _GROUP_WIDTH + 1.5,
+                group_max,
+                f"U={result.u_statistic:g}\np={result.p_value:.3f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+
+        axes.margins(y=0.15)  # headroom so the significance text isn't clipped
 
         group_centers = [i * _GROUP_WIDTH + 1.5 for i in range(len(data.groups))]
         axes.set_xticks(group_centers)

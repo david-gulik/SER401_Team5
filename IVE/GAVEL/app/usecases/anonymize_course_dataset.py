@@ -35,7 +35,7 @@ from GAVEL.app.usecases.generate_anonymous_id_map import (
     GenerateAnonymousIdMapRequest,
     GenerateAnonymousIdMapUseCase,
 )
-from GAVEL.app.workspace.layout import CourseFolder, CourseKey
+from GAVEL.app.workspace.layout import RUBRIC_DEFINITION_FILE, CourseFolder, CourseKey
 from GAVEL.app.workspace.recording import hash_sources, note_anonymization
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
     CanvasConsentFormCSVReader,
@@ -120,11 +120,18 @@ class AnonymizeCourseDatasetUseCase:
 
         # One rubric_assessments.json per assignment folder; see docs/workspace_layout.md.
         rubric_files = sorted(assignments_dir.rglob("rubric_assessments.json"))
+        rubric_definition_files = [p.parent / RUBRIC_DEFINITION_FILE for p in rubric_files]
 
         course_folder = _course_folder(request.snapshot_dir)
         inputs = [
             path
-            for path in (consent_form_path, roster_path, gradebook_path, *rubric_files)
+            for path in (
+                consent_form_path,
+                roster_path,
+                gradebook_path,
+                *rubric_files,
+                *rubric_definition_files,
+            )
             if path.exists()
         ]
         # Hashed before reading, so an input that changes mid-run reads as out of date.
@@ -368,6 +375,11 @@ class AnonymizeCourseDatasetUseCase:
                 parents=True,
                 exist_ok=True,
             )
+
+            # Carries no student data, so it is copied as-is rather than anonymized.
+            definition_path = rubric_path.parent / RUBRIC_DEFINITION_FILE
+            if definition_path.exists():
+                shutil.copy2(definition_path, rubric_output_path.parent / RUBRIC_DEFINITION_FILE)
 
             payload = [
                 {
