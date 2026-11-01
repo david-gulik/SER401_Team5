@@ -23,6 +23,7 @@ class InspectGradesTab(ScrollableTab):
         self.assignment_combo = QComboBox()
         self.status_label = QLabel()
         self.status_label.setProperty("role", "text_muted")
+        self.status_label.setWordWrap(True)
         self.refresh_button = QPushButton("Refresh Courses")
         self.refresh_button.clicked.connect(self._load_courses)
 
@@ -105,3 +106,21 @@ class InspectGradesTab(ScrollableTab):
     def _on_assignment_changed(self, index: int) -> None:
         assignment = self.assignment_combo.itemData(index)
         self._viewmodel.select_assignment(assignment)
+
+        if assignment is None:
+            self.status_label.setText("Select an assignment.")
+            return
+
+        messages = []
+
+        if self._viewmodel.human_grades_error:
+            messages.append(f"Human grades: {self._viewmodel.human_grades_error}")
+        else:
+            messages.append(f"Human grades: {len(self._viewmodel.human_grades)} assessments")
+
+        if self._viewmodel.proxy_grades_error:
+            messages.append(f"Proxy grades: {self._viewmodel.proxy_grades_error}")
+        else:
+            messages.append(f"Proxy grades: {len(self._viewmodel.proxy_grades)} submissions")
+
+        self.status_label.setText("\n".join(messages))

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from GAVEL.bootstrap import build_dataset_readers
 from GAVEL.pages.inspect_grades.tabs import InspectGradesTab
 from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 
@@ -7,7 +8,10 @@ TEST_WORKSPACE = Path(__file__).resolve().parents[2] / "data" / "workspace"
 
 
 def test_course_dropdown_loads_available_courses(qapp, theme):
-    vm = InspectGradesViewModel(TEST_WORKSPACE, dataset_readers=None)
+    vm = InspectGradesViewModel(
+        TEST_WORKSPACE,
+        dataset_readers=build_dataset_readers(),
+    )
     tab = InspectGradesTab(theme, vm)
 
     assert tab.course_combo.count() == 2
@@ -18,7 +22,10 @@ def test_course_dropdown_loads_available_courses(qapp, theme):
 
 
 def test_selecting_course_populates_assignments(qapp, theme):
-    vm = InspectGradesViewModel(TEST_WORKSPACE, dataset_readers=None)
+    vm = InspectGradesViewModel(
+        TEST_WORKSPACE,
+        dataset_readers=build_dataset_readers(),
+    )
     tab = InspectGradesTab(theme, vm)
 
     tab.course_combo.setCurrentIndex(1)
@@ -33,7 +40,10 @@ def test_selecting_course_populates_assignments(qapp, theme):
 
 
 def test_selecting_assignment_updates_viewmodel(qapp, theme):
-    vm = InspectGradesViewModel(TEST_WORKSPACE, dataset_readers=None)
+    vm = InspectGradesViewModel(
+        TEST_WORKSPACE,
+        dataset_readers=build_dataset_readers(),
+    )
     tab = InspectGradesTab(theme, vm)
 
     tab.course_combo.setCurrentIndex(1)
@@ -45,7 +55,10 @@ def test_selecting_assignment_updates_viewmodel(qapp, theme):
 
 
 def test_clearing_course_resets_assignment_dropdown(qapp, theme):
-    vm = InspectGradesViewModel(TEST_WORKSPACE, dataset_readers=None)
+    vm = InspectGradesViewModel(
+        TEST_WORKSPACE,
+        dataset_readers=build_dataset_readers(),
+    )
     tab = InspectGradesTab(theme, vm)
 
     tab.course_combo.setCurrentIndex(1)
@@ -62,7 +75,10 @@ def test_clearing_course_resets_assignment_dropdown(qapp, theme):
 
 
 def test_refresh_preserves_course_and_assignment(qapp, theme):
-    vm = InspectGradesViewModel(TEST_WORKSPACE, dataset_readers=None)
+    vm = InspectGradesViewModel(
+        TEST_WORKSPACE,
+        dataset_readers=build_dataset_readers(),
+    )
     tab = InspectGradesTab(theme, vm)
 
     tab.course_combo.setCurrentIndex(1)
