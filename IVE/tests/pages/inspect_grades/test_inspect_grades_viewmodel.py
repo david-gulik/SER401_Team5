@@ -178,13 +178,12 @@ def test_missing_proxy_grades_does_not_block_human_grades(vm, monkeypatch):
     assert vm.proxy_grades == ()
     assert vm.proxy_grades_error == "Proxy submissions missing"
 
+
 def test_missing_human_grades_does_not_block_proxy_grades(vm, monkeypatch):
     vm.load_courses()
     vm.select_course(vm.courses[0])
 
-    module_4 = next(
-        a for a in vm.assignments if a.module_number == 4
-    )
+    module_4 = next(a for a in vm.assignments if a.module_number == 4)
 
     def missing_assessments(self, assignment_id):
         raise FileNotFoundError("Human assessments missing")
