@@ -33,6 +33,26 @@ def test_loading_a_report_draws_a_chart(qapp, theme, tmp_path: Path):
     assert canvas.is_showing_chart()
 
 
+def test_loading_a_report_annotates_each_group_with_its_significance(qapp, theme, tmp_path: Path):
+    path = tmp_path / "report.json"
+    _write_report(
+        path,
+        [
+            {"criterion": "main menu", "human_points": 1.0, "proxy_points": 2.0},
+            {"criterion": "main menu", "human_points": 2.0, "proxy_points": 1.0},
+        ],
+    )
+    card = ScoreDistributionCard(theme)
+
+    card.load_report(path)
+
+    axes = card._canvas.figure.axes[0]
+    annotations = [t.get_text() for t in axes.texts]
+    assert len(annotations) == 1
+    assert "U=" in annotations[0]
+    assert "p=" in annotations[0]
+
+
 def test_unreadable_report_is_handled_without_crashing(qapp, theme, tmp_path: Path):
     path = tmp_path / "missing.json"
     card = ScoreDistributionCard(theme)
@@ -52,6 +72,7 @@ def test_empty_report_shows_no_chart(qapp, theme, tmp_path: Path):
 
     canvas = card.findChild(ChartCanvas)
     assert not canvas.is_showing_chart()
+    assert "no scored submissions" in card._status.text()
 
 
 class _RaisingViewModel:

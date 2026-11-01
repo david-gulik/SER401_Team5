@@ -69,7 +69,10 @@ class HeatMapCard(QWidget):
             self._canvas.clear()
             return
 
-        self._status.setText(f"Showing {report_path.name}")
+        if data.cells:
+            self._status.setText(f"Showing {report_path.name}")
+        else:
+            self._status.setText(f"{report_path.name} has no scored submissions to chart.")
         self.display(data)
 
     def display(self, data: HeatMapData) -> None:

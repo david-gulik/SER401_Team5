@@ -183,10 +183,18 @@ def test_lists_only_modules_with_submissions(tmp_path: Path, readers: DatasetRea
     assert vm.list_modules(course) == (9,)
 
 
-def test_mapping_names_lists_the_registry() -> None:
-    names = GenerateReportViewModel(build_dataset_readers()).mapping_names()
+def test_resolve_mapping_name_finds_the_course_and_module_s_own_mapping() -> None:
+    vm = GenerateReportViewModel(build_dataset_readers())
+    course = CourseFolder(path=Path("unused"), key=CourseKey.parse("ser334_25sc_12345"))
 
-    assert "ser334_m9" in names
+    assert vm.resolve_mapping_name(course, 2) == "ser334_m2"
+
+
+def test_resolve_mapping_name_with_no_matching_mapping_gives_none() -> None:
+    vm = GenerateReportViewModel(build_dataset_readers())
+    course = CourseFolder(path=Path("unused"), key=CourseKey.parse("ser334_25sc_12345"))
+
+    assert vm.resolve_mapping_name(course, 404) is None
 
 
 def test_generate_writes_a_report_to_the_runs_folder(
@@ -205,7 +213,7 @@ def test_generate_writes_a_report_to_the_runs_folder(
     assert outcome.output_path.parent == Workspace(workspace_root).runs_dir
 
 
-def test_gradebook_columns_lists_the_selected_module_s_column_first(
+def test_gradebook_columns_narrows_to_the_selected_module(
     tmp_path: Path, readers: DatasetReaders
 ) -> None:
     workspace_root = _build_course(tmp_path, with_manifest=True)
@@ -214,8 +222,7 @@ def test_gradebook_columns_lists_the_selected_module_s_column_first(
 
     columns = vm.list_gradebook_columns(course, 9)
 
-    assert columns[0] == _MODULE_9_COLUMN
-    assert set(columns) == {_MODULE_9_COLUMN, _OTHER_COLUMN}
+    assert columns == (_MODULE_9_COLUMN,)
 
 
 def test_gradebook_columns_without_a_manifest_still_lists_every_column(
