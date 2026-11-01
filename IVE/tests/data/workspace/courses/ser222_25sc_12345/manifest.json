@@ -14,7 +14,7 @@
     "canvas_course_code": "2025SpringC-X-SER222-12345"
   },
   "created_at": "2026-09-21T10:00:00+00:00",
-  "updated_at": "2026-09-21T10:00:00+00:00",
+  "updated_at": "2026-11-01T17:53:48+00:00",
   "gavel_version": "0.1.0",
   "modules": [
     {
@@ -48,11 +48,29 @@
   ],
   "artifacts": [
     {
+      "kind": "rubric_assessments",
+      "path": "anonymized/assignments/7216983_m4/rubric_assessments.json",
+      "downloaded_at": "2026-11-01T17:53:48+00:00",
+      "sha256": "b6b3e224c542f14ce5146a2dd6374e5a7fbcabf43dad7308bed7e5dadee4eba3",
+      "size_bytes": 588,
+      "source_id": 7216983,
+      "label": null
+    },
+    {
       "kind": "roster",
       "path": "anonymized/roster.csv",
       "downloaded_at": "2026-09-21T10:00:00+00:00",
       "sha256": "fe970dc56e908b05c9a9b2f1982f40931100e8535f6782ede9f8ab8cdbf40a9e",
       "size_bytes": 331,
+      "source_id": null,
+      "label": null
+    },
+    {
+      "kind": "submissions",
+      "path": "anonymized/submissions/m4/extracted/submission_metadata.yml",
+      "downloaded_at": "2026-11-01T17:53:48+00:00",
+      "sha256": "dfecf061177d0984f9c0ed8064f30234cc632e61c2576d968da7ee26cde04519",
+      "size_bytes": 842,
       "source_id": null,
       "label": null
     },
@@ -110,5 +128,6 @@
       "source_id": null,
       "label": null
     }
-  ]
+  ],
+  "anonymization": null
 }
