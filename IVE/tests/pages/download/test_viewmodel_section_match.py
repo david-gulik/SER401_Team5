@@ -32,6 +32,7 @@ def vm(qapp, tmp_path: Path) -> DownloadViewModel:
         roster_configured=True,
     )
     vm.load_courses()
+    wait_for_workers(qapp)
     vm.set_term("2267")
     vm.set_subject("SER")
     vm.set_catalog_number("402")

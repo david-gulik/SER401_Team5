@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -24,7 +25,10 @@ from GAVEL.app.ports.canvas_client import (
     CanvasClient,
     QuizReportUnavailableError,
 )
+from GAVEL.infra.http_logging import log_http_calls
 from GAVEL.services.logger import AppLogger
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,6 +51,7 @@ class HttpCanvasClient(CanvasClient):
         self._config = config
         self._session = session or requests.Session()
         self._logger = logger
+        log_http_calls(self._session)
 
     def list_courses(self) -> list[CanvasCourse]:
         pages = self._get_all_pages(
@@ -348,6 +353,7 @@ class HttpCanvasClient(CanvasClient):
                 sleep_seconds = (
                     float(retry_after) if retry_after else self._config.poll_interval_seconds
                 )
+                log.warning("Canvas rate limit hit; retrying in %.1f s", sleep_seconds)
                 time.sleep(sleep_seconds)
                 continue
 
@@ -467,11 +473,18 @@ class HttpCanvasClient(CanvasClient):
 
     def _poll_progress(self, progress_url: str, interval: int = 2, max_attempts: int = 30) -> None:
         """Poll a Canvas progress URL until completion."""
-        for _attempt in range(max_attempts):
+        for attempt in range(1, max_attempts + 1):
             data = self._get(progress_url)
             state = data.get("workflow_state")
             if state == "completed":
                 return
+            log.info(
+                "Waiting for Canvas to build the report (%s, %s%%, check %d of %d)",
+                state,
+                data.get("completion") or 0,
+                attempt,
+                max_attempts,
+            )
             if state == "failed":
                 raise RuntimeError("Canvas report generation failed.")
             time.sleep(interval)
@@ -490,6 +503,7 @@ class HttpCanvasClient(CanvasClient):
 
     def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
         """Retrieve the student analysis CSV for a Canvas quiz."""
+        log.info("Requesting student analysis report for quiz %s", quiz_id)
         report = self._post(
             f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/reports",
             json={
@@ -544,6 +558,12 @@ class HttpCanvasClient(CanvasClient):
                 retry_after = resp.headers.get("Retry-After")
                 sleep_seconds = (
                     float(retry_after) if retry_after else self._config.poll_interval_seconds
+                )
+                log.warning(
+                    "Canvas rate limit hit; retry %d of %d in %.1f s",
+                    attempt + 1,
+                    self._config.max_retries,
+                    sleep_seconds,
                 )
                 time.sleep(sleep_seconds)
                 continue

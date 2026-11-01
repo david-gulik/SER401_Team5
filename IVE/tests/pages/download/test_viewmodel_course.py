@@ -11,6 +11,7 @@ from GAVEL.core.status import Status
 from GAVEL.pages.download.viewmodel import DownloadViewModel, ShowError, course_id_error
 from GAVEL.services.logger import AppLogger
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
+from tests.pages.download.test_viewmodel_roster import wait_for_workers
 
 COURSES = [
     CanvasCourse(id=213877, name="Capstone I", course_code="SER401"),
@@ -105,10 +106,11 @@ def test_download_all_refuses_non_numeric_course(vm, canvas):
     assert canvas.download_calls == []
 
 
-def test_consent_checks_quiz_only_after_course_is_valid(vm):
+def test_consent_checks_quiz_only_after_course_is_valid(qapp, vm):
     vm.set_course_id("213877")
     seen = events(vm)
     vm.download_consent()
+    wait_for_workers(qapp)
     assert seen == [ShowError("Select a consent quiz first.")]
 
 
@@ -119,10 +121,12 @@ def test_rubric_checks_assignment_only_after_course_is_valid(vm):
     assert seen == [ShowError("Select or enter at least one assignment first.")]
 
 
-def test_set_course_id_resets_dependents_only_when_the_id_changes(vm):
+def test_set_course_id_resets_dependents_only_when_the_id_changes(qapp, vm):
     vm.set_course_id("213877")
     vm.load_quizzes("213877")
+    wait_for_workers(qapp)
     vm.load_assignments("213877")
+    wait_for_workers(qapp)
     vm.set_consent_quiz_id("11")
     vm.set_assignment_ids("7")
 

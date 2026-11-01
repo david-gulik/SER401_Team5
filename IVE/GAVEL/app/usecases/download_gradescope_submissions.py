@@ -15,6 +15,7 @@ manifest, so nothing downloaded is ever lost.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -26,6 +27,7 @@ from typing import Any
 
 from GAVEL.app.dtos.canvas_course import CanvasAssignment
 from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.app.progress import ProgressCallback
 from GAVEL.app.workspace.layout import CourseFolder, Workspace, module_number_from_name
 from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.app.workspace.recording import (
@@ -41,6 +43,8 @@ from GAVEL.infra.gradescope.http_gradescope_client import (
     AUTOGRADERS_SUBFOLDER,
     http_gradescope_client,
 )
+
+log = logging.getLogger(__name__)
 
 STAGING_DIR = "_staging"
 UNMATCHED_DIR = "_unmatched"
@@ -156,8 +160,11 @@ class DownloadGradescopeSubmissionsUseCase:
         self._browser = browser
 
     def execute(
-        self, request: DownloadGradescopeSubmissionsRequest
+        self,
+        request: DownloadGradescopeSubmissionsRequest,
+        on_progress: ProgressCallback | None = None,
     ) -> DownloadGradescopeSubmissionsResult:
+        """``on_progress`` is passed to the scraper, which reports per Gradescope assignment."""
         if request.course_id <= 0:
             raise ValueError("course_id must be greater than zero")
 
@@ -174,9 +181,11 @@ class DownloadGradescopeSubmissionsUseCase:
             self._guard_nothing_downloaded_yet(folder)
 
         assignments_unavailable = False
+        log.info("Listing Canvas assignments for course %s to file exports", request.course_id)
         try:
             assignments = list(self._canvas_client.list_assignments(request.course_id))
-        except Exception:  # noqa: BLE001 - matching is best effort; unmatched is still kept
+        except Exception as exc:  # noqa: BLE001 - matching is best effort; unmatched is still kept
+            log.warning("Canvas assignment list unavailable, exports will be unmatched: %s", exc)
             assignments = []
             assignments_unavailable = True
 
@@ -190,7 +199,10 @@ class DownloadGradescopeSubmissionsUseCase:
         if self._browser is not None:
             client_options["browser"] = self._browser
         client = self._client_factory(**client_options)
-        client.download_all_assignments(username=username, password=password)
+        log.info("Signing in to Gradescope through Canvas course %s", request.course_id)
+        client.download_all_assignments(
+            username=username, password=password, on_progress=on_progress
+        )
 
         staged = [(path, path.stem, "submissions") for path in sorted(staging.glob("*.zip"))]
         staged += [
@@ -203,6 +215,7 @@ class DownloadGradescopeSubmissionsUseCase:
             module, assignment = module_for_export(name, assignments)
             if kind == "autograder":
                 target = _file_autograder(zip_path, workspace.course_autograders_dir(folder.key))
+                log.info("Filed autograder '%s' at %s", name, target)
             else:
                 if module is None:
                     target = tree.submissions_dir / UNMATCHED_DIR / zip_path.name
@@ -210,7 +223,11 @@ class DownloadGradescopeSubmissionsUseCase:
                     target = tree.module_submissions(module).zip_path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(zip_path), str(target))
-                if module is not None:
+                if module is None:
+                    log.warning("Could not tell the module for '%s'; kept at %s", name, target)
+                else:
+                    log.info("Filed submissions '%s' under m%s at %s", name, module, target)
+                    log.info("Extracting %s", target.name)
                     _extract(target, tree.module_submissions(module).extracted_dir)
 
             record(

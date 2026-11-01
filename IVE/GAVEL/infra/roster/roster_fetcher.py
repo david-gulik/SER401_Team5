@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import requests
 
 from GAVEL.app.dtos.roster import RosterRequest
+from GAVEL.infra.http_logging import log_http_calls
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,7 @@ class CookieFileRosterFetcher:
         jar.load(ignore_discard=True, ignore_expires=True)
 
         self._session = requests.Session()
+        log_http_calls(self._session)
         self._session.cookies = jar
         self._session.headers.update(
             {"User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")}

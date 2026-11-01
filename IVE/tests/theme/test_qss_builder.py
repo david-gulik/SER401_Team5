@@ -51,3 +51,10 @@ def test_tree_rules_outrank_surface_transparency(qss: str):
 def test_menus_are_styled(qss: str):
     assert "QMenu::item" in qss
     assert "QMenu::item:disabled" in qss
+
+
+def test_progress_panel_roles_are_styled(qss: str):
+    assert 'QFrame[role="progress_panel"]' in qss
+    assert 'QProgressBar[role="progress_bar"]::chunk' in qss
+    assert 'QLabel[role="progress_count"]' in qss
+    assert 'QLabel[role="progress_detail"]' in qss

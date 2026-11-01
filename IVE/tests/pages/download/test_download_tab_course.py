@@ -16,6 +16,7 @@ from GAVEL.pages.download.viewmodel import DownloadViewModel
 from GAVEL.services.logger import AppLogger
 from GAVEL.ui_components.input_mode_toggle import InputMode
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
+from tests.pages.download.test_viewmodel_roster import wait_for_workers
 
 # The view model sorts courses by course code, so SER334 lands first.
 FIRST = CanvasCourse(id=209555, name="Operating Systems", course_code="SER334")
@@ -30,6 +31,8 @@ def pump(qapp) -> None:
     """Let queued zero-delay timers (the tab's initial course load) fire."""
     for _ in range(5):
         qapp.processEvents()
+        # The tab's loads run on the thread pool; let them finish and report back.
+        wait_for_workers(qapp)
 
 
 def build(qapp, theme, tmp_path: Path) -> SimpleNamespace:
@@ -77,21 +80,24 @@ def test_only_one_course_input_is_visible_at_a_time(env):
     assert course.manual_field().isVisibleTo(course)
 
 
-def test_picking_another_course_reloads_its_dependents(env):
+def test_picking_another_course_reloads_its_dependents(qapp, env):
     env.course.picker().combo.setCurrentIndex(1)
+    pump(qapp)
     assert selected(env) == str(SECOND.id)
     assert env.canvas.quiz_calls == [FIRST.id, SECOND.id]
     assert env.canvas.assignment_calls == [FIRST.id, SECOND.id]
 
 
-def test_manual_id_is_stored_while_typing_but_committed_on_enter(env):
+def test_manual_id_is_stored_while_typing_but_committed_on_enter(qapp, env):
     course = env.course
     course.set_mode(InputMode.MANUAL)
+    pump(qapp)
     course.manual_field().setText(str(TYPED))
     assert selected(env) == str(TYPED)
     assert TYPED not in env.canvas.quiz_calls  # nothing fetched mid-typing
 
     course.manual_field().editingFinished.emit()
+    pump(qapp)
     assert env.canvas.quiz_calls[-1] == TYPED
     assert env.canvas.assignment_calls[-1] == TYPED
 
@@ -106,11 +112,12 @@ def test_focus_out_without_a_change_does_not_refetch(env):
     assert len(env.canvas.quiz_calls) == fetched
 
 
-def test_switching_to_manual_with_text_present_commits_it(env):
+def test_switching_to_manual_with_text_present_commits_it(qapp, env):
     course = env.course
     course.manual_field().setText(str(TYPED))  # typed earlier, hidden behind the picker
     assert selected(env) == str(FIRST.id)
     course.set_mode(InputMode.MANUAL)
+    pump(qapp)
     assert selected(env) == str(TYPED)
     assert env.canvas.quiz_calls[-1] == TYPED
 
@@ -138,8 +145,9 @@ def test_invalid_manual_id_blocks_every_canvas_download(env):
     assert env.canvas.quiz_calls == [FIRST.id]  # nothing fetched for the bad id
 
 
-def test_reload_button_requests_the_course_list_again(env):
+def test_reload_button_requests_the_course_list_again(qapp, env):
     env.course.picker().load_button.click()
+    pump(qapp)
     assert env.canvas.list_courses_calls == 2
 
 

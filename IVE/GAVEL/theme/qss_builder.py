@@ -51,6 +51,7 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_surface_card(t),
         _qss_status_pill(t),
         _qss_status_banner(t),
+        _qss_progress_panel(t),
         _qss_input_mode_toggle(t),
         _qss_tree_view(t),
         _qss_tile(t),
@@ -797,6 +798,54 @@ def _qss_status_banner(t: ThemeTokens) -> str:
         border: 1px solid {c["status_caution"]};
         border-radius: {_px(r_sm)};
         padding: {_px(sp_sm)} {_px(sp_md)};
+    }}
+    """
+
+
+def _qss_progress_panel(t: ThemeTokens) -> str:
+    """The pinned panel shown while a batch download runs."""
+    c = t.color
+    ty = t.typography
+    r_md = int(t.shape["radius_md"])
+    r_lg = int(t.shape["radius_lg"])
+    return f"""
+    QFrame[role="progress_panel"] {{
+        background-color: {c["panel_bg"]};
+        border: 1px solid {c["interactive"]};
+        border-radius: {_px(r_lg)};
+    }}
+    QFrame[role="progress_panel"] QLabel {{
+        background: transparent;
+        border: none;
+    }}
+    QLabel[role="progress_title"] {{
+        color: {c["text"]};
+        font-size: {_pt(int(ty["font_size_base"]))};
+        font-weight: {ty["weight_medium"]};
+    }}
+    QLabel[role="progress_count"] {{
+        color: {c["interactive"]};
+        font-size: {_pt(int(ty["font_size_h3"]))};
+        font-weight: {ty["weight_bold"]};
+    }}
+    QLabel[role="progress_percent"] {{
+        color: {c["text"]};
+        font-size: {_pt(int(ty["font_size_small"]))};
+    }}
+    QLabel[role="progress_detail"] {{
+        color: {c["text_secondary"]};
+        font-size: {_pt(int(ty["font_size_small"]))};
+    }}
+    QProgressBar[role="progress_bar"] {{
+        background-color: {c["input_bg"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_md)};
+        min-height: {_px(t.sp(8))};
+        max-height: {_px(t.sp(8))};
+    }}
+    QProgressBar[role="progress_bar"]::chunk {{
+        background-color: {c["interactive"]};
+        border-radius: {_px(r_md)};
     }}
     """
 

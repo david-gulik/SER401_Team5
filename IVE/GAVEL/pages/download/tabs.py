@@ -48,6 +48,9 @@ from GAVEL.ui_components.input_mode_toggle import (
     InputModeToggle,
 )
 from GAVEL.ui_components.layout import set_h_margins, set_spacing
+from GAVEL.ui_components.message_dialog import show_message
+from GAVEL.ui_components.progress_panel import ProgressPanel
+from GAVEL.ui_components.scrolling_label import ScrollingLabel
 from GAVEL.ui_components.section_card import SectionCard
 from GAVEL.ui_components.status_pill import StatusPill
 from GAVEL.ui_components.sub_panel import SubPanel
@@ -95,6 +98,10 @@ _CANVAS_DOWNLOAD_ORDER = (
 )
 
 
+# About five lines of status text before it scrolls.
+STATUS_MESSAGE_MAX_HEIGHT = 88
+
+
 class DownloadTab(ScrollableTab):
     def __init__(self, theme: ThemeContext, vm: DownloadViewModel) -> None:
         super().__init__(theme)
@@ -113,6 +120,14 @@ class DownloadTab(ScrollableTab):
         self._build_widgets()
         self._connect_signals()
         self.layout().insertWidget(0, self._busy_bar)
+        # Pinned above the scroll area so a long download stays in view.
+        progress_host = QWidget()
+        progress_layout = QVBoxLayout(progress_host)
+        set_h_margins(progress_layout, self._theme, 16, 8)
+        progress_layout.addWidget(self._progress_panel)
+        self._progress_host = progress_host
+        progress_host.hide()
+        self.layout().insertWidget(1, progress_host)
 
         self.add_section(self._build_output_path_card())
         self.add_section(self._build_myasu_card())
@@ -165,6 +180,10 @@ class DownloadTab(ScrollableTab):
         """The optional course folder override under the workspace path."""
         return self._course_folder_input
 
+    @property
+    def progress_panel(self) -> ProgressPanel:
+        return self._progress_panel
+
     def download_button(self, name: str) -> QPushButton:
         """The primary button for a download name such as ROSTER_DOWNLOAD. Exposed for tests."""
         return self._download_buttons[name][0]
@@ -178,6 +197,8 @@ class DownloadTab(ScrollableTab):
         self._busy_bar.setTextVisible(False)
         self._busy_bar.setFixedHeight(6)
         self._busy_bar.hide()
+        # Batch download progress, e.g. "Downloading quizzes" 10 of 22
+        self._progress_panel = ProgressPanel(self._theme)
 
         # Output path
         self._output_path = QLineEdit()
@@ -368,8 +389,8 @@ class DownloadTab(ScrollableTab):
 
         # Status
         self._status_pill = StatusPill(self._theme)
-        self._message_label = QLabel("")
-        self._message_label.setWordWrap(True)
+        # Long summaries (Download All lists every file) scroll instead of growing the card.
+        self._message_label = ScrollingLabel(STATUS_MESSAGE_MAX_HEIGHT)
         self._last_saved_label = QLabel("")
         self._last_saved_label.setWordWrap(True)
         self._last_saved_label.setProperty("role", "text_muted")
@@ -657,8 +678,7 @@ class DownloadTab(ScrollableTab):
         )
         if already_loaded:
             return
-        self._vm.load_quizzes(course_id)
-        self._vm.load_assignments(course_id)
+        self._vm.load_course_lists(course_id)
 
     def _on_reload_quizzes(self) -> None:
         course_id = self._vm.get_state().selected_course_id
@@ -705,7 +725,7 @@ class DownloadTab(ScrollableTab):
             self._rendering = False
 
     def _render(self, state: DownloadUiState) -> None:
-        self._busy_bar.setVisible(state.is_busy)
+        self._render_progress(state)
         self._park_focus_while_busy(state.is_busy)
 
         if self._output_path.text() != state.output_dir:
@@ -833,6 +853,16 @@ class DownloadTab(ScrollableTab):
 
         self._restore_focus_when_idle(state.is_busy)
 
+    def _render_progress(self, state: DownloadUiState) -> None:
+        """A batch download gets the progress panel; quicker work just spins the busy bar."""
+        progress = state.progress if state.is_busy else None
+        if progress is None:
+            self._progress_panel.clear()
+        else:
+            self._progress_panel.show_progress(progress)
+        self._progress_host.setVisible(progress is not None)
+        self._busy_bar.setVisible(state.is_busy and progress is None)
+
     def _park_focus_while_busy(self, busy: bool) -> None:
         """Hold focus on an invisible anchor while buttons are disabled.
 
@@ -857,9 +887,9 @@ class DownloadTab(ScrollableTab):
 
     def _handle_event(self, event: object) -> None:
         if isinstance(event, ShowError):
-            QMessageBox.critical(self, "Roster Download", event.message)
+            show_message(self, "Download failed", event.message, critical=True)
         elif isinstance(event, ShowInfo):
-            QMessageBox.information(self, "Roster Download", event.message)
+            show_message(self, "Download", event.message)
         elif isinstance(event, FocusCourseFolder):
             self._scroll.ensureWidgetVisible(self._course_folder_input)
             self._course_folder_input.setFocus(Qt.FocusReason.OtherFocusReason)

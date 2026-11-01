@@ -18,7 +18,7 @@ from GAVEL.pages.inspect_grades.page import InspectGradesPage  # noqa: F401
 from GAVEL.pages.sanitize.page import SanitizePage  # noqa: F401
 from GAVEL.pages.settings.page import SettingsPage  # noqa: F401
 from GAVEL.services.config_service import ConfigService
-from GAVEL.services.logger import AppLogger
+from GAVEL.services.logger import AppLogger, configure_logging
 from GAVEL.theme.context import ThemeContext
 from GAVEL.theme.qss_builder import build_app_qss
 from GAVEL.theme.tokens import load_tokens
@@ -39,6 +39,7 @@ def _build_splash() -> QSplashScreen | None:
 
 
 def main() -> None:
+    configure_logging()
     app = QApplication(sys.argv)
 
     splash = _build_splash()
