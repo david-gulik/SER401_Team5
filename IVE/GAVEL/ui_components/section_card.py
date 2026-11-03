@@ -84,3 +84,7 @@ class SectionCard(QFrame):
 
     def add_stretch(self) -> None:
         self._body_layout.addStretch(1)
+
+    @property
+    def body_layout(self):
+        return self._body_layout
