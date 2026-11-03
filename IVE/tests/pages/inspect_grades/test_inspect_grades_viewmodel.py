@@ -199,3 +199,48 @@ def test_missing_human_grades_does_not_block_proxy_grades(vm, monkeypatch):
     assert vm.human_grades_error == "Human assessments missing"
     assert len(vm.proxy_grades) == 2
     assert vm.proxy_grades_error is None
+
+
+@pytest.mark.parametrize("error_type", [KeyError, IndexError])
+def test_malformed_proxy_data_is_handled(vm, monkeypatch, error_type):
+    vm.load_courses()
+    vm.select_course(vm.courses[0])
+
+    module_4 = next(a for a in vm.assignments if a.module_number == 4)
+
+    def malformed_submissions(self, module_number):
+        raise error_type("Malformed grading data")
+
+    monkeypatch.setattr(
+        "GAVEL.app.workspace.dataset.CourseDataset.gradescope_submissions",
+        malformed_submissions,
+    )
+
+    vm.select_assignment(module_4)
+
+    assert len(vm.human_grades) == 2
+    assert vm.proxy_grades == ()
+    assert vm.proxy_grades_error is not None
+
+
+@pytest.mark.parametrize("error_type", [KeyError, IndexError])
+def test_malformed_human_data_is_handled(vm, monkeypatch, error_type):
+    vm.load_courses()
+    vm.select_course(vm.courses[0])
+
+    module_4 = next(a for a in vm.assignments if a.module_number == 4)
+
+    def malformed_assessments(self, assignment_id):
+        raise error_type("Malformed human grading data")
+
+    monkeypatch.setattr(
+        "GAVEL.app.workspace.dataset.CourseDataset.rubric_assessments",
+        malformed_assessments,
+    )
+
+    vm.select_assignment(module_4)
+
+    assert vm.human_grades == ()
+    assert vm.human_grades_error is not None
+    assert len(vm.proxy_grades) == 2
+    assert vm.proxy_grades_error is None

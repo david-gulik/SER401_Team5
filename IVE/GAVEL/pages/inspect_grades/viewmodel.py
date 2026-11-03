@@ -79,8 +79,17 @@ class InspectGradesViewModel:
         if assignment.has_rubric:
             try:
                 self.human_grades = dataset.rubric_assessments(assignment.canvas_id)
-            except (MissingArtifactError, ManifestError, OSError, ValueError) as exc:
+
+            except (
+                MissingArtifactError,
+                ManifestError,
+                OSError,
+                ValueError,
+                KeyError,
+                IndexError,
+            ) as exc:
                 self.human_grades_error = str(exc)
+
         else:
             self.human_grades_error = "This assignment has no rubric."
 
@@ -89,7 +98,15 @@ class InspectGradesViewModel:
         else:
             try:
                 self.proxy_grades = tuple(dataset.gradescope_submissions(assignment.module_number))
-            except (MissingArtifactError, OSError, BadZipFile, ValueError) as exc:
+
+            except (
+                MissingArtifactError,
+                OSError,
+                BadZipFile,
+                ValueError,
+                KeyError,
+                IndexError,
+            ) as exc:
                 self.proxy_grades_error = str(exc)
 
     def _clear_grades(self) -> None:
