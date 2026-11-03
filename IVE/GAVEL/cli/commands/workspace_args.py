@@ -8,18 +8,12 @@ carries subject, term, session and class number); everything else needs
 
 from __future__ import annotations
 
-import os
 import sys
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
-from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace, default_workspace_root
 from GAVEL.app_context import AppContext
-
-
-def default_workspace_root() -> Path:
-    env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
-    return Path(env_dir).expanduser() if env_dir else Path.home() / "Downloads" / "GAVEL"
 
 
 def add_workspace_arguments(

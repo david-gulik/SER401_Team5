@@ -19,6 +19,18 @@ def test_starts_with_no_chart_shown(qapp, theme):
     assert not canvas.is_showing_chart()
 
 
+def test_clear_returns_to_the_empty_state(qapp, theme, tmp_path: Path):
+    path = tmp_path / "report.json"
+    _write_report(path, [{"criterion": "main menu", "human_points": 1.0, "proxy_points": 2.0}])
+    card = ScoreDistributionCard(theme)
+    card.load_report(path)
+
+    card.clear()
+
+    assert not card.findChild(ChartCanvas).is_showing_chart()
+    assert card._status.text() == "No report chosen yet."
+
+
 def test_loading_a_report_draws_a_chart(qapp, theme, tmp_path: Path):
     path = tmp_path / "report.json"
     _write_report(

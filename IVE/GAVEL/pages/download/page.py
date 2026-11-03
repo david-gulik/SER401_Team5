@@ -48,7 +48,7 @@ PageRegistry.get().register(
         icon_text="📚",
         factory=lambda ctx: DownloadPage(ctx),
         order=30,
-        group="Integrations",
+        group="Preparation",
         icon_path=_ICONS_DIR / "get-app.svg",
     )
 )

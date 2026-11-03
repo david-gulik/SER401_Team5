@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 import requests
 
 from GAVEL.app.dtos.roster import ClassSection, TermInfo
+from GAVEL.infra.http_logging import log_http_calls
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +93,8 @@ class ServiceAuthTokenProvider:
         try:
             driver.get(self._config.redirect_uri)
 
-            print(
-                f"[AUTH] Browser opened. Complete CAS login and Duo MFA.\n"
-                f"[AUTH] Waiting up to {self._mfa_timeout}s..."
+            logger.info(
+                f"Browser opened. Complete CAS login and Duo MFA (timeout: {self._mfa_timeout}s)."
             )
 
             deadline = time.time() + self._mfa_timeout
@@ -109,26 +109,26 @@ class ServiceAuthTokenProvider:
 
                 if current != last_printed_url:
                     display = current[:120] + ("..." if len(current) > 120 else "")
-                    print(f"[AUTH] Current URL: {display}")
+                    logger.info(f"Current URL: {display}")
                     last_printed_url = current
 
                 if catalog_domain in current:
                     token = self._read_session_storage(driver, SS_TOKEN_KEY)
                     if token:
-                        print("[AUTH] Token found in sessionStorage.")
+                        logger.info("Token found in sessionStorage.")
                         break
 
                     for _ in range(5):
                         time.sleep(1)
                         token = self._read_session_storage(driver, SS_TOKEN_KEY)
                         if token:
-                            print("[AUTH] Token found in sessionStorage.")
+                            logger.info("Token found in sessionStorage.")
                             break
 
                     if token:
                         break
 
-                    print("[AUTH] No token yet. Triggering OAuth flow...")
+                    logger.info("No token yet. Triggering OAuth flow...")
                     token = self._trigger_oauth_flow(driver, deadline)
                     break
 
@@ -181,7 +181,7 @@ class ServiceAuthTokenProvider:
         }
         allow_url = f"{self._config.active_allow_url}?{_urlencode(allow_params)}"
 
-        print("[AUTH] Navigating to serviceauth allow endpoint...")
+        logger.info("Navigating to serviceauth allow endpoint...")
         driver.get(allow_url)
 
         last_printed = ""
@@ -193,12 +193,12 @@ class ServiceAuthTokenProvider:
 
             if current != last_printed:
                 display = current[:120] + ("..." if len(current) > 120 else "")
-                print(f"[AUTH] Current URL: {display}")
+                logger.info(f"Current URL: {display}")
                 last_printed = current
 
             token = self._read_session_storage(driver, SS_TOKEN_KEY)
             if token:
-                print("[AUTH] Token acquired after OAuth redirect.")
+                logger.info("Token acquired after OAuth redirect.")
                 return token
 
             time.sleep(1)
@@ -264,6 +264,7 @@ class CatalogApiClassResolver:
         self._token_provider = token_provider or ServiceAuthTokenProvider()
         self._http_timeout = http_timeout
         self._session = requests.Session()
+        log_http_calls(self._session)
         self._session.headers["User-Agent"] = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         )

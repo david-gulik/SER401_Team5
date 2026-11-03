@@ -173,3 +173,32 @@ def test_empty_quiz_list_returns_empty_result(tmp_path):
     assert result.succeeded == ()
     assert result.skipped == ()
     assert result.failed == ()
+
+
+def test_progress_counts_every_quiz_whatever_its_outcome(tmp_path):
+    client = FakeCanvasClient(
+        quizzes=[
+            CanvasQuiz(id=101, name="Quiz One"),
+            CanvasQuiz(id=202, name="Quiz Two"),
+            CanvasQuiz(id=303, name="Quiz Three"),
+        ],
+        responses={
+            101: b"student,score\n",
+            202: QuizReportUnavailableError("No report"),
+            303: RuntimeError("Canvas error"),
+        },
+    )
+    seen = []
+
+    DownloadAllQuizzesUseCase(client).execute(
+        DownloadAllQuizzesRequest(course_id=123, folder=course_folder(tmp_path)),
+        on_progress=seen.append,
+    )
+
+    assert [(p.done, p.total, p.item) for p in seen] == [
+        (0, 3, None),
+        (1, 3, "Quiz One"),
+        (2, 3, "Quiz Two"),
+        (3, 3, "Quiz Three"),
+    ]
+    assert seen[-1].text == "Downloading quizzes 3 of 3"

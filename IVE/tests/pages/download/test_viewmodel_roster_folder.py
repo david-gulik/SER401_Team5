@@ -57,6 +57,7 @@ def vm(qapp, roster, canvas, tmp_path: Path) -> DownloadViewModel:
         roster_configured=True,
     )
     vm.load_courses()
+    wait_for_workers(qapp)
     vm.set_course_id(str(SER402.id))
     vm.set_term("2267")
     return vm
@@ -120,6 +121,7 @@ def test_gradebook_still_follows_the_canvas_course(qapp, vm, tmp_path: Path):
     vm.download_roster()
     wait_for_workers(qapp)
     vm.download_gradebook()
+    wait_for_workers(qapp)
 
     state = vm.get_state()
     canvas_folder = course_folder(tmp_path, f"ser402_26fc_{SER401_A.class_number}")
@@ -149,6 +151,7 @@ def test_matching_selections_share_one_folder(qapp, vm, roster, tmp_path: Path):
     vm.download_roster()
     wait_for_workers(qapp)
     vm.download_gradebook()
+    wait_for_workers(qapp)
 
     folder = course_folder(tmp_path, CANVAS_FOLDER) / "original"
     assert (folder / "roster.csv").exists() and (folder / "gradebook.csv").exists()

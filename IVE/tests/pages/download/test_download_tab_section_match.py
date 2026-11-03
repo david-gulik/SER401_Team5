@@ -28,6 +28,8 @@ SANDBOX = CanvasCourse(id=253450, name="Sandbox", course_code="TRN-2026Spring-iv
 def pump(qapp) -> None:
     for _ in range(5):
         qapp.processEvents()
+        # The tab's loads run on the thread pool; let them finish and report back.
+        wait_for_workers(qapp)
 
 
 @pytest.fixture

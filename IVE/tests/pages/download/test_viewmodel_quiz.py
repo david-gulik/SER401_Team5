@@ -11,6 +11,7 @@ from GAVEL.core.status import Status
 from GAVEL.pages.download.viewmodel import DownloadViewModel, ShowError, quiz_id_error
 from GAVEL.services.logger import AppLogger
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
+from tests.pages.download.test_viewmodel_roster import wait_for_workers
 
 QUIZZES = [CanvasQuiz(id=5, name="Attendance Quiz"), CanvasQuiz(id=11, name="Research Consent")]
 
@@ -45,19 +46,21 @@ def test_quiz_id_error_accepts_digits_only(text: str, usable: bool):
     assert (quiz_id_error(text) is None) is usable
 
 
-def test_consent_download_requires_a_quiz_after_the_course(vm, canvas):
+def test_consent_download_requires_a_quiz_after_the_course(qapp, vm, canvas):
     vm.set_course_id("213877")
     seen = events(vm)
     vm.download_consent()
+    wait_for_workers(qapp)
     assert seen == [ShowError("Select a consent quiz first.")]
     assert canvas.download_calls == []
 
 
-def test_consent_download_rejects_a_non_numeric_quiz_id(vm, canvas):
+def test_consent_download_rejects_a_non_numeric_quiz_id(qapp, vm, canvas):
     vm.set_course_id("213877")
     vm.set_consent_quiz_id("abc")
     seen = events(vm)
     vm.download_consent()
+    wait_for_workers(qapp)
     assert len(seen) == 1 and isinstance(seen[0], ShowError)
     assert "'abc'" in seen[0].message and "numbers only" in seen[0].message
     assert vm.get_state().status is Status.CRITICAL
@@ -77,9 +80,10 @@ def test_download_all_reads_the_same_resolved_quiz_id(vm, canvas):
     assert canvas.download_calls == []
 
 
-def test_changing_course_clears_the_quiz_choice(vm):
+def test_changing_course_clears_the_quiz_choice(qapp, vm):
     vm.set_course_id("213877")
     vm.load_quizzes("213877")
+    wait_for_workers(qapp)
     vm.set_consent_quiz_id("11")
     assert vm.get_state().can_download_consent
     vm.set_course_id("209555")

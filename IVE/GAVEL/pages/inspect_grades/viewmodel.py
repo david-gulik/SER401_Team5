@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from zipfile import BadZipFile
 
 from GAVEL.app.dtos.gradescope import GradescopeSubmission
@@ -10,20 +9,16 @@ from GAVEL.app.workspace.dataset import (
     DatasetReaders,
     MissingArtifactError,
 )
-from GAVEL.app.workspace.layout import CourseFolder, Workspace
+from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.app.workspace.manifest import AssignmentEntry, ManifestError
 
 
 class InspectGradesViewModel:
-    def __init__(
-        self,
-        workspace_root: Path,
-        dataset_readers: DatasetReaders,
-    ) -> None:
-        self._workspace_root = workspace_root
+    """Assignments and grading data for the active course."""
+
+    def __init__(self, dataset_readers: DatasetReaders) -> None:
         self._dataset_readers = dataset_readers
 
-        self.courses: tuple[CourseFolder, ...] = ()
         self.assignments: tuple[AssignmentEntry, ...] = ()
 
         self.selected_course: CourseFolder | None = None
@@ -34,15 +29,6 @@ class InspectGradesViewModel:
         self.proxy_grades: tuple[GradescopeSubmission, ...] = ()
         self.human_grades_error: str | None = None
         self.proxy_grades_error: str | None = None
-
-    def load_courses(self) -> None:
-        self.courses = tuple(Workspace(self._workspace_root).list_courses())
-
-        self.selected_course = None
-        self.selected_assignment = None
-        self.assignments = ()
-        self.assignment_error = None
-        self._clear_grades()
 
     def select_course(self, course: CourseFolder | None) -> None:
         self.selected_course = course
@@ -74,12 +60,14 @@ class InspectGradesViewModel:
         if assignment is None or self.selected_course is None:
             return
 
-        dataset = CourseDataset.anonymized(self.selected_course, self._dataset_readers)
+        dataset = CourseDataset.anonymized(
+            self.selected_course,
+            self._dataset_readers,
+        )
 
         if assignment.has_rubric:
             try:
                 self.human_grades = dataset.rubric_assessments(assignment.canvas_id)
-
             except (
                 MissingArtifactError,
                 ManifestError,
@@ -89,7 +77,6 @@ class InspectGradesViewModel:
                 IndexError,
             ) as exc:
                 self.human_grades_error = str(exc)
-
         else:
             self.human_grades_error = "This assignment has no rubric."
 
@@ -98,7 +85,6 @@ class InspectGradesViewModel:
         else:
             try:
                 self.proxy_grades = tuple(dataset.gradescope_submissions(assignment.module_number))
-
             except (
                 MissingArtifactError,
                 OSError,

@@ -20,8 +20,8 @@ def page_ids(registry: PageRegistry) -> list[str]:
 
 def test_groups_follow_group_order_not_the_alphabet():
     registry = PageRegistry()
-    registry.register(spec("analytics", "Analytics", 10))
-    registry.register(spec("download", "Integrations", 10))
+    registry.register(spec("analytics", "Analysis", 10))
+    registry.register(spec("download", "Preparation", 10))
     registry.register(spec("home", "General", 10))
 
     assert page_ids(registry) == ["home", "download", "analytics"]
@@ -39,15 +39,20 @@ def test_unlisted_groups_go_last_sorted_by_name():
     registry = PageRegistry()
     registry.register(spec("zeta", "Zeta", 10))
     registry.register(spec("beta", "Beta", 10))
-    registry.register(spec("analytics", "Analytics", 10))
+    registry.register(spec("analytics", "Analysis", 10))
 
     assert page_ids(registry) == ["analytics", "beta", "zeta"]
 
 
-def test_app_pages_put_inspect_grades_last():
+def test_app_pages_run_from_home_to_analytics():
     import GAVEL.app.main  # noqa: F401
 
-    ids = page_ids(PageRegistry.get())
-
-    assert ids[0] == "home"
-    assert ids[-1] == "inspect_grades"
+    assert page_ids(PageRegistry.get()) == [
+        "home",
+        "settings",
+        "download",
+        "sanitize",
+        "autograders",
+        "inspect_grades",
+        "analytics",
+    ]

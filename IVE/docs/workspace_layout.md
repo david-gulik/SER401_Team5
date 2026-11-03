@@ -29,7 +29,7 @@ This layout was agreed with Dr. Acuña on 2026-09-10.
 │       │       └── _unmatched/<name>.zip          # exports whose module could not be told
 │       └── anonymized/                # same shape as original/, consented students only, Anon ids
 ├── autograders/
-│   └── <subject><catalog>/m<module>/<course folder>/autograder.zip   # Gradescope autograder snapshots
+│   └── <subject><catalog>/<uploaded filename>.zip   # Gradescope autograders, shared by every section
 └── runs/                              # reserved: autograder executions and comparisons
 ```
 
@@ -141,5 +141,12 @@ Gradescope exports are grouped by the module number in the Gradescope assignment
 the rubric and the one Gradescope grades are usually different Canvas assignments in
 the same module. The zip is kept and also extracted next to itself. An export whose
 module cannot be told is kept in `original/submissions/_unmatched/` and still recorded
-in the manifest. Autograder zips go to the workspace-level `autograders/` area; their
-manifest paths are relative to the workspace root and start with `autograders/`.
+in the manifest. Autograder zips go to the workspace-level `autograders/` area under
+their course (`autograders/ser334/`), not their section, because any section can run
+any of the course's autograders. They keep the filename the instructor uploaded
+(`SER334Module2Autograder_SEP10b_hotfix1.zip`), which changes with each version, so
+versions accumulate side by side. A download that brings an autograder already there
+with the same bytes leaves it alone; one with the same name and different bytes is kept
+beside it with a short hash suffix. Each course's manifest records the autograders its
+download brought, with the Gradescope assignment name as the label; their manifest
+paths are relative to the workspace root and start with `autograders/`.

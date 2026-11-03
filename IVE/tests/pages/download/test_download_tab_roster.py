@@ -29,12 +29,13 @@ TYPED = "99999"
 
 
 def pump(qapp) -> None:
+    """Let queued timers fire, and the thread-pool loads they start finish and report back."""
     for _ in range(5):
         qapp.processEvents()
+        assert QThreadPool.globalInstance().waitForDone(5000)
 
 
 def wait_for_workers(qapp) -> None:
-    assert QThreadPool.globalInstance().waitForDone(5000)
     pump(qapp)
 
 

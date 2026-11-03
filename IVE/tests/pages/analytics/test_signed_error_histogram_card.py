@@ -40,6 +40,18 @@ def test_loading_a_report_draws_the_chart(qapp, theme, tmp_path: Path):
     assert "ser334_m2" in card._status.text()
 
 
+def test_clear_returns_to_the_empty_state(qapp, theme, tmp_path: Path):
+    path = tmp_path / "ser334_m2.json"
+    _write_report(path, [-1.0, 0.5])
+    card = SignedErrorHistogramCard(theme)
+    card.load_report(path)
+
+    card.clear()
+
+    assert not card.findChildren(ChartCanvas)[0].is_showing_chart()
+    assert card._status.text() == "No report chosen yet."
+
+
 def test_an_unreadable_report_is_reported_without_crashing(qapp, theme, tmp_path: Path):
     path = tmp_path / "not_json.json"
     path.write_text("not valid json", encoding="utf-8")

@@ -37,26 +37,33 @@ class OverviewTab(ScrollableTab):
         self,
         theme: ThemeContext,
         dataset_readers: DatasetReaders,
-        workspace_root: Path,
     ) -> None:
         super().__init__(theme)
         self._theme = theme
 
-        generate_card = GenerateReportCard(theme, dataset_readers, workspace_root)
+        self._generate_card = GenerateReportCard(theme, dataset_readers)
         histogram_card = SignedErrorHistogramCard(theme)
         heat_map_card = HeatMapCard(theme)
         score_distribution_card = ScoreDistributionCard(theme)
-        generate_card.signed_error_report_generated.connect(histogram_card.load_report)
-        generate_card.heat_map_report_generated.connect(heat_map_card.load_report)
-        generate_card.heat_map_report_generated.connect(score_distribution_card.load_report)
+        self._generate_card.signed_error_report_generated.connect(histogram_card.load_report)
+        self._generate_card.heat_map_report_generated.connect(heat_map_card.load_report)
+        self._generate_card.heat_map_report_generated.connect(score_distribution_card.load_report)
+        # Each chart shows one course's report, so a change of course empties them.
+        self._report_cards = (histogram_card, heat_map_card, score_distribution_card)
 
-        self.add_section(generate_card)
+        self.add_section(self._generate_card)
         self.add_section(histogram_card)
         self.add_section(heat_map_card)
         self.add_section(score_distribution_card)
         for title in _PLACEHOLDER_VISUALIZATIONS:
             self.add_section(_PlaceholderCard(theme, title))
         self.add_stretch()
+
+    def set_course(self, course: CourseFolder | None) -> None:
+        """The active course, from the page: when the tab is built and on every change."""
+        self._generate_card.set_course(course)
+        for card in self._report_cards:
+            card.clear()
 
 
 class _PlaceholderCard(QWidget):
@@ -76,12 +83,13 @@ class _PlaceholderCard(QWidget):
 
 
 class GenerateReportCard(QWidget):
-    """Builds a report from a course already in the workspace.
+    """Builds a report from the active course.
 
     The report type picked determines which extra fields appear: a signed-
     error report needs a gradebook column, a heat map report needs a rubric
     assignment. Always reads the anonymized side of the course folder,
-    through GenerateReportViewModel.
+    through GenerateReportViewModel. The course comes in through set_course;
+    the report lands in the runs/ folder of the workspace that course sits in.
     """
 
     signed_error_report_generated = pyqtSignal(Path)
@@ -90,27 +98,26 @@ class GenerateReportCard(QWidget):
     _CHOOSE_TYPE = "Choose a report type…"
     _SIGNED_ERROR = "Signed Error Report"
     _HEAT_MAP = "Heat Map Report"
+    _NO_COURSE = "No course selected."
 
     def __init__(
         self,
         theme: ThemeContext,
         dataset_readers: DatasetReaders,
-        workspace_root: Path,
         view_model: GenerateReportViewModel | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._theme = theme
-        self._workspace_root = workspace_root
         self._view_model = view_model or GenerateReportViewModel(dataset_readers)
-        self._courses: tuple[CourseFolder, ...] = ()
+        self._course: CourseFolder | None = None
         self._rubric_assignments: tuple[AssignmentEntry, ...] = ()
 
         self._card = SectionCard(self._theme, "Generate Report")
         self._card.add_title_suffix(
             hint_icon(
-                "Pick a report type, then fill in what it needs. Both types require a course "
-                "that has been downloaded and anonymized in the workspace."
+                "Pick a report type, then fill in what it needs. Both types read the active "
+                "course, which must be downloaded and anonymized in the workspace."
             )
         )
 
@@ -123,13 +130,10 @@ class GenerateReportCard(QWidget):
         type_widget.setLayout(type_form)
         self._card.add_row(type_widget)
 
-        self._course_box = QComboBox()
-        self._course_box.currentIndexChanged.connect(self._refresh_modules)
         self._module_box = QComboBox()
         self._module_box.currentIndexChanged.connect(self._refresh_module_dependents)
 
         common_form = QFormLayout()
-        common_form.addRow("Course", self._course_box)
         common_form.addRow("Module", self._module_box)
         self._common_fields = QWidget()
         self._common_fields.setLayout(common_form)
@@ -153,7 +157,7 @@ class GenerateReportCard(QWidget):
         self._generate_button.clicked.connect(self._generate)
         self._card.add_row(self._generate_button)
 
-        self._status = QLabel("No courses found in the workspace.")
+        self._status = QLabel(self._NO_COURSE)
         self._status.setProperty("role", "text_muted")
         self._card.add_row(self._status)
 
@@ -166,17 +170,21 @@ class GenerateReportCard(QWidget):
         self._heat_map_fields.setVisible(False)
         self._generate_button.setVisible(False)
 
-        self._refresh_courses()
+    def set_course(self, course: CourseFolder | None) -> None:
+        """The active course, from the page: when the card is built and on every change."""
+        self._course = course
+        self._status.setText("Ready." if course is not None else self._NO_COURSE)
+        # Refilling the module box refreshes the columns and rubric assignments too.
+        self._refresh_modules()
 
     def showEvent(self, event: QShowEvent) -> None:
-        """Rereads the workspace from disk each time this page is shown.
+        """Rereads the course folder from disk each time this page is shown.
 
         Downloading and anonymizing both happen outside this widget's
-        lifetime, so its cached course/module/column lists can go stale
-        without this.
+        lifetime, so its cached module/column lists can go stale without
+        this.
         """
         super().showEvent(event)
-        self._refresh_courses()
         self._refresh_modules()
         self._refresh_module_dependents()
 
@@ -187,23 +195,6 @@ class GenerateReportCard(QWidget):
         self._generate_button.setVisible(chosen)
         self._signed_error_fields.setVisible(report_type == self._SIGNED_ERROR)
         self._heat_map_fields.setVisible(report_type == self._HEAT_MAP)
-
-    def _refresh_courses(self) -> None:
-        previous = self._course_box.currentText()
-        try:
-            self._courses = self._view_model.list_courses(self._workspace_root)
-        except Exception as exc:
-            self._status.setText(f"Could not read the workspace: {exc}")
-            return
-        self._course_box.clear()
-        self._course_box.addItems([c.key.folder_name for c in self._courses])
-        if self._courses:
-            self._status.setText("Ready.")
-        else:
-            self._status.setText("No courses found in the workspace.")
-        index = self._course_box.findText(previous)
-        if index >= 0:
-            self._course_box.setCurrentIndex(index)
 
     def _refresh_modules(self) -> None:
         previous = self._module_box.currentText()
@@ -263,10 +254,7 @@ class GenerateReportCard(QWidget):
             self._rubric_box.setCurrentIndex(index)
 
     def _selected_course(self) -> CourseFolder | None:
-        index = self._course_box.currentIndex()
-        if index < 0 or index >= len(self._courses):
-            return None
-        return self._courses[index]
+        return self._course
 
     def _selected_rubric_assignment(self) -> AssignmentEntry | None:
         index = self._rubric_box.currentIndex()
@@ -308,7 +296,7 @@ class GenerateReportCard(QWidget):
 
         try:
             outcome = self._view_model.generate(
-                self._workspace_root, course, module_number, mapping_name, gradebook_column
+                course.workspace_root, course, module_number, mapping_name, gradebook_column
             )
         except Exception as exc:
             self._status.setText(f"Could not generate the report: {exc}")
@@ -330,7 +318,7 @@ class GenerateReportCard(QWidget):
 
         try:
             outcome = self._view_model.generate_heat_map(
-                self._workspace_root, course, module_number, mapping_name, rubric_assignment
+                course.workspace_root, course, module_number, mapping_name, rubric_assignment
             )
         except Exception as exc:
             self._status.setText(f"Could not generate the report: {exc}")

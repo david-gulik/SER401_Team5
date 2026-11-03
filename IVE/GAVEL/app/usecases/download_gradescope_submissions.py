@@ -1,18 +1,21 @@
 """Gradescope bulk exports into ``original/submissions/m<module>/``.
 
 The Gradescope scraper only knows Gradescope's assignment names and writes
-``<name>.zip`` and ``<name>_autograder.zip`` into one folder. This use case
-lets it write into a staging folder, then files each export by module: the
-assignment Gradescope grades and the one that carries the human rubric are
-usually different Canvas assignments in the same module, so the module is
-what ties submissions to rubric assessments. Submissions are extracted next
-to the zip; autograder zips go to the workspace-level ``autograders/`` area.
-Anything whose module cannot be told goes to ``submissions/_unmatched/`` and
-is still recorded in the manifest, so nothing downloaded is ever lost.
+``<name>.zip`` plus ``autograders/<name>/<uploaded filename>`` into one folder.
+This use case lets it write into a staging folder, then files each export by
+module: the assignment Gradescope grades and the one that carries the human
+rubric are usually different Canvas assignments in the same module, so the
+module is what ties submissions to rubric assessments. Submissions are
+extracted next to the zip. Autograders keep their uploaded filename and go to
+the course's folder in the workspace-level ``autograders/`` area, where every
+section of the course can use them. A submissions export whose module cannot
+be told goes to ``submissions/_unmatched/`` and is still recorded in the
+manifest, so nothing downloaded is ever lost.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shutil
@@ -24,6 +27,7 @@ from typing import Any
 
 from GAVEL.app.dtos.canvas_course import CanvasAssignment
 from GAVEL.app.ports.canvas_client import CanvasClient
+from GAVEL.app.progress import ProgressCallback
 from GAVEL.app.workspace.layout import CourseFolder, Workspace, module_number_from_name
 from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.app.workspace.recording import (
@@ -33,12 +37,17 @@ from GAVEL.app.workspace.recording import (
     note_assignment,
     note_course,
     record,
+    sha256_of,
 )
-from GAVEL.infra.gradescope.http_gradescope_client import http_gradescope_client
+from GAVEL.infra.gradescope.http_gradescope_client import (
+    AUTOGRADERS_SUBFOLDER,
+    http_gradescope_client,
+)
+
+log = logging.getLogger(__name__)
 
 STAGING_DIR = "_staging"
 UNMATCHED_DIR = "_unmatched"
-AUTOGRADER_SUFFIX = "_autograder"
 
 _ILLEGAL = re.compile(r'[\\/:*?"<>|]')
 _GRADESCOPE_TAG = re.compile(r"\(\s*gradescope\s*\)", re.IGNORECASE)
@@ -120,11 +129,16 @@ class DownloadGradescopeSubmissionsResult:
 
     @property
     def matched(self) -> tuple[GradescopeArtifact, ...]:
-        return tuple(a for a in self.artifacts if a.module_number is not None)
+        return tuple(a for a in self.artifacts if not _is_unmatched(a))
 
     @property
     def unmatched(self) -> tuple[GradescopeArtifact, ...]:
-        return tuple(a for a in self.artifacts if a.module_number is None)
+        return tuple(a for a in self.artifacts if _is_unmatched(a))
+
+
+def _is_unmatched(artifact: GradescopeArtifact) -> bool:
+    """A submissions export with no module; autograders are filed by course and never are."""
+    return artifact.kind == "submissions" and artifact.module_number is None
 
 
 def _env_credentials() -> tuple[str | None, str | None]:
@@ -146,8 +160,11 @@ class DownloadGradescopeSubmissionsUseCase:
         self._browser = browser
 
     def execute(
-        self, request: DownloadGradescopeSubmissionsRequest
+        self,
+        request: DownloadGradescopeSubmissionsRequest,
+        on_progress: ProgressCallback | None = None,
     ) -> DownloadGradescopeSubmissionsResult:
+        """``on_progress`` is passed to the scraper, which reports per Gradescope assignment."""
         if request.course_id <= 0:
             raise ValueError("course_id must be greater than zero")
 
@@ -164,9 +181,11 @@ class DownloadGradescopeSubmissionsUseCase:
             self._guard_nothing_downloaded_yet(folder)
 
         assignments_unavailable = False
+        log.info("Listing Canvas assignments for course %s to file exports", request.course_id)
         try:
             assignments = list(self._canvas_client.list_assignments(request.course_id))
-        except Exception:  # noqa: BLE001 - matching is best effort; unmatched is still kept
+        except Exception as exc:  # noqa: BLE001 - matching is best effort; unmatched is still kept
+            log.warning("Canvas assignment list unavailable, exports will be unmatched: %s", exc)
             assignments = []
             assignments_unavailable = True
 
@@ -180,27 +199,36 @@ class DownloadGradescopeSubmissionsUseCase:
         if self._browser is not None:
             client_options["browser"] = self._browser
         client = self._client_factory(**client_options)
-        client.download_all_assignments(username=username, password=password)
+        log.info("Signing in to Gradescope through Canvas course %s", request.course_id)
+        client.download_all_assignments(
+            username=username, password=password, on_progress=on_progress
+        )
+
+        staged = [(path, path.stem, "submissions") for path in sorted(staging.glob("*.zip"))]
+        staged += [
+            (path, path.parent.name, "autograder")
+            for path in sorted((staging / AUTOGRADERS_SUBFOLDER).glob("*/*.zip"))
+        ]
 
         artifacts: list[GradescopeArtifact] = []
-        for zip_path in sorted(staging.glob("*.zip")):
-            name = zip_path.stem
-            kind = "submissions"
-            if name.endswith(AUTOGRADER_SUFFIX):
-                name = name[: -len(AUTOGRADER_SUFFIX)]
-                kind = "autograder"
-
+        for zip_path, name, kind in staged:
             module, assignment = module_for_export(name, assignments)
-            if module is None:
-                target = tree.submissions_dir / UNMATCHED_DIR / zip_path.name
-            elif kind == "autograder":
-                target = workspace.autograder_snapshot(folder.key, module)
+            if kind == "autograder":
+                target = _file_autograder(zip_path, workspace.course_autograders_dir(folder.key))
+                log.info("Filed autograder '%s' at %s", name, target)
             else:
-                target = tree.module_submissions(module).zip_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(zip_path), str(target))
-            if module is not None and kind == "submissions":
-                _extract(target, tree.module_submissions(module).extracted_dir)
+                if module is None:
+                    target = tree.submissions_dir / UNMATCHED_DIR / zip_path.name
+                else:
+                    target = tree.module_submissions(module).zip_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(zip_path), str(target))
+                if module is None:
+                    log.warning("Could not tell the module for '%s'; kept at %s", name, target)
+                else:
+                    log.info("Filed submissions '%s' under m%s at %s", name, module, target)
+                    log.info("Extracting %s", target.name)
+                    _extract(target, tree.module_submissions(module).extracted_dir)
 
             record(
                 folder,
@@ -230,6 +258,8 @@ class DownloadGradescopeSubmissionsUseCase:
                 )
             )
 
+        for leftover in sorted(staging.rglob("*"), reverse=True):
+            _remove_if_empty(leftover)
         _remove_if_empty(staging)
         note_course(folder, canvas_course_id=request.course_id)
 
@@ -263,6 +293,27 @@ class DownloadGradescopeSubmissionsUseCase:
         for module in folder.original.list_module_submissions():
             if module.zip_path.exists():
                 raise ArtifactExistsError(folder, module.zip_path)
+
+
+def _file_autograder(zip_path: Path, directory: Path) -> Path:
+    """Move a staged autograder into ``directory`` under its uploaded name. Returns where it is.
+
+    The same name with the same bytes is the same autograder, already kept, so
+    the staged copy is dropped. The same name with different bytes is a
+    different autograder that reused a name; it is kept beside the first with
+    a short hash suffix so neither is lost.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / zip_path.name
+    if target.exists():
+        digest = sha256_of(zip_path)
+        if sha256_of(target) != digest:
+            target = directory / f"{zip_path.stem}_{digest[:8]}{zip_path.suffix}"
+    if target.exists():
+        zip_path.unlink()
+    else:
+        shutil.move(str(zip_path), str(target))
+    return target
 
 
 def _extract(zip_path: Path, destination: Path) -> None:

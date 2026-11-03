@@ -131,12 +131,13 @@ class TestRecord:
 
 
 class TestWorkspaceRelativePaths:
-    def test_autograder_snapshot_is_recorded_relative_to_the_workspace(
+    def test_autograder_is_recorded_relative_to_the_workspace(
         self, folder: CourseFolder, tmp_path: Path
     ) -> None:
-        target = write(Workspace(tmp_path).autograder_snapshot(folder.key, 2), b"grader")
+        directory = Workspace(tmp_path).course_autograders_dir(folder.key)
+        target = write(directory / "SER222Module2Autograder.zip", b"grader")
         entry = record(folder, "autograder", target, now=T0)
-        assert entry.path == "autograders/ser222/m2/ser222_25sc_12345/autograder.zip"
+        assert entry.path == "autograders/ser222/SER222Module2Autograder.zip"
         assert artifact_path(folder, entry) == target
 
     def test_course_paths_resolve_back_to_the_course_folder(self, folder: CourseFolder) -> None:

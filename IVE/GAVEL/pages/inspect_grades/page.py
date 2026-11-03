@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 from PyQt6.QtWidgets import QVBoxLayout
 
 from GAVEL.app_context import AppContext
@@ -19,17 +16,12 @@ class InspectGradesPage(BasePage):
     def __init__(self, ctx: AppContext) -> None:
         super().__init__()
 
-        env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
-        workspace_root = (
-            Path(env_dir).expanduser() if env_dir else Path.home() / "Downloads" / "GAVEL"
-        )
-
-        viewmodel = InspectGradesViewModel(
-            workspace_root=workspace_root,
-            dataset_readers=ctx.services.dataset_readers,
-        )
+        viewmodel = InspectGradesViewModel(dataset_readers=ctx.services.dataset_readers)
 
         tab = InspectGradesTab(ctx.theme, viewmodel)
+        # Pages are built the first time they open, so read the current pick as well.
+        ctx.active_course.changed.connect(tab.set_course)
+        tab.set_course(ctx.active_course.course)
 
         root = QVBoxLayout(self)
         root.addWidget(tab)
@@ -42,6 +34,7 @@ PageRegistry.get().register(
         icon_text="📋",
         factory=lambda ctx: InspectGradesPage(ctx),
         order=50,
-        group="Analytics",
+        group="Verification",
+        uses_active_course=True,
     )
 )

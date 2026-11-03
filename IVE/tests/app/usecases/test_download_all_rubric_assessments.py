@@ -394,3 +394,25 @@ class TestAlreadyDownloaded:
         )
         assert len(result.succeeded) == len(ASSIGNMENTS)
         assert result.already_downloaded == ()
+
+
+class TestProgress:
+    def test_reports_once_up_front_and_once_per_assignment(self, use_case, request_):
+        seen = []
+        use_case.execute(request_, on_progress=seen.append)
+
+        total = len(ASSIGNMENTS)
+        assert [(p.done, p.total) for p in seen] == [(i, total) for i in range(total + 1)]
+        assert [p.item for p in seen[1:]] == [a.name for a in ASSIGNMENTS]
+
+    def test_skipped_and_failed_assignments_still_count(self, use_case, request_, client):
+        client.assignments = [
+            CanvasAssignment(id=1, name="No Rubric", has_rubric=False),
+            CanvasAssignment(id=2, name="Broken", has_rubric=True),
+        ]
+        client.fetch_rubric_error_for = {2}
+        seen = []
+
+        use_case.execute(request_, on_progress=seen.append)
+
+        assert [(p.done, p.item) for p in seen] == [(0, None), (1, "No Rubric"), (2, "Broken")]
