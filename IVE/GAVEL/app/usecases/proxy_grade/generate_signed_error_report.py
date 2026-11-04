@@ -21,7 +21,7 @@ from GAVEL.app.usecases.proxy_grade.compute_proxy_grade import (
     compute_proxy_grade,
 )
 from GAVEL.app.usecases.proxy_grade.submission_matching import (
-    match_submission_to_gradebook_row,
+    gradebook_rows_by_login,
     no_tests_ran_on_the_submitted_code,
     student_key,
 )
@@ -84,10 +84,11 @@ def compute_signed_error_rows(
     rows: list[SubmissionSignedError] = []
     unmatched: list[str] = []
     failed: list[FailedSubmission] = []
+    rows_by_login = gradebook_rows_by_login(gradebook)
 
     for submission in submissions:
         login = student_key(submission.submitter.email)
-        row = match_submission_to_gradebook_row(submission, gradebook)
+        row = rows_by_login.get(login)
         human_score = row.assignment_scores.get(gradebook_column) if row is not None else None
 
         if human_score is None:

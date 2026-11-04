@@ -27,16 +27,13 @@ def student_key(email: str) -> str:
     return email.split("@")[0].strip().lower()
 
 
-def match_submission_to_gradebook_row(
-    submission: GradescopeSubmission, gradebook: CanvasGradebook
-) -> GradebookStudentRow | None:
-    """The gradebook row for a submission's submitter, by SIS login ID.
+def gradebook_rows_by_login(gradebook: CanvasGradebook) -> dict[str, GradebookStudentRow]:
+    """Every gradebook row keyed by its SIS login ID, lowercased.
 
-    Public so any caller matching a submission to a student's Canvas
-    identity, not only a signed-error report, uses the same matching rule.
+    Built once per report run so matching a submission to its row is a dict
+    lookup instead of a scan over every row in the gradebook.
     """
-    login = student_key(submission.submitter.email)
-    return next((row for row in gradebook.rows if row.sis_login_id.lower() == login), None)
+    return {row.sis_login_id.lower(): row for row in gradebook.rows}
 
 
 def no_tests_ran_on_the_submitted_code(submission: GradescopeSubmission) -> bool:
