@@ -12,8 +12,10 @@ from GAVEL.app.workspace.manifest import (
     AnonymizationEntry,
     ArtifactEntry,
     AssignmentEntry,
+    ConsentOverride,
     ManifestError,
     SourceEntry,
+    load_consent_overrides,
     load_manifest,
     manifest_from_dict,
     manifest_to_dict,
@@ -22,6 +24,7 @@ from GAVEL.app.workspace.manifest import (
     record_assignment,
     save_manifest,
     set_anonymization,
+    set_consent_override,
     set_course_metadata,
 )
 
@@ -164,9 +167,12 @@ def full_manifest():
                 SourceEntry("original/roster.csv", "a" * 64),
                 SourceEntry("original/consent_form.csv", "b" * 64),
             ),
+            consent_overrides=(1220440005,),
         ),
         now=T1,
     )
+    m = set_consent_override(m, 1220440006, True, now=T1)
+    m = set_consent_override(m, 1220440005, True, now=T0)
     return m
 
 
@@ -188,6 +194,11 @@ class TestSerialisation:
         )
         assert d["artifacts"][0]["source_id"] == 7216983
         assert d["anonymization"]["anonymized_at"] == T1
+        assert d["anonymization"]["consent_overrides"] == [1220440005]
+        assert d["consent_overrides"] == {
+            "1220440005": {"override": True, "overridden_at": T0},
+            "1220440006": {"override": True, "overridden_at": T1},
+        }
         assert [s["path"] for s in d["anonymization"]["sources"]] == [
             "original/consent_form.csv",
             "original/roster.csv",
@@ -219,6 +230,9 @@ class TestSerialisation:
         assert set(d["anonymization"]) == set(anonymization["properties"])
         assert set(d["anonymization"]["sources"][0]) == set(
             anonymization["properties"]["sources"]["items"]["properties"]
+        )
+        assert set(d["consent_overrides"]["1220440005"]) == set(
+            schema["properties"]["consent_overrides"]["additionalProperties"]["properties"]
         )
 
     def test_save_and_load(self, tmp_path: Path) -> None:
@@ -259,3 +273,73 @@ class TestSerialisation:
         path.write_text("[]", encoding="utf-8")
         with pytest.raises(ManifestError, match="JSON object"):
             load_manifest(path)
+
+
+class TestConsentOverrides:
+    def test_new_manifest_has_none(self) -> None:
+        assert new_manifest(KEY, now=T0).consent_overrides == ()
+
+    def test_override_is_added_and_stamped(self) -> None:
+        m = set_consent_override(new_manifest(KEY, now=T0), 1220440005, True, now=T1)
+
+        assert m.consent_overrides == (ConsentOverride(1220440005, T1),)
+        assert m.overridden_sis_ids == {1220440005}
+        assert m.updated_at == T1
+
+    def test_overriding_again_keeps_the_first_timestamp(self) -> None:
+        m = set_consent_override(new_manifest(KEY, now=T0), 1220440005, True, now=T0)
+        m = set_consent_override(m, 1220440005, True, now=T1)
+
+        assert m.consent_overrides == (ConsentOverride(1220440005, T0),)
+
+    def test_override_is_removed(self) -> None:
+        m = set_consent_override(new_manifest(KEY, now=T0), 1220440005, True)
+        m = set_consent_override(m, 1220440006, True)
+        m = set_consent_override(m, 1220440005, False)
+
+        assert m.overridden_sis_ids == {1220440006}
+
+    def test_kept_sorted_by_sis_id(self) -> None:
+        m = set_consent_override(new_manifest(KEY, now=T0), 1220440009, True)
+        m = set_consent_override(m, 1220440001, True)
+
+        assert [o.sis_id for o in m.consent_overrides] == [1220440001, 1220440009]
+
+    def test_other_changes_keep_overrides(self) -> None:
+        m = set_consent_override(new_manifest(KEY, now=T0), 1220440005, True)
+        m = record_artifact(m, artifact())
+        m = set_anonymization(m, AnonymizationEntry(T1))
+
+        assert m.overridden_sis_ids == {1220440005}
+
+    def test_manifest_without_overrides_loads(self) -> None:
+        d = manifest_to_dict(full_manifest())
+        del d["consent_overrides"]
+        del d["anonymization"]["consent_overrides"]
+
+        m = manifest_from_dict(d)
+
+        assert m.consent_overrides == ()
+        assert m.anonymization.consent_overrides == ()
+
+    def test_override_false_does_not_apply(self) -> None:
+        d = manifest_to_dict(full_manifest())
+        d["consent_overrides"]["1220440005"]["override"] = False
+
+        assert manifest_from_dict(d).overridden_sis_ids == {1220440006}
+
+    @pytest.mark.parametrize("bad", [[1220440005], {"1220440005": True}, {"abc": {}}])
+    def test_malformed_overrides_rejected(self, bad: object) -> None:
+        d = manifest_to_dict(full_manifest())
+        d["consent_overrides"] = bad
+
+        with pytest.raises(ManifestError, match="malformed"):
+            manifest_from_dict(d)
+
+    def test_load_consent_overrides(self, tmp_path: Path) -> None:
+        path = tmp_path / "manifest.json"
+        assert load_consent_overrides(path) == frozenset()
+
+        save_manifest(path, full_manifest())
+
+        assert load_consent_overrides(path) == {1220440005, 1220440006}

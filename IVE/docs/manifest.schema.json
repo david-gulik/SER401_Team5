@@ -96,6 +96,25 @@
               "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
             }
           }
+        },
+        "consent_overrides": {
+          "description": "SIS IDs in consent_overrides when the run started. Absent in manifests written before overrides existed.",
+          "type": "array",
+          "items": { "type": "integer" }
+        }
+      }
+    },
+    "consent_overrides": {
+      "description": "Students included by hand after a possible typo or name mismatch, keyed by SIS ID. Absent or empty when there are none.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[0-9]+$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["override", "overridden_at"],
+        "additionalProperties": false,
+        "properties": {
+          "override": { "type": "boolean" },
+          "overridden_at": { "type": "string", "format": "date-time" }
         }
       }
     }

@@ -95,9 +95,14 @@ def banner_text(course: CourseSummary) -> str:
             "Download it on the Download page, then choose Reload."
         )
     if status is AnonymizationStatus.OUT_OF_DATE:
+        changed = (
+            "files in original/ changed or were added"
+            if course.files_changed
+            else "consent overrides changed"
+        )
         return (
-            "Out of date: files in original/ changed or were added after the last "
-            f"anonymization on {_when(course.anonymized_at)}. {_REANONYMIZE_NOTE}"
+            f"Out of date: {changed} after the last anonymization on "
+            f"{_when(course.anonymized_at)}. {_REANONYMIZE_NOTE}"
         )
     if status is AnonymizationStatus.UP_TO_DATE:
         return f"Already anonymized on {_when(course.anonymized_at)}. {_REANONYMIZE_NOTE}"

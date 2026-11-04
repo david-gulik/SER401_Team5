@@ -71,7 +71,8 @@ Written by GAVEL, updated after every download.
 | `modules` | Canvas modules (`id`, `name`) for the course. |
 | `assignments` | One entry per Canvas assignment seen: `canvas_id`, `name`, `module_number`, `has_rubric`, and `due_at`, `points_possible`, `gradescope_name` when known. |
 | `artifacts` | One entry per downloaded file: `kind`, `path` (relative to the course folder, `/` separators), `downloaded_at`, `sha256`, `size_bytes`, `source_id` (quiz or assignment id), `label` (quiz title or Gradescope assignment name when the path alone does not say). |
-| `anonymization` | The last run that wrote `anonymized/`: `anonymized_at`, and `sources`, the `path` and `sha256` of each `original/` file it read. The Sanitize page marks a course Out of date when an original no longer matches its recorded hash, or when it has no recorded hash. `null` until the course is anonymized. |
+| `anonymization` | The last run that wrote `anonymized/`: `anonymized_at`; `sources`, the `path` and `sha256` of each `original/` file it read; and `consent_overrides`, the SIS IDs overridden when it ran. The Sanitize page marks a course Out of date when an original no longer matches its recorded hash, when it has no recorded hash, or when the overrides changed. `null` until the course is anonymized. |
+| `consent_overrides` | Students included by hand on the Sanitize page although their typed name was a possible typo or did not match, keyed by SIS ID: `{"1220440005": {"override": true, "overridden_at": "..."}}`. Applied on every review and anonymization of the course, but only while the student's latest attempt still says yes with a typo or mismatched name. Never copied into `anonymized/`. |
 
 Artifact kinds: `roster`, `gradebook`, `consent_form`, `quiz`,
 `rubric_definition`, `rubric_assessments`, `submissions`, `autograder`.

@@ -37,6 +37,7 @@ from GAVEL.app.workspace.manifest import (
     record_assignment,
     save_manifest,
     set_anonymization,
+    set_consent_override,
     set_course_metadata,
     utc_now_iso,
 )
@@ -202,14 +203,33 @@ def note_anonymization(
     folder: CourseFolder,
     sources: tuple[SourceEntry, ...],
     *,
+    consent_overrides: frozenset[int] = frozenset(),
     gavel_version: str | None = None,
     now: str | None = None,
 ) -> CourseManifest:
-    """Record which originals ``anonymized/`` was just written from, and save the manifest."""
+    """Record which originals and consent overrides ``anonymized/`` was just
+    written from, and save the manifest."""
     stamp = now or utc_now_iso()
     manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
-    manifest = set_anonymization(
-        manifest, AnonymizationEntry(anonymized_at=stamp, sources=sources), now=stamp
+    entry = AnonymizationEntry(
+        anonymized_at=stamp, sources=sources, consent_overrides=tuple(sorted(consent_overrides))
     )
+    manifest = set_anonymization(manifest, entry, now=stamp)
+    save_manifest(folder.manifest_path, manifest)
+    return manifest
+
+
+def note_consent_override(
+    folder: CourseFolder,
+    sis_id: int,
+    overridden: bool,
+    *,
+    gavel_version: str | None = None,
+    now: str | None = None,
+) -> CourseManifest:
+    """Add (``overridden``) or remove one student's consent override and save the manifest."""
+    stamp = now or utc_now_iso()
+    manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
+    manifest = set_consent_override(manifest, sis_id, overridden, now=stamp)
     save_manifest(folder.manifest_path, manifest)
     return manifest
