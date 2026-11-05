@@ -10,7 +10,7 @@ from GAVEL.ui_components.section_card import SectionCard
 
 
 class InspectGradesTab(ScrollableTab):
-    """Picks an assignment of the active course; the page supplies the course."""
+    """Displays assignments and grading data for the active course."""
 
     def __init__(
         self,
@@ -25,6 +25,8 @@ class InspectGradesTab(ScrollableTab):
         self.assignment_combo = QComboBox()
         self.status_label = QLabel()
         self.status_label.setProperty("role", "text_muted")
+        self.status_label.setWordWrap(True)
+
         self.refresh_button = QPushButton("Refresh Assignments")
         self.refresh_button.clicked.connect(self.refresh)
 
@@ -44,18 +46,19 @@ class InspectGradesTab(ScrollableTab):
         self._render_assignments()
 
     def set_course(self, course: CourseFolder | None) -> None:
-        """The active course, from the page: when the tab is built and on every change."""
+        """Update assignments when the active course changes."""
         self._viewmodel.select_course(course)
         self._render_assignments()
 
     def refresh(self) -> None:
-        """Reread the course's assignments, keeping the selected one if it is still there."""
+        """Refresh assignments and preserve the previous selection."""
         previous_assignment = self._viewmodel.selected_assignment
 
         self.set_course(self._viewmodel.selected_course)
 
         if previous_assignment is None:
             return
+
         for index in range(1, self.assignment_combo.count()):
             assignment = self.assignment_combo.itemData(index)
 
@@ -88,3 +91,24 @@ class InspectGradesTab(ScrollableTab):
     def _on_assignment_changed(self, index: int) -> None:
         assignment = self.assignment_combo.itemData(index)
         self._viewmodel.select_assignment(assignment)
+        self._render_grading_status()
+
+    def _render_grading_status(self) -> None:
+        """Display the human and proxy grading data loading results."""
+        if self._viewmodel.selected_assignment is None:
+            self.status_label.setText("Select an assignment.")
+            return
+
+        messages = []
+
+        if self._viewmodel.human_grades_error:
+            messages.append(f"Human grades: {self._viewmodel.human_grades_error}")
+        else:
+            messages.append(f"Human grades: {len(self._viewmodel.human_grades)} assessments")
+
+        if self._viewmodel.proxy_grades_error:
+            messages.append(f"Proxy grades: {self._viewmodel.proxy_grades_error}")
+        else:
+            messages.append(f"Proxy grades: {len(self._viewmodel.proxy_grades)} submissions")
+
+        self.status_label.setText("\n".join(messages))

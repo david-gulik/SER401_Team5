@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from zipfile import BadZipFile
+
+from GAVEL.app.dtos.gradescope import GradescopeSubmission
+from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 from GAVEL.app.workspace.dataset import (
     CourseDataset,
     DatasetReaders,
@@ -10,7 +14,7 @@ from GAVEL.app.workspace.manifest import AssignmentEntry, ManifestError
 
 
 class InspectGradesViewModel:
-    """Assignments of the active course; the page passes the course in via select_course."""
+    """Assignments and grading data for the active course."""
 
     def __init__(self, dataset_readers: DatasetReaders) -> None:
         self._dataset_readers = dataset_readers
@@ -21,11 +25,17 @@ class InspectGradesViewModel:
         self.selected_assignment: AssignmentEntry | None = None
         self.assignment_error: str | None = None
 
+        self.human_grades: tuple[RubricAssessment, ...] = ()
+        self.proxy_grades: tuple[GradescopeSubmission, ...] = ()
+        self.human_grades_error: str | None = None
+        self.proxy_grades_error: str | None = None
+
     def select_course(self, course: CourseFolder | None) -> None:
         self.selected_course = course
         self.selected_assignment = None
         self.assignments = ()
         self.assignment_error = None
+        self._clear_grades()
 
         if course is None:
             return
@@ -45,3 +55,48 @@ class InspectGradesViewModel:
             raise ValueError("Assignment does not belong to the selected course.")
 
         self.selected_assignment = assignment
+        self._clear_grades()
+
+        if assignment is None or self.selected_course is None:
+            return
+
+        dataset = CourseDataset.anonymized(
+            self.selected_course,
+            self._dataset_readers,
+        )
+
+        if assignment.has_rubric:
+            try:
+                self.human_grades = dataset.rubric_assessments(assignment.canvas_id)
+            except (
+                MissingArtifactError,
+                ManifestError,
+                OSError,
+                ValueError,
+                KeyError,
+                IndexError,
+            ) as exc:
+                self.human_grades_error = str(exc)
+        else:
+            self.human_grades_error = "This assignment has no rubric."
+
+        if assignment.module_number is None:
+            self.proxy_grades_error = "No Gradescope module is associated with this assignment."
+        else:
+            try:
+                self.proxy_grades = tuple(dataset.gradescope_submissions(assignment.module_number))
+            except (
+                MissingArtifactError,
+                OSError,
+                BadZipFile,
+                ValueError,
+                KeyError,
+                IndexError,
+            ) as exc:
+                self.proxy_grades_error = str(exc)
+
+    def _clear_grades(self) -> None:
+        self.human_grades = ()
+        self.proxy_grades = ()
+        self.human_grades_error = None
+        self.proxy_grades_error = None
