@@ -46,16 +46,19 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     )
     shutil.copytree(autograder_root, worker_root)
 
-    #
-    # config_proj_loc = config["project_location"][:-1].replace("/", os.sep)
-    #
-    # if lang == Language.JAVA:
-    #     worker_src = os.path.join(worker_root, config_proj_loc[19:])
-    # else:
-    #     worker_src = os.path.join(worker_root, config_proj_loc[12:])
-    project_location = config["project_location"].rstrip("/").replace("/", os.sep)
-    worker_src = os.path.join(worker_root, project_location)
+    #TODO: better version of extracting worker src files
+    config_proj_loc = config["project_location"][:-1].replace("/", os.sep)
 
+    if lang == Language.JAVA:
+        worker_src = os.path.join(
+            worker_root,
+            config_proj_loc[19:]
+        )
+    else:
+        worker_src = os.path.join(
+            worker_root,
+            config_proj_loc[12:]
+        )
 
     os.makedirs(worker_src, exist_ok=True)
 
@@ -117,7 +120,6 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
             )
 
             parsed = json.loads(result.stdout)
-            parsed.append("hello!")
             with open(output_path, "w") as out:
                 json.dump(parsed, out, indent=4)
 
@@ -145,7 +147,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     return f"{filename}: done"
 
 
-def autograde_submissions_folder(lang, input_folder, output_folder, autograder_folder_arg):
+def autograde_submissions_folder(lang, input_folder, output_folder, autograder_folder_arg) -> float:
 
     logging.basicConfig(
         level=logging.INFO,
@@ -167,15 +169,15 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
     # Ensure output folder exists
     os.makedirs(output_folder, exist_ok=True)
 
-    # Collect submissions
-    # submissions = [
-    #     f for f in os.listdir(input_folder)
-    #     if f.endswith(".java") or f.endswith(".c") or f.endswith(".zip")
-    # ]
+
     submissions = [
         f for f in os.listdir(input_folder)
         if os.path.isdir(os.path.join(input_folder, f))
     ]
+
+    course_specific_output_folder = os.path.join(output_folder, os.path.basename(autograder_folder_arg))
+    print(course_specific_output_folder)
+    os.makedirs(course_specific_output_folder, exist_ok=True)
 
     log.info(f"Found {len(submissions)} submissions.")
 
@@ -191,7 +193,7 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
                 lang,
                 autograder_root,
                 input_folder,
-                output_folder
+                course_specific_output_folder
             )
             for filename in submissions
         ]
@@ -199,8 +201,9 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
         for fut in as_completed(futures):
             print(fut.result())
 
-    print(f"Time taken: {time.perf_counter() - start}")
-
+    # print(f"Time taken: {time.perf_counter() - start}")
+    log.info(f"Autograding completed on {input_folder}, {autograder_folder_arg}.")
+    return time.perf_counter() - start
 # testing area
 if __name__ == "__main__":
     autograde_submissions_folder(
