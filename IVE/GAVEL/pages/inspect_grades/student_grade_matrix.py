@@ -31,6 +31,7 @@ class StudentGradeMatrix(QWidget):
         self.table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        header.setHighlightSections(False)
 
         self.table.verticalHeader().setVisible(False)
 
