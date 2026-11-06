@@ -93,8 +93,8 @@ def _qss_main(t: ThemeTokens) -> str:
     }}
     QMainWindow::separator {{
         background-color: {c["border"]};
-        width: 1px;
-        height: 1px;
+        width: 6px;
+        height: 6px;
     }}
     QStatusBar {{
         background-color: {c["global_status_bar"]};

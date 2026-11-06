@@ -77,6 +77,10 @@ class SignedErrorHistogramCard(QWidget):
         self._status.setText(_NO_REPORT)
         self._canvas.clear()
 
+    def clear_title(self) -> None:
+        """Empties this card's own title text, for a caller that already shows it."""
+        self._card.clear_title()
+
     def display(self, data: SignedErrorHistogramData) -> None:
         self._canvas.clear()
         if not data.bins:

@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QShowEvent
 from PyQt6.QtWidgets import (
     QComboBox,
+    QDockWidget,
     QFormLayout,
     QLabel,
+    QMainWindow,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -16,7 +18,6 @@ from PyQt6.QtWidgets import (
 from GAVEL.app.workspace.dataset import DatasetReaders
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.app.workspace.manifest import AssignmentEntry
-from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.analytics.generate_report_viewmodel import GenerateReportViewModel
 from GAVEL.pages.analytics.heat_map_card import HeatMapCard
 from GAVEL.pages.analytics.score_distribution_card import ScoreDistributionCard
@@ -32,13 +33,13 @@ _PLACEHOLDER_VISUALIZATIONS = (
 )
 
 
-class OverviewTab(ScrollableTab):
+class OverviewTab(QWidget):
     def __init__(
         self,
         theme: ThemeContext,
         dataset_readers: DatasetReaders,
     ) -> None:
-        super().__init__(theme)
+        super().__init__()
         self._theme = theme
 
         self._generate_card = GenerateReportCard(theme, dataset_readers)
@@ -51,13 +52,53 @@ class OverviewTab(ScrollableTab):
         # Each chart shows one course's report, so a change of course empties them.
         self._report_cards = (histogram_card, heat_map_card, score_distribution_card)
 
-        self.add_section(self._generate_card)
-        self.add_section(histogram_card)
-        self.add_section(heat_map_card)
-        self.add_section(score_distribution_card)
-        for title in _PLACEHOLDER_VISUALIZATIONS:
-            self.add_section(_PlaceholderCard(theme, title))
-        self.add_stretch()
+        self._dock_host = QMainWindow()
+        self._dock_host.setDockNestingEnabled(True)
+        # A plain child QMainWindow (not shown as its own window) hosts the
+        # docks, giving every card drag-to-rearrange and resize for free.
+        self._dock_host.setWindowFlags(Qt.WindowType.Widget)
+
+        # Default layout is three full-width rows: Generate Report alone on
+        # top, the three real charts side by side below it, and the three
+        # not-yet-built visualizations side by side at the bottom. Dragging
+        # afterward is unrestricted; this only sets the first look.
+        generate_dock = self._make_dock("Generate Report", self._generate_card)
+        histogram_dock = self._make_dock("Signed Error Histogram", histogram_card)
+        heat_map_dock = self._make_dock("Heat Map", heat_map_card)
+        score_dock = self._make_dock("Score Distribution Boxplot", score_distribution_card)
+        placeholder_docks = [
+            self._make_dock(title, _PlaceholderCard(theme, title))
+            for title in _PLACEHOLDER_VISUALIZATIONS
+        ]
+
+        # The three rows are split first, each spanning the full width, so
+        # every row boundary is a real splitter all the way across. Splitting
+        # a row into its columns afterward only divides within that row,
+        # instead of a column split accidentally confining a later row's
+        # split (and its resize handle) to one side of the window.
+        self._dock_host.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, generate_dock)
+        self._dock_host.splitDockWidget(generate_dock, histogram_dock, Qt.Orientation.Vertical)
+        self._dock_host.splitDockWidget(
+            histogram_dock, placeholder_docks[0], Qt.Orientation.Vertical
+        )
+
+        self._dock_host.splitDockWidget(histogram_dock, heat_map_dock, Qt.Orientation.Horizontal)
+        self._dock_host.splitDockWidget(heat_map_dock, score_dock, Qt.Orientation.Horizontal)
+        for left, right in zip(placeholder_docks, placeholder_docks[1:], strict=False):
+            self._dock_host.splitDockWidget(left, right, Qt.Orientation.Horizontal)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.addWidget(self._dock_host)
+
+    def _make_dock(self, title: str, widget: QWidget) -> QDockWidget:
+        # A custom title bar (e.g. via setTitleBarWidget) breaks Qt's own
+        # drag-to-redock drop indicator, so the dock keeps its native title
+        # bar; the card's own duplicate title text is cleared instead.
+        widget.clear_title()
+        dock = QDockWidget(title, self._dock_host)
+        dock.setWidget(widget)
+        return dock
 
     def set_course(self, course: CourseFolder | None) -> None:
         """The active course, from the page: when the tab is built and on every change."""
@@ -71,15 +112,19 @@ class _PlaceholderCard(QWidget):
 
     def __init__(self, theme: ThemeContext, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        card = SectionCard(theme, title)
+        self._card = SectionCard(theme, title)
 
         label = QLabel("Not yet implemented.")
         label.setProperty("role", "text_muted")
-        card.add_row(label)
+        self._card.add_row(label)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.addWidget(card)
+        root.addWidget(self._card)
+
+    def clear_title(self) -> None:
+        """Empties this card's own title text, for a caller that already shows it."""
+        self._card.clear_title()
 
 
 class GenerateReportCard(QWidget):
@@ -169,6 +214,10 @@ class GenerateReportCard(QWidget):
         self._signed_error_fields.setVisible(False)
         self._heat_map_fields.setVisible(False)
         self._generate_button.setVisible(False)
+
+    def clear_title(self) -> None:
+        """Empties this card's own title text, for a caller that already shows it."""
+        self._card.clear_title()
 
     def set_course(self, course: CourseFolder | None) -> None:
         """The active course, from the page: when the card is built and on every change."""
