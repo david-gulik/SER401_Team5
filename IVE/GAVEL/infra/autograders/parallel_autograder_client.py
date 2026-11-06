@@ -1,23 +1,20 @@
-
 import json
+import logging
 import os
 import platform
 import shutil
 import subprocess
 import sys
-import zipfile
-from enum import Enum
-from concurrent.futures import ProcessPoolExecutor, as_completed
 import time
-import logging
+import zipfile
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from enum import Enum
 
-#TODO: figure out C stuff
+# TODO: figure out C stuff
 
 # LOCAL CONFIGURATION
 if platform.system() == "Windows":
-    FOLDER_SER222_AUTOGRADERS = (
-        "C:\\Users\\Ruben\\Dropbox\\Git\\ser222\\homework_projects"
-    )
+    FOLDER_SER222_AUTOGRADERS = "C:\\Users\\Ruben\\Dropbox\\Git\\ser222\\homework_projects"
     FOLDER_SER334_AUTOGRADERS = None
 elif platform.system() == "Linux":
     FOLDER_SER222_AUTOGRADERS = None
@@ -40,25 +37,16 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     print(f"Starting autograder for {filename}...")
 
     # clone workspace
-    worker_root = os.path.join(
-        "/tmp",
-        f"autograder_worker_{filename.split('.')[0]}_{os.getpid()}"
-    )
+    worker_root = os.path.join("/tmp", f"autograder_worker_{filename.split('.')[0]}_{os.getpid()}")
     shutil.copytree(autograder_root, worker_root)
 
-    #TODO: better version of extracting worker src files
+    # TODO: better version of extracting worker src files
     config_proj_loc = config["project_location"][:-1].replace("/", os.sep)
 
     if lang == Language.JAVA:
-        worker_src = os.path.join(
-            worker_root,
-            config_proj_loc[19:]
-        )
+        worker_src = os.path.join(worker_root, config_proj_loc[19:])
     else:
-        worker_src = os.path.join(
-            worker_root,
-            config_proj_loc[12:]
-        )
+        worker_src = os.path.join(worker_root, config_proj_loc[12:])
 
     os.makedirs(worker_src, exist_ok=True)
 
@@ -100,14 +88,12 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
 
                 zipf.extractall(worker_src, members=selected)
 
-
     output_filename = filename.split(".")[0] + ".json"
     output_path = os.path.join(output_folder, output_filename)
 
     if os.path.exists(output_path):
         shutil.rmtree(worker_root, ignore_errors=True)
         return f"{filename}: already exists"
-
 
     try:
         if lang == Language.JAVA:
@@ -116,7 +102,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
                 cwd=worker_root,
                 capture_output=True,
                 text=True,
-                shell=True
+                shell=True,
             )
 
             parsed = json.loads(result.stdout)
@@ -132,10 +118,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
 
             with open(log_path, "w") as out:
                 subprocess.run(
-                    [sys.executable, "main.py"],
-                    cwd=worker_root,
-                    stdout=out,
-                    shell=False
+                    [sys.executable, "main.py"], cwd=worker_root, stdout=out, shell=False
                 )
 
             shutil.copy(results_path, output_path)
@@ -149,10 +132,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
 
 def autograde_submissions_folder(lang, input_folder, output_folder, autograder_folder_arg) -> float:
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("autograder_client")
     log.info(f"Autograding started on {input_folder}...")
 
@@ -169,20 +149,20 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
     # Ensure output folder exists
     os.makedirs(output_folder, exist_ok=True)
 
-
     submissions = [
-        f for f in os.listdir(input_folder)
-        if os.path.isdir(os.path.join(input_folder, f))
+        f for f in os.listdir(input_folder) if os.path.isdir(os.path.join(input_folder, f))
     ]
 
-    course_specific_output_folder = os.path.join(output_folder, os.path.basename(autograder_folder_arg))
+    course_specific_output_folder = os.path.join(
+        output_folder, os.path.basename(autograder_folder_arg)
+    )
     print(course_specific_output_folder)
     os.makedirs(course_specific_output_folder, exist_ok=True)
 
     log.info(f"Found {len(submissions)} submissions.")
 
     # Parallel execution
-    #TODO: is this max_workers count acceptable? Problems would start here...
+    # TODO: is this max_workers count acceptable? Problems would start here...
 
     with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
         futures = [
@@ -193,7 +173,7 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
                 lang,
                 autograder_root,
                 input_folder,
-                course_specific_output_folder
+                course_specific_output_folder,
             )
             for filename in submissions
         ]
@@ -204,11 +184,13 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
     # print(f"Time taken: {time.perf_counter() - start}")
     log.info(f"Autograding completed on {input_folder}, {autograder_folder_arg}.")
     return time.perf_counter() - start
+
+
 # testing area
 if __name__ == "__main__":
     autograde_submissions_folder(
         Language.JAVA,
         "../../../../data_original/10_24_autograder_test",
         "../../../../data_original/10_24_autograder_test/output",
-        "../../../../data_original/10_22_autograder"
+        "../../../../data_original/10_22_autograder",
     )
