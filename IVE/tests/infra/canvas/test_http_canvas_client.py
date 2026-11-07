@@ -615,3 +615,165 @@ class TestListAssignments:
             result = client.list_assignments(TEST_COURSE_ID)
             assert len(result) == 1
             assert result[0].id == 2
+
+    def test_due_date_and_points_read_with_utc_offset(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [
+                {"id": 1, "name": "Due", "due_at": "2026-09-15T06:59:59Z", "points_possible": 30},
+            ]
+            result = client.list_assignments(TEST_COURSE_ID)
+            assert result[0].due_at == "2026-09-15T06:59:59+00:00"
+            assert result[0].points_possible == 30.0
+
+    def test_no_due_date_stays_none(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [
+                {"id": 1, "name": "Undated", "due_at": None, "points_possible": None},
+            ]
+            result = client.list_assignments(TEST_COURSE_ID)
+            assert result[0].due_at is None
+            assert result[0].points_possible is None
+
+    def test_every_canvas_field_is_read(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [
+                {
+                    "id": 1,
+                    "name": "Mod 4",
+                    "unlock_at": "2026-09-01T07:00:00Z",
+                    "lock_at": "2026-09-22T06:59:59Z",
+                    "has_overrides": True,
+                    "submission_types": ["online_upload", "external_tool"],
+                    "assignment_group_id": 55,
+                    "published": True,
+                    "omit_from_final_grade": False,
+                    "grading_type": "points",
+                },
+            ]
+            a = client.list_assignments(TEST_COURSE_ID)[0]
+            assert a.unlock_at == "2026-09-01T07:00:00+00:00"
+            assert a.lock_at == "2026-09-22T06:59:59+00:00"
+            assert a.has_overrides is True
+            assert a.submission_types == ("online_upload", "external_tool")
+            assert a.assignment_group_id == 55
+            assert a.published is True
+            assert a.omit_from_final_grade is False
+            assert a.grading_type == "points"
+
+    def test_missing_canvas_fields_stay_none(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [{"id": 1, "name": "Bare"}]
+            a = client.list_assignments(TEST_COURSE_ID)[0]
+            assert a.unlock_at is None and a.lock_at is None
+            assert a.has_overrides is None
+            assert a.submission_types is None
+            assert a.published is None
+
+
+class TestListQuizzes:
+    def test_every_canvas_field_is_read(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [
+                {
+                    "id": 5,
+                    "title": "Quiz 1",
+                    "unlock_at": "2026-09-14T07:00:00Z",
+                    "lock_at": None,
+                    "quiz_type": "assignment",
+                    "assignment_id": 9001,
+                    "allowed_attempts": -1,
+                    "time_limit": 30,
+                    "question_count": 12,
+                    "published": True,
+                },
+            ]
+            q = client.list_quizzes(TEST_COURSE_ID)[0]
+            assert q.unlock_at == "2026-09-14T07:00:00+00:00"
+            assert q.lock_at is None
+            assert q.quiz_type == "assignment"
+            assert q.assignment_id == 9001
+            assert q.allowed_attempts == -1
+            assert q.time_limit == 30
+            assert q.question_count == 12
+            assert q.published is True
+
+    def test_due_date_and_points_read_with_utc_offset(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [
+                {
+                    "id": 5,
+                    "title": "Quiz 1",
+                    "due_at": "2026-09-20T23:59:00-07:00",
+                    "points_possible": 10.5,
+                },
+            ]
+            result = client.list_quizzes(TEST_COURSE_ID)
+            assert result[0].name == "Quiz 1"
+            assert result[0].due_at == "2026-09-21T06:59:00+00:00"
+            assert result[0].points_possible == 10.5
+
+    def test_no_due_date_stays_none(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages") as mock_pages:
+            mock_pages.return_value = [{"id": 5, "title": "Practice"}]
+            result = client.list_quizzes(TEST_COURSE_ID)
+            assert result[0].due_at is None
+            assert result[0].points_possible is None
+
+
+COURSE_JSON = {
+    "id": TEST_COURSE_ID,
+    "name": "SER 222",
+    "course_code": "SER222",
+    "time_zone": "America/Phoenix",
+    "start_at": "2026-08-20T07:00:00Z",
+    "end_at": None,
+}
+
+
+class TestCourseFields:
+    def test_list_courses_reads_time_zone_and_dates(self, client: HttpCanvasClient) -> None:
+        with patch.object(client, "_get_all_pages", return_value=[COURSE_JSON]):
+            course = client.list_courses()[0]
+        assert course.time_zone == "America/Phoenix"
+        assert course.start_at == "2026-08-20T07:00:00+00:00"
+        assert course.end_at is None
+
+    def test_fetch_course_data_reads_course_and_module_fields(
+        self, client: HttpCanvasClient
+    ) -> None:
+        modules_json = [
+            {"id": 1, "name": "Module 1", "position": 1, "unlock_at": "2026-08-24T07:00:00Z"},
+            {"id": 2, "name": "Module 2"},
+        ]
+        with (
+            patch.object(client, "_get_json", return_value=COURSE_JSON),
+            patch.object(client, "_get_all_pages", return_value=modules_json),
+        ):
+            data = client.fetch_course_data(TEST_COURSE_ID)
+        assert data.course.time_zone == "America/Phoenix"
+        assert data.modules[0].position == 1
+        assert data.modules[0].unlock_at == "2026-08-24T07:00:00+00:00"
+        assert data.modules[1].position is None
+        assert data.modules[1].unlock_at is None
+
+
+def test_fetch_course_data_reads_every_page_of_modules():
+    """Canvas pages modules 10 at a time by default; all of them must be kept."""
+    modules_base = f"https://canvas.example.com/api/v1/courses/{TEST_COURSE_ID}/modules"
+    session = FakeSession(
+        [
+            FakeResponse(json_data=COURSE_JSON),
+            FakeResponse(
+                json_data=[{"id": i, "name": f"Module {i}"} for i in range(1, 11)],
+                headers={"Link": f'<{modules_base}?page=2&per_page=100>; rel="next"'},
+            ),
+            FakeResponse(json_data=[{"id": 11, "name": "Module 11"}]),
+        ]
+    )
+
+    data = make_client(session).fetch_course_data(TEST_COURSE_ID)
+
+    assert [m.id for m in data.modules] == list(range(1, 12))
+    assert session.calls[1]["url"] == modules_base
+    assert session.calls[1]["params"] == {"per_page": 100}
+    assert session.calls[2]["url"] == f"{modules_base}?page=2&per_page=100"
