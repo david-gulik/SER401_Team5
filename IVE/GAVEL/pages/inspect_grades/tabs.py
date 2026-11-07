@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import QComboBox, QFormLayout, QLabel, QPushButton, QWidget
-
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QWidget,
+)
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.inspect_grades.student_grade_matrix import StudentGradeMatrix
 from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.section_card import SectionCard
+from GAVEL.pages.inspect_grades.grade_comparison_panel import GradeComparisonPanel
 
 
 class InspectGradesTab(ScrollableTab):
-    """Displays assignments and grading data for the active course."""
 
     def __init__(
         self,
@@ -44,6 +50,52 @@ class InspectGradesTab(ScrollableTab):
         self.student_grade_matrix = StudentGradeMatrix(theme)
         self.add_section(self.student_grade_matrix)
 
+        self.comparison_card = SectionCard(theme, "Grade Comparison")
+
+        self.selected_student_label = QLabel(
+            "Select a student from the matrix to view grading details."
+        )
+        self.selected_student_label.setProperty("role", "text_muted")
+
+        self.comparison_card.add_row(self.selected_student_label)
+
+        panels_widget = QWidget()
+        panels_layout = QHBoxLayout(panels_widget)
+        panels_layout.setContentsMargins(0, 0, 0, 0)
+        panels_layout.setSpacing(12)
+
+        self.human_panel = GradeComparisonPanel(theme, "Human Grade")
+        self.proxy_panel = GradeComparisonPanel(theme, "Proxy / Autograder Grade")
+
+        self.human_panel.setMinimumWidth(350)
+        self.proxy_panel.setMinimumWidth(350)
+
+        self.human_details_label = self.human_panel.message_label
+        self.proxy_details_label = self.proxy_panel.message_label
+
+        panels_layout.addWidget(self.human_panel, 1)
+        panels_layout.addWidget(self.proxy_panel, 1)
+
+        human_scrollbar = self.human_panel.scroll_area.verticalScrollBar()
+        proxy_scrollbar = self.proxy_panel.scroll_area.verticalScrollBar()
+
+        human_scrollbar.valueChanged.connect(proxy_scrollbar.setValue)
+        proxy_scrollbar.valueChanged.connect(human_scrollbar.setValue)
+
+        self.human_panel.criterion_selected.connect(
+            self._on_criterion_selected
+        )
+        self.proxy_panel.criterion_selected.connect(
+            self._on_criterion_selected
+        )
+
+        self.comparison_card.add_row(panels_widget)
+        self.add_section(self.comparison_card)
+
+        self.student_grade_matrix.table.itemSelectionChanged.connect(
+            self._on_student_selected
+        )
+
         self.add_stretch()
 
         self.assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
@@ -51,13 +103,15 @@ class InspectGradesTab(ScrollableTab):
         self._render_assignments()
 
     def set_course(self, course: CourseFolder | None) -> None:
-        """Update assignments when the active course changes."""
         self._viewmodel.select_course(course)
         self.student_grade_matrix.clear()
+        self._on_student_selected()
+        self.selected_student_label.setText(
+            "Select a student from the matrix to view grading details."
+        )
         self._render_assignments()
 
     def refresh(self) -> None:
-        """Refresh assignments and preserve the previous selection."""
         previous_assignment = self._viewmodel.selected_assignment
 
         self.set_course(self._viewmodel.selected_course)
@@ -100,12 +154,78 @@ class InspectGradesTab(ScrollableTab):
         self._render_grading_status()
 
         self.student_grade_matrix.clear()
+        self._on_student_selected()
 
         if self._viewmodel.rubric_definition is not None:
             self.student_grade_matrix.display(
                 self._viewmodel.human_grades,
                 self._viewmodel.rubric_definition,
             )
+
+    def _on_criterion_selected(self, index: int) -> None:
+        self.human_panel.select_criterion(index)
+        self.proxy_panel.select_criterion(index)
+
+    def _on_student_selected(self) -> None:
+        selected_rows = self.student_grade_matrix.table.selectionModel().selectedRows()
+
+        if not selected_rows:
+            self.human_panel.clear()
+            self.proxy_panel.clear()
+
+            self.selected_student_label.setText(
+                "Select a student from the matrix to view grading details."
+            )
+            return
+
+        row = selected_rows[0].row()
+        student_item = self.student_grade_matrix.table.item(row, 0)
+
+        if student_item is None:
+            return
+
+        student_id = student_item.text()
+        self.selected_student_label.setText(f"Selected student: {student_id}")
+
+        rubric = self._viewmodel.rubric_definition
+        assessment = next(
+            (
+                assessment
+                for assessment in self._viewmodel.human_grades
+                if str(assessment.student_id) == student_id
+            ),
+            None,
+        )
+
+        if rubric is None or assessment is None:
+            self.human_panel.clear()
+            self.proxy_panel.clear()
+
+            self.human_details_label.setText(
+                "Human grading details are unavailable for this student."
+            )
+        else:
+            scores = {
+                score.criterion_id: score.points
+                for score in assessment.criteria
+            }
+
+            total = sum(
+                scores[criterion.id]
+                for criterion in rubric.criteria
+                if scores.get(criterion.id) is not None
+            )
+
+            self.human_panel.display_criteria(rubric, scores)
+            self.proxy_panel.display_criteria(rubric, None)
+
+            self.human_panel.total_label.setText(
+                f"Total: {total:g} / {rubric.points_possible:g}"
+            )
+            self.proxy_panel.total_label.setText(
+                "Total: — (proxy scores not yet calculated)"
+            )
+
 
     def _render_grading_status(self) -> None:
         """Display the human and proxy grading data loading results."""

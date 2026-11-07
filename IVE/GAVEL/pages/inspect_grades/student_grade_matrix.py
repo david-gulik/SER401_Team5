@@ -59,7 +59,7 @@ class StudentGradeMatrix(QWidget):
     def __init__(self, theme: ThemeContext) -> None:
         super().__init__()
 
-        self._card = SectionCard(theme, "Student Grade Matrix")
+        self._card = SectionCard(theme, "Grade Matrix")
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by student ID...")
