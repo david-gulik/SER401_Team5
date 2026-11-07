@@ -8,17 +8,17 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QWidget,
 )
+
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.inspect_grades.grade_comparison_panel import GradeComparisonPanel
 from GAVEL.pages.inspect_grades.student_grade_matrix import StudentGradeMatrix
 from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.section_card import SectionCard
-from GAVEL.pages.inspect_grades.grade_comparison_panel import GradeComparisonPanel
 
 
 class InspectGradesTab(ScrollableTab):
-
     def __init__(
         self,
         theme: ThemeContext,
@@ -82,19 +82,13 @@ class InspectGradesTab(ScrollableTab):
         human_scrollbar.valueChanged.connect(proxy_scrollbar.setValue)
         proxy_scrollbar.valueChanged.connect(human_scrollbar.setValue)
 
-        self.human_panel.criterion_selected.connect(
-            self._on_criterion_selected
-        )
-        self.proxy_panel.criterion_selected.connect(
-            self._on_criterion_selected
-        )
+        self.human_panel.criterion_selected.connect(self._on_criterion_selected)
+        self.proxy_panel.criterion_selected.connect(self._on_criterion_selected)
 
         self.comparison_card.add_row(panels_widget)
         self.add_section(self.comparison_card)
 
-        self.student_grade_matrix.table.itemSelectionChanged.connect(
-            self._on_student_selected
-        )
+        self.student_grade_matrix.table.itemSelectionChanged.connect(self._on_student_selected)
 
         self.add_stretch()
 
@@ -205,10 +199,7 @@ class InspectGradesTab(ScrollableTab):
                 "Human grading details are unavailable for this student."
             )
         else:
-            scores = {
-                score.criterion_id: score.points
-                for score in assessment.criteria
-            }
+            scores = {score.criterion_id: score.points for score in assessment.criteria}
 
             total = sum(
                 scores[criterion.id]
@@ -219,13 +210,8 @@ class InspectGradesTab(ScrollableTab):
             self.human_panel.display_criteria(rubric, scores)
             self.proxy_panel.display_criteria(rubric, None)
 
-            self.human_panel.total_label.setText(
-                f"Total: {total:g} / {rubric.points_possible:g}"
-            )
-            self.proxy_panel.total_label.setText(
-                "Total: — (proxy scores not yet calculated)"
-            )
-
+            self.human_panel.total_label.setText(f"Total: {total:g} / {rubric.points_possible:g}")
+            self.proxy_panel.total_label.setText("Total: — (proxy scores not yet calculated)")
 
     def _render_grading_status(self) -> None:
         """Display the human and proxy grading data loading results."""

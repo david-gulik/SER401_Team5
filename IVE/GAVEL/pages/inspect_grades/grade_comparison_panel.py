@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -12,14 +11,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from GAVEL.app.dtos.rubric_definition import RubricDefinition
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.section_card import SectionCard
-from GAVEL.app.dtos.rubric_definition import RubricDefinition
-
 
 
 class CriterionCard(QFrame):
-
     clicked = pyqtSignal(int)
 
     def __init__(self, index: int) -> None:
@@ -34,8 +31,10 @@ class CriterionCard(QFrame):
             self.clicked.emit(self.index)
         super().mousePressEvent(event)
 
+
 class GradeComparisonPanel(QWidget):
     criterion_selected = pyqtSignal(int)
+
     def __init__(self, theme: ThemeContext, title: str) -> None:
         super().__init__()
 
@@ -48,21 +47,15 @@ class GradeComparisonPanel(QWidget):
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFixedHeight(300)
-        self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.content_widget = QWidget()
         self.content_layout = QVBoxLayout(self.content_widget)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(8)
-        self.content_layout.setSizeConstraint(
-            QLayout.SizeConstraint.SetMinAndMaxSize
-        )
+        self.content_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
 
-        self.message_label = QLabel(
-            "Select a student to view grading details."
-        )
+        self.message_label = QLabel("Select a student to view grading details.")
         self.message_label.setProperty("role", "text_muted")
         self.message_label.setWordWrap(True)
 
@@ -72,9 +65,7 @@ class GradeComparisonPanel(QWidget):
         self.criteria_layout = QVBoxLayout(self.criteria_widget)
         self.criteria_layout.setContentsMargins(0, 0, 0, 0)
         self.criteria_layout.setSpacing(8)
-        self.criteria_layout.setSizeConstraint(
-            QLayout.SizeConstraint.SetMinAndMaxSize
-        )
+        self.criteria_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
 
         self.content_layout.addWidget(self.criteria_widget)
         self.content_layout.addStretch()
@@ -87,9 +78,9 @@ class GradeComparisonPanel(QWidget):
         layout.addWidget(self.card)
 
     def display_criteria(
-            self,
-            rubric: RubricDefinition,
-            scores: dict[str, float] | None,
+        self,
+        rubric: RubricDefinition,
+        scores: dict[str, float] | None,
     ) -> None:
 
         self.clear()
@@ -106,18 +97,10 @@ class GradeComparisonPanel(QWidget):
             description = QLabel(f"C{index}: {criterion.description}")
             description.setWordWrap(True)
             description.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-            description.setAttribute(
-                Qt.WidgetAttribute.WA_TransparentForMouseEvents
-            )
-            description.setToolTip(
-                criterion.long_description or criterion.description
-            )
+            description.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+            description.setToolTip(criterion.long_description or criterion.description)
 
-            points = (
-                scores.get(criterion.id)
-                if scores is not None
-                else None
-            )
+            points = scores.get(criterion.id) if scores is not None else None
 
             if points is None:
                 score_text = "—"
@@ -126,13 +109,8 @@ class GradeComparisonPanel(QWidget):
 
             score_label = QLabel(score_text)
             score_label.setMinimumWidth(65)
-            score_label.setAlignment(
-                Qt.AlignmentFlag.AlignRight
-                | Qt.AlignmentFlag.AlignVCenter
-            )
-            score_label.setAttribute(
-                Qt.WidgetAttribute.WA_TransparentForMouseEvents
-            )
+            score_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            score_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
             row_layout.addWidget(description, 1)
             row_layout.addWidget(score_label)
@@ -150,9 +128,7 @@ class GradeComparisonPanel(QWidget):
                 widget.hide()
                 widget.deleteLater()
 
-        self.message_label.setText(
-            "Select a student to view grading details."
-        )
+        self.message_label.setText("Select a student to view grading details.")
         self.message_label.setVisible(True)
         self.scroll_area.verticalScrollBar().setValue(0)
 
@@ -163,10 +139,7 @@ class GradeComparisonPanel(QWidget):
             if card is None:
                 continue
 
-            card.setProperty(
-                "selected",
-                "true" if index == selected_index else "false"
-            )
+            card.setProperty("selected", "true" if index == selected_index else "false")
 
             card.style().unpolish(card)
             card.style().polish(card)

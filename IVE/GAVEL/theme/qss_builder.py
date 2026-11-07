@@ -828,7 +828,6 @@ def _qss_surface_card(t: ThemeTokens) -> str:
     """
 
 
-
 def _qss_grade_criterion(t: ThemeTokens) -> str:
     c = t.color
     r_md = int(t.shape["radius_md"])
@@ -855,7 +854,6 @@ def _qss_grade_criterion(t: ThemeTokens) -> str:
         color: {c["selection_text"]};
     }}
     """
-
 
 
 def _qss_status_pill(t: ThemeTokens) -> str:

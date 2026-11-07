@@ -1,6 +1,8 @@
 from pathlib import Path
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
+
 from GAVEL.app.dtos.rubric_definition import (
     RubricCriterionDefinition,
     RubricDefinition,
@@ -143,6 +145,7 @@ def test_selecting_assignment_populates_student_matrix(qapp, theme, monkeypatch)
     assert tab.student_grade_matrix.table.columnCount() == 0
 
     tab.deleteLater()
+
 
 def test_selecting_student_updates_grade_comparison(qapp, theme):
     tab, vm = _tab(theme)
