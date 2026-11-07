@@ -4,6 +4,7 @@ from zipfile import BadZipFile
 
 from GAVEL.app.dtos.gradescope import GradescopeSubmission
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
+from GAVEL.app.dtos.rubric_definition import RubricDefinition
 from GAVEL.app.workspace.dataset import (
     CourseDataset,
     DatasetReaders,
@@ -29,6 +30,8 @@ class InspectGradesViewModel:
         self.proxy_grades: tuple[GradescopeSubmission, ...] = ()
         self.human_grades_error: str | None = None
         self.proxy_grades_error: str | None = None
+        self.rubric_definition: RubricDefinition | None = None
+        self.rubric_definition_error: str | None = None
 
     def select_course(self, course: CourseFolder | None) -> None:
         self.selected_course = course
@@ -67,6 +70,23 @@ class InspectGradesViewModel:
 
         if assignment.has_rubric:
             try:
+                self.rubric_definition = dataset.rubric_definition(assignment.canvas_id)
+
+                if self.rubric_definition is None:
+                    self.rubric_definition_error = (
+                        "Rubric definition is not available for this assignment."
+                    )
+            except (
+                MissingArtifactError,
+                ManifestError,
+                OSError,
+                ValueError,
+                KeyError,
+                IndexError,
+            ) as exc:
+                self.rubric_definition_error = str(exc)
+
+            try:
                 self.human_grades = dataset.rubric_assessments(assignment.canvas_id)
             except (
                 MissingArtifactError,
@@ -100,3 +120,5 @@ class InspectGradesViewModel:
         self.proxy_grades = ()
         self.human_grades_error = None
         self.proxy_grades_error = None
+        self.rubric_definition = None
+        self.rubric_definition_error = None

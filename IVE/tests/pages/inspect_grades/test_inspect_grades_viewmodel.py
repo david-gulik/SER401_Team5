@@ -227,3 +227,44 @@ def test_malformed_human_data_is_handled(vm, monkeypatch, error_type):
     assert vm.human_grades_error is not None
     assert len(vm.proxy_grades) == 2
     assert vm.proxy_grades_error is None
+
+
+def test_loads_rubric_definition(vm, monkeypatch):
+    vm.select_course(COURSE)
+    assignment = next(a for a in vm.assignments if a.module_number == 4)
+
+    expected_rubric = object()
+
+    monkeypatch.setattr(
+        "GAVEL.app.workspace.dataset.CourseDataset.rubric_definition",
+        lambda self, assignment_id: expected_rubric,
+    )
+
+    vm.select_assignment(assignment)
+
+    assert vm.rubric_definition is expected_rubric
+    assert vm.rubric_definition_error is None
+    assert len(vm.human_grades) == 2
+    assert len(vm.proxy_grades) == 2
+
+
+def test_missing_rubric_definition_does_not_block_grades(vm, monkeypatch):
+    vm.select_course(COURSE)
+    assignment = next(a for a in vm.assignments if a.module_number == 4)
+
+    monkeypatch.setattr(
+        "GAVEL.app.workspace.dataset.CourseDataset.rubric_definition",
+        lambda self, assignment_id: None,
+    )
+
+    vm.select_assignment(assignment)
+
+    assert vm.rubric_definition is None
+    assert vm.rubric_definition_error is not None
+    assert len(vm.human_grades) == 2
+    assert len(vm.proxy_grades) == 2
+
+    vm.select_assignment(None)
+
+    assert vm.rubric_definition is None
+    assert vm.rubric_definition_error is None

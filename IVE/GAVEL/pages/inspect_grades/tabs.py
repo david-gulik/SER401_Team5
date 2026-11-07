@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QComboBox, QFormLayout, QLabel, QPushButton, QWidget
 
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.inspect_grades.student_grade_matrix import StudentGradeMatrix
 from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.section_card import SectionCard
@@ -39,6 +40,10 @@ class InspectGradesTab(ScrollableTab):
         card.add_row(self.status_label)
 
         self.add_section(card)
+
+        self.student_grade_matrix = StudentGradeMatrix(theme)
+        self.add_section(self.student_grade_matrix)
+
         self.add_stretch()
 
         self.assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
@@ -48,6 +53,7 @@ class InspectGradesTab(ScrollableTab):
     def set_course(self, course: CourseFolder | None) -> None:
         """Update assignments when the active course changes."""
         self._viewmodel.select_course(course)
+        self.student_grade_matrix.clear()
         self._render_assignments()
 
     def refresh(self) -> None:
@@ -93,6 +99,14 @@ class InspectGradesTab(ScrollableTab):
         self._viewmodel.select_assignment(assignment)
         self._render_grading_status()
 
+        self.student_grade_matrix.clear()
+
+        if self._viewmodel.rubric_definition is not None:
+            self.student_grade_matrix.display(
+                self._viewmodel.human_grades,
+                self._viewmodel.rubric_definition,
+            )
+
     def _render_grading_status(self) -> None:
         """Display the human and proxy grading data loading results."""
         if self._viewmodel.selected_assignment is None:
@@ -110,5 +124,8 @@ class InspectGradesTab(ScrollableTab):
             messages.append(f"Proxy grades: {self._viewmodel.proxy_grades_error}")
         else:
             messages.append(f"Proxy grades: {len(self._viewmodel.proxy_grades)} submissions")
+
+        if self._viewmodel.rubric_definition_error:
+            messages.append(f"Student matrix: {self._viewmodel.rubric_definition_error}")
 
         self.status_label.setText("\n".join(messages))

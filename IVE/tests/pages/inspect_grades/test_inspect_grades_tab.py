@@ -1,5 +1,9 @@
 from pathlib import Path
 
+from GAVEL.app.dtos.rubric_definition import (
+    RubricCriterionDefinition,
+    RubricDefinition,
+)
 from GAVEL.app.workspace.layout import Workspace
 from GAVEL.bootstrap import build_dataset_readers
 from GAVEL.pages.inspect_grades.tabs import InspectGradesTab
@@ -51,7 +55,16 @@ def test_selecting_assignment_updates_viewmodel(qapp, theme):
     assert len(vm.human_grades) == 2
     assert len(vm.proxy_grades) == 2
     assert tab.status_label.text() == ("Human grades: 2 assessments\nProxy grades: 2 submissions")
+    assert tab.student_grade_matrix.table.rowCount() == 2
+    assert tab.student_grade_matrix.table.columnCount() == 6
 
+    assert tab.student_grade_matrix.table.item(0, 0).text() == "100001"
+    assert tab.student_grade_matrix.table.item(0, 1).text() == "6"
+    assert tab.student_grade_matrix.table.item(0, 4).text() == "4"
+    assert tab.student_grade_matrix.table.item(0, 5).text() == "2"
+
+    assert tab.student_grade_matrix.table.item(1, 0).text() == "100002"
+    assert tab.student_grade_matrix.table.item(1, 1).text() == "4"
     tab.deleteLater()
 
 
@@ -87,5 +100,45 @@ def test_refresh_preserves_the_assignment(qapp, theme):
     assert tab.assignment_combo.currentIndex() == 2
     assert len(vm.human_grades) == 2
     assert len(vm.proxy_grades) == 2
+
+    tab.deleteLater()
+
+
+def test_selecting_assignment_populates_student_matrix(qapp, theme, monkeypatch):
+    rubric = RubricDefinition(
+        rubric_id="test_rubric",
+        title="Test Rubric",
+        points_possible=4.0,
+        free_form_criterion_comments=False,
+        criteria=(
+            RubricCriterionDefinition(
+                id="test_criterion",
+                description="Test Criterion",
+                long_description="",
+                points=4.0,
+                ratings=(),
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        "GAVEL.app.workspace.dataset.CourseDataset.rubric_definition",
+        lambda self, assignment_id: rubric,
+    )
+
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+
+    tab.assignment_combo.setCurrentIndex(2)
+
+    assert vm.rubric_definition == rubric
+    assert tab.student_grade_matrix.table.rowCount() == 2
+    assert tab.student_grade_matrix.table.columnCount() == 5
+    assert tab.student_grade_matrix.table.horizontalHeaderItem(4).text() == "C1"
+
+    tab.assignment_combo.setCurrentIndex(0)
+
+    assert tab.student_grade_matrix.table.rowCount() == 0
+    assert tab.student_grade_matrix.table.columnCount() == 0
 
     tab.deleteLater()
