@@ -86,7 +86,6 @@ class InspectGradesViewModel:
             ) as exc:
                 self.rubric_definition_error = str(exc)
 
-        if assignment.has_rubric:
             try:
                 self.human_grades = dataset.rubric_assessments(assignment.canvas_id)
             except (
