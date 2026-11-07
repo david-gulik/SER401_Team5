@@ -7,11 +7,14 @@ from enum import Enum
 class ConsentStatus(Enum):
     """Outcome of consent filtering for one student.
 
-    Every status except INCLUDED is a reason the student is left out of the
-    anonymized dataset.
+    INCLUDED and OVERRIDDEN keep the student in the anonymized dataset; every
+    other status is a reason the student is left out.
     """
 
     INCLUDED = "included"
+    # the typed name was a possible typo or a mismatch, and someone confirmed
+    # by hand that it is the same student
+    OVERRIDDEN = "overridden"
     # latest attempt answered no to the consent question
     DECLINED = "declined"
     # consented but left the name question blank
@@ -23,6 +26,13 @@ class ConsentStatus(Enum):
     NAME_MISMATCH = "name_mismatch"
     # on the roster but never submitted the consent form
     NO_RESPONSE = "no_response"
+
+
+INCLUDED_STATUSES = frozenset({ConsentStatus.INCLUDED, ConsentStatus.OVERRIDDEN})
+
+# Name problems close enough to the Canvas name that a person may confirm the
+# student by hand. A blank name is too far off to confirm.
+OVERRIDABLE_STATUSES = frozenset({ConsentStatus.POSSIBLE_TYPO, ConsentStatus.NAME_MISMATCH})
 
 
 @dataclass(frozen=True)
@@ -44,4 +54,8 @@ class ConsentDecision:
 
     @property
     def included(self) -> bool:
-        return self.status is ConsentStatus.INCLUDED
+        return self.status in INCLUDED_STATUSES
+
+    @property
+    def overridable(self) -> bool:
+        return self.status in OVERRIDABLE_STATUSES

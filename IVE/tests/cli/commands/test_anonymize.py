@@ -131,7 +131,7 @@ def test_successful_run_returns_0_and_prints_summary(
     assert result == 0
     assert "Anonymized dataset written to" in captured.out
     assert (
-        "Consent filtering: 1 included, 0 declined, 0 name blank, 0 possible typo, 0 name mismatch, 0 no response"
+        "Consent filtering: 1 included, 0 overridden, 0 declined, 0 name blank, 0 possible typo, 0 name mismatch, 0 no response"
     ) in captured.out
     assert "Consent form:" in captured.out
     assert "Roster:" in captured.out

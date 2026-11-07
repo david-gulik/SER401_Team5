@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from GAVEL.app.dtos.consent_decision import ConsentDecision, ConsentStatus
+from GAVEL.app.dtos.consent_decision import INCLUDED_STATUSES, ConsentDecision, ConsentStatus
 from GAVEL.app.dtos.course_summary import AnonymizationStatus, CourseSummary
 from GAVEL.app.usecases.anonymize_course_dataset import (
     AnonymizeCourseDatasetRequest,
@@ -17,6 +17,11 @@ from GAVEL.app.usecases.anonymize_course_dataset import (
 from GAVEL.app.usecases.list_workspace_courses import (
     ListWorkspaceCoursesRequest,
     ListWorkspaceCoursesUseCase,
+)
+from GAVEL.app.usecases.override_consent import (
+    ConsentOverrideError,
+    OverrideConsentRequest,
+    OverrideConsentUseCase,
 )
 from GAVEL.app.usecases.review_course_consent import (
     CONSENT_READ_ERRORS,
@@ -64,8 +69,8 @@ NAME_PROBLEM_STATUSES = frozenset(
     {ConsentStatus.NAME_BLANK, ConsentStatus.POSSIBLE_TYPO, ConsentStatus.NAME_MISMATCH}
 )
 _FILTER_STATUSES = {
-    ConsentFilter.INCLUDED: frozenset({ConsentStatus.INCLUDED}),
-    ConsentFilter.EXCLUDED: frozenset(ConsentStatus) - {ConsentStatus.INCLUDED},
+    ConsentFilter.INCLUDED: INCLUDED_STATUSES,
+    ConsentFilter.EXCLUDED: frozenset(ConsentStatus) - INCLUDED_STATUSES,
     ConsentFilter.DECLINED: frozenset({ConsentStatus.DECLINED}),
     ConsentFilter.NAME_PROBLEM: NAME_PROBLEM_STATUSES,
     ConsentFilter.NO_RESPONSE: frozenset({ConsentStatus.NO_RESPONSE}),
@@ -136,6 +141,8 @@ class SanitizeUiState:
     consent_error: str | None = None
     consent_filter: ConsentFilter = ConsentFilter.ALL
     consent_search: str = ""
+    # Why the last override or override removal did not go through.
+    override_error: str | None = None
 
     # Anonymization run. run_course is the folder the result or error belongs to.
     run_state: RunState = RunState.IDLE
@@ -150,6 +157,12 @@ class SanitizeUiState:
     @property
     def included_count(self) -> int:
         return sum(1 for decision in self.consent_decisions if decision.included)
+
+    @property
+    def overridden_count(self) -> int:
+        return sum(
+            1 for decision in self.consent_decisions if decision.status is ConsentStatus.OVERRIDDEN
+        )
 
     @property
     def anonymize_blocker(self) -> str | None:
@@ -229,10 +242,12 @@ def page_status(state: SanitizeUiState) -> tuple[Status, str, str]:
     if state.consent_error:
         return Status.CRITICAL, state.consent_error, ""
     if course.status is AnonymizationStatus.OUT_OF_DATE:
+        changed = (
+            "Files in original/ changed" if course.files_changed else "Consent overrides changed"
+        )
         return (
             Status.CAUTION,
-            "Files in original/ changed after the last run. Anonymize again to refresh "
-            "anonymized/.",
+            f"{changed} after the last run. Anonymize again to refresh anonymized/.",
             output,
         )
     total = len(state.consent_decisions)
@@ -254,6 +269,7 @@ class SanitizeViewModel(QObject):
         super().__init__()
         self._list_courses = ListWorkspaceCoursesUseCase()
         self._review_consent = ReviewCourseConsentUseCase()
+        self._override_consent = OverrideConsentUseCase(self._review_consent)
         self._anonymize = anonymize_use_case or build_anonymize_course_dataset_use_case()
         self._runner = runner
         self._state = SanitizeUiState(workspace_root=str(default_workspace_root))
@@ -285,7 +301,12 @@ class SanitizeViewModel(QObject):
         text = value.strip()
         if not text or text == self._state.workspace_root or self._state.is_running:
             return
-        self._update(workspace_root=text, selected_course=None, **self._consent_fields(None, ()))
+        self._update(
+            workspace_root=text,
+            selected_course=None,
+            override_error=None,
+            **self._consent_fields(None, ()),
+        )
         self.reload()
 
     def set_course_filter(self, course_filter: CourseFilter) -> None:
@@ -302,6 +323,7 @@ class SanitizeViewModel(QObject):
             selected_course=folder_name,
             consent_filter=ConsentFilter.ALL,
             consent_search="",
+            override_error=None,
             **self._consent_fields(folder_name, self._state.courses),
         )
 
@@ -346,6 +368,34 @@ class SanitizeViewModel(QObject):
     def set_consent_search(self, text: str) -> None:
         self._update(consent_search=text)
 
+    def override_consent(self, sis_id: int) -> None:
+        """Include a possible typo or name mismatch student in the selected course."""
+        self._set_override(sis_id, overridden=True)
+
+    def remove_consent_override(self, sis_id: int) -> None:
+        self._set_override(sis_id, overridden=False)
+
+    def _set_override(self, sis_id: int, *, overridden: bool) -> None:
+        course = self._state.selected_summary
+        if course is None or self._state.is_running:
+            return
+        request = OverrideConsentRequest(course.path, sis_id, overridden)
+        try:
+            self._override_consent.execute(request)
+        except (ConsentOverrideError, *CONSENT_READ_ERRORS) as exc:
+            self._update(override_error=str(exc))
+        else:
+            # A finished run no longer describes who will be included.
+            self._update(
+                override_error=None,
+                run_state=RunState.IDLE,
+                run_course=None,
+                run_result=None,
+                run_error=None,
+            )
+        # Who is included and whether the course is up to date both changed on disk.
+        self.reload()
+
     def _consent_fields(
         self, folder_name: str | None, courses: tuple[CourseSummary, ...]
     ) -> dict[str, object]:
@@ -364,7 +414,7 @@ class SanitizeViewModel(QObject):
             return {
                 **empty,
                 "consent_form_found": True,
-                "consent_error": f"Could not read the consent form or roster: {exc}",
+                "consent_error": f"Could not read the consent form, roster, or manifest: {exc}",
             }
         return {
             "consent_decisions": review.decisions,

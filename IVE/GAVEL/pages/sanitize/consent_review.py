@@ -54,6 +54,7 @@ _WARNING = "▲"
 # (glyph and text, color token) shown in the Result column.
 RESULT_TEXT = {
     ConsentStatus.INCLUDED: ("✓  Included", "status_nominal"),
+    ConsentStatus.OVERRIDDEN: ("✓  Included (overridden)", "status_nominal"),
     ConsentStatus.DECLINED: ("✕  Declined", "status_warning"),
     ConsentStatus.NAME_BLANK: (f"{_WARNING}  Name blank", "status_caution"),
     ConsentStatus.POSSIBLE_TYPO: (f"{_WARNING}  Possible typo", "status_caution"),
@@ -65,14 +66,20 @@ RESULT_TEXT = {
 _COPY_ROLE = Qt.ItemDataRole.UserRole
 # What a cell sorts by when its column header is clicked.
 _SORT_ROLE = Qt.ItemDataRole.UserRole + 1
+# The student's SIS ID, on the Student cell, so a row survives sorting.
+_SIS_ROLE = Qt.ItemDataRole.UserRole + 2
 # Result column order: kept first, then each reason for leaving a student out.
 _RESULT_ORDER = tuple(RESULT_TEXT)
 
 FOOTNOTE = (
     "Only each student's latest attempt counts. A student is included only if they said yes "
     "and typed a name that matches their Canvas name. Everyone else is removed from every "
-    "anonymized file."
+    "anonymized file. If you can confirm a possible typo or name mismatch is the same student, "
+    "right-click the row to override it; overrides are saved in the course manifest and never "
+    "appear in anonymized files."
 )
+OVERRIDE_TEXT = "Override: include this student"
+REMOVE_OVERRIDE_TEXT = "Remove override"
 NO_COURSE_TEXT = "Select a course above to review who consented."
 NO_CONSENT_FORM_TEXT = (
     "No consent form for this course. Nobody can be included until original/consent_form.csv "
@@ -147,12 +154,15 @@ class _ConsentTile(QPushButton):
         hint_label = QLabel(hint)
         hint_label.setProperty("role", "text_muted")
         hint_label.setWordWrap(True)
+        self._note = QLabel()
+        self._note.setProperty("role", "text_muted")
+        self._note.hide()
 
         layout = QVBoxLayout(self)
         sp = theme.tokens.sp
         layout.setContentsMargins(sp(12), sp(8), sp(12), sp(8))
         layout.setSpacing(0)
-        for widget in (self._count, self._label, hint_label):
+        for widget in (self._count, self._label, hint_label, self._note):
             # Clicks land on the button, not the labels drawn on it.
             widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             layout.addWidget(widget)
@@ -162,9 +172,17 @@ class _ConsentTile(QPushButton):
     def count_text(self) -> str:
         return self._count.text()
 
-    def set_count(self, count: int) -> None:
+    @property
+    def note_text(self) -> str:
+        return self._note.text()
+
+    def set_count(self, count: int, note: str = "") -> None:
+        """Show ``count``, and ``note`` under the hint when it is not empty."""
         self._count.setText(str(count))
-        self.setAccessibleDescription(f"{count} students")
+        self._note.setText(note)
+        self._note.setVisible(bool(note))
+        description = f"{count} students"
+        self.setAccessibleDescription(f"{description}, {note}" if note else description)
 
     def sizeHint(self):  # noqa: N802 (Qt override)
         return self.layout().sizeHint()
@@ -313,11 +331,35 @@ class ConsentReviewCard(SectionCard):
         if text:
             QApplication.clipboard().setText(text)
 
-    def _show_table_menu(self, pos: QPoint) -> None:
+    def decision_at(self, row: int) -> ConsentDecision | None:
+        """The student shown in ``row`` of the table as currently sorted."""
+        item = self._table.item(row, 0) if row >= 0 else None
+        if item is None or self._shown_decisions is None:
+            return None
+        sis_id = item.data(_SIS_ROLE)
+        return next((d for d in self._shown_decisions if d.sis_id == sis_id), None)
+
+    def build_table_menu(self, row: int) -> QMenu:
+        """The right-click menu for ``row``: Copy, plus an override action when the
+        student's result allows one."""
         # No parent: inside a card, the frames' transparency rule would reach the popup.
         menu = QMenu()
         menu.addAction(self._copy_action)
         self._copy_action.setEnabled(bool(self._table.selectedIndexes()))
+
+        decision = self.decision_at(row)
+        if decision is not None and decision.overridable:
+            menu.addSeparator()
+            action = menu.addAction(OVERRIDE_TEXT)
+            action.triggered.connect(lambda: self._vm.override_consent(decision.sis_id))
+        elif decision is not None and decision.status is ConsentStatus.OVERRIDDEN:
+            menu.addSeparator()
+            action = menu.addAction(REMOVE_OVERRIDE_TEXT)
+            action.triggered.connect(lambda: self._vm.remove_consent_override(decision.sis_id))
+        return menu
+
+    def _show_table_menu(self, pos: QPoint) -> None:
+        menu = self.build_table_menu(self._table.rowAt(pos.y()))
         self._table_menu = menu
         menu.exec(self._table.viewport().mapToGlobal(pos))
         self._copy_action.setEnabled(True)
@@ -342,8 +384,9 @@ class ConsentReviewCard(SectionCard):
             placeholder = ""
         self._placeholder.setText(placeholder)
         self._placeholder.setVisible(bool(placeholder))
-        self._error.setText(state.consent_error or "")
-        self._error.setVisible(bool(state.consent_error))
+        error = state.consent_error or state.override_error
+        self._error.setText(error or "")
+        self._error.setVisible(bool(error))
 
         reviewing = bool(selected and state.consent_form_found and not state.consent_error)
         for widget in self._review_widgets:
@@ -351,8 +394,15 @@ class ConsentReviewCard(SectionCard):
         if not reviewing:
             return
 
+        overridden = state.overridden_count
         for consent_filter, tile in self._tiles.items():
-            tile.set_count(state.consent_count(consent_filter))
+            # Overridden students count as Included, but came from Name problem.
+            note = (
+                f"{overridden} overridden"
+                if consent_filter is ConsentFilter.NAME_PROBLEM and overridden
+                else ""
+            )
+            tile.set_count(state.consent_count(consent_filter), note)
             tile.setChecked(state.consent_filter is consent_filter)
 
         # A tile narrows Excluded, so Excluded stays lit while one is on.
@@ -385,6 +435,7 @@ class ConsentReviewCard(SectionCard):
         self._table.setRowCount(len(decisions))
         for row, decision in enumerate(decisions):
             cells = [_SortableItem(text) for text in row_cells(decision)]
+            cells[0].setData(_SIS_ROLE, decision.sis_id)
             for cell, key in zip(cells, sort_keys(decision), strict=True):
                 cell.setData(_SORT_ROLE, key)
             for column in (1, 2, 4):

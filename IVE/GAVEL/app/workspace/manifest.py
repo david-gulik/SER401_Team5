@@ -4,8 +4,10 @@ The manifest is written by GAVEL. Every download records the
 file it produced (relative path, timestamp, checksum) and every rubric
 download records the assignment it belongs to. Anonymizing records a
 checksum of each original it read, so the course browser can tell when
-``anonymized/`` falls behind. Downstream tooling loads this one file instead
-of guessing from filenames.
+``anonymized/`` falls behind. Consent overrides, students let in by hand after
+a name check, are kept here too, next to the originals they apply to and never
+in ``anonymized/``. Downstream tooling loads this one file instead of guessing
+from filenames.
 """
 
 from __future__ import annotations
@@ -106,9 +108,24 @@ class AnonymizationEntry:
 
     anonymized_at: str
     sources: tuple[SourceEntry, ...] = ()
+    # SIS IDs of the consent overrides in the manifest when the run started,
+    # so changing an override marks ``anonymized/`` out of date.
+    consent_overrides: tuple[int, ...] = ()
 
     def source(self, path: str) -> SourceEntry | None:
         return next((s for s in self.sources if s.path == path), None)
+
+
+@dataclass(frozen=True)
+class ConsentOverride:
+    """A student included by hand although their typed name did not match.
+
+    Only a possible typo or a name mismatch can be overridden; the student
+    must still have answered yes on their latest attempt.
+    """
+
+    sis_id: int
+    overridden_at: str
 
 
 @dataclass(frozen=True)
@@ -127,6 +144,12 @@ class CourseManifest:
     artifacts: tuple[ArtifactEntry, ...] = ()
     # None when no anonymization is recorded for the course.
     anonymization: AnonymizationEntry | None = None
+    # Sorted by SIS ID.
+    consent_overrides: tuple[ConsentOverride, ...] = ()
+
+    @property
+    def overridden_sis_ids(self) -> frozenset[int]:
+        return frozenset(o.sis_id for o in self.consent_overrides)
 
     def artifact(self, path: str) -> ArtifactEntry | None:
         return next((a for a in self.artifacts if a.path == path), None)
@@ -193,6 +216,24 @@ def set_anonymization(
     sources = tuple(sorted(entry.sources, key=lambda s: s.path))
     return replace(
         manifest, anonymization=replace(entry, sources=sources), updated_at=now or utc_now_iso()
+    )
+
+
+def set_consent_override(
+    manifest: CourseManifest, sis_id: int, overridden: bool, *, now: str | None = None
+) -> CourseManifest:
+    """Manifest with the student's override added (``overridden``) or removed.
+
+    Overriding a student who already is keeps the original timestamp.
+    """
+    stamp = now or utc_now_iso()
+    existing = {o.sis_id: o for o in manifest.consent_overrides}
+    if overridden:
+        existing.setdefault(sis_id, ConsentOverride(sis_id=sis_id, overridden_at=stamp))
+    else:
+        existing.pop(sis_id, None)
+    return replace(
+        manifest, consent_overrides=tuple(existing[k] for k in sorted(existing)), updated_at=stamp
     )
 
 
@@ -267,6 +308,11 @@ def manifest_to_dict(manifest: CourseManifest) -> dict[str, Any]:
             for a in sorted(manifest.artifacts, key=lambda a: a.path)
         ],
         "anonymization": _anonymization_to_dict(manifest.anonymization),
+        # Keyed by SIS ID; JSON object keys are strings.
+        "consent_overrides": {
+            str(o.sis_id): {"override": True, "overridden_at": o.overridden_at}
+            for o in sorted(manifest.consent_overrides, key=lambda o: o.sis_id)
+        },
     }
 
 
@@ -279,6 +325,7 @@ def _anonymization_to_dict(entry: AnonymizationEntry | None) -> dict[str, Any] |
             {"path": s.path, "sha256": s.sha256}
             for s in sorted(entry.sources, key=lambda s: s.path)
         ],
+        "consent_overrides": sorted(entry.consent_overrides),
     }
 
 
@@ -290,7 +337,22 @@ def _anonymization_from_dict(data: dict[str, Any] | None) -> AnonymizationEntry 
         sources=tuple(
             SourceEntry(path=str(s["path"]), sha256=str(s["sha256"])) for s in data["sources"]
         ),
+        consent_overrides=tuple(int(sis_id) for sis_id in data.get("consent_overrides", [])),
     )
+
+
+def _consent_overrides_from_dict(data: Any) -> tuple[ConsentOverride, ...]:
+    if data is None:
+        return ()
+    if not isinstance(data, dict) or not all(isinstance(e, dict) for e in data.values()):
+        raise TypeError("consent_overrides must map each SIS ID to an object")
+    overrides = []
+    for key, entry in data.items():
+        sis_id = int(key)
+        # An entry with "override": false does not apply.
+        if entry.get("override") is True:
+            overrides.append(ConsentOverride(sis_id, overridden_at=str(entry["overridden_at"])))
+    return tuple(sorted(overrides, key=lambda o: o.sis_id))
 
 
 def manifest_from_dict(data: dict[str, Any]) -> CourseManifest:
@@ -348,6 +410,7 @@ def manifest_from_dict(data: dict[str, Any]) -> CourseManifest:
                 for a in data.get("artifacts", [])
             ),
             anonymization=_anonymization_from_dict(data.get("anonymization")),
+            consent_overrides=_consent_overrides_from_dict(data.get("consent_overrides")),
         )
     except (KeyError, TypeError, ValueError) as exc:
         if isinstance(exc, ManifestError):
@@ -363,6 +426,13 @@ def load_manifest(path: Path) -> CourseManifest:
     if not isinstance(data, dict):
         raise ManifestError(f"{path} does not contain a JSON object")
     return manifest_from_dict(data)
+
+
+def load_consent_overrides(path: Path) -> frozenset[int]:
+    """SIS IDs overridden in the manifest at ``path``; empty when there is no manifest."""
+    if not path.is_file():
+        return frozenset()
+    return load_manifest(path).overridden_sis_ids
 
 
 def save_manifest(path: Path, manifest: CourseManifest) -> None:

@@ -8,11 +8,13 @@ from GAVEL.app.usecases.downselect_consented_students import (
     DownselectConsentedStudentsRequest,
     DownselectConsentedStudentsUseCase,
 )
-from GAVEL.app.workspace.layout import ORIGINAL_DIR, DataTree
+from GAVEL.app.workspace.layout import MANIFEST_FILE, ORIGINAL_DIR, DataTree
+from GAVEL.app.workspace.manifest import load_consent_overrides
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import CanvasConsentFormCSVReader
 from GAVEL.infra.csv.canvas_roster_csv_reader import CanvasRosterCSVReader
 
-# What a malformed consent form or roster raises from the CSV readers.
+# What a malformed consent form, roster, or manifest raises. ManifestError is
+# a ValueError.
 CONSENT_READ_ERRORS = (OSError, ValueError, KeyError)
 
 
@@ -36,8 +38,9 @@ class ReviewCourseConsentResult:
 class ReviewCourseConsentUseCase:
     """Who in a course folder consent filtering keeps, and why the rest are left out.
 
-    Applies the same filtering the anonymizer does, without writing anything.
-    A consent form or roster that cannot be parsed raises one of
+    Applies the same filtering the anonymizer does, including the consent
+    overrides saved in the course manifest, without writing anything. A
+    consent form, roster, or manifest that cannot be parsed raises one of
     CONSENT_READ_ERRORS.
     """
 
@@ -62,7 +65,8 @@ class ReviewCourseConsentUseCase:
             if original.roster_csv.is_file()
             else ()
         )
+        overrides = load_consent_overrides(request.course_dir / MANIFEST_FILE)
         result = self._downselect_use_case.execute(
-            DownselectConsentedStudentsRequest(entries=entries, roster=roster)
+            DownselectConsentedStudentsRequest(entries=entries, roster=roster, overrides=overrides)
         )
         return ReviewCourseConsentResult(consent_form_found=True, decisions=result.decisions)

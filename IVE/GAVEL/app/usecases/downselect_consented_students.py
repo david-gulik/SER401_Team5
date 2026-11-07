@@ -5,7 +5,11 @@ from dataclasses import dataclass
 
 from GAVEL.app.dtos.asu_roster import RosterStudent
 from GAVEL.app.dtos.canvas_consent_form_entry import ConsentFormEntry
-from GAVEL.app.dtos.consent_decision import ConsentDecision, ConsentStatus
+from GAVEL.app.dtos.consent_decision import (
+    OVERRIDABLE_STATUSES,
+    ConsentDecision,
+    ConsentStatus,
+)
 
 
 @dataclass(frozen=True)
@@ -13,6 +17,9 @@ class DownselectConsentedStudentsRequest:
     entries: tuple[ConsentFormEntry, ...]
     # Roster students with no consent form entry are reported as NO_RESPONSE.
     roster: tuple[RosterStudent, ...] = ()
+    # SIS IDs confirmed by hand. They only rescue a possible typo or a name
+    # mismatch; a student who declined or left the name blank stays out.
+    overrides: frozenset[int] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -45,7 +52,7 @@ class DownselectConsentedStudentsUseCase:
             ConsentDecision(
                 sis_id=entry.sis_id,
                 name=entry.lms_name,
-                status=_classify(entry),
+                status=_classify(entry, request.overrides),
                 canvas_id=entry.canvas_id,
                 attempt=entry.attempt,
                 name_response=entry.name_response,
@@ -90,7 +97,14 @@ class DownselectConsentedStudentsUseCase:
         )
 
 
-def _classify(entry: ConsentFormEntry) -> ConsentStatus:
+def _classify(entry: ConsentFormEntry, overrides: frozenset[int]) -> ConsentStatus:
+    status = _classify_name(entry)
+    if status in OVERRIDABLE_STATUSES and entry.sis_id in overrides:
+        return ConsentStatus.OVERRIDDEN
+    return status
+
+
+def _classify_name(entry: ConsentFormEntry) -> ConsentStatus:
     if not entry.consented:
         return ConsentStatus.DECLINED
 
