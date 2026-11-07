@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QShowEvent
+from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QIcon, QMouseEvent, QPainter, QPen, QPixmap, QShowEvent
 from PyQt6.QtWidgets import (
     QComboBox,
     QDockWidget,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMenu,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -31,6 +33,60 @@ _PLACEHOLDER_VISUALIZATIONS = (
     "Multi-Autograder Heat Map",
     "R² Chart",
 )
+
+
+class _PersistentCheckMenu(QMenu):
+    """A QMenu that stays open after toggling a checkable action.
+
+    Qt closes a menu on any item click by default.
+    Clicking elsewhere still closes it as usual.
+    """
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        action = self.activeAction()
+        if action is not None and action.isCheckable():
+            action.trigger()
+            return
+        super().mouseReleaseEvent(event)
+
+
+def _checkbox_icon(theme: ThemeContext) -> QIcon:
+    """A small checkbox: an empty outline when off and a filled check when on.
+
+    Drawn at runtime with the theme.
+    Replaces Qt's native checkmark indicator.
+    """
+    size = 14
+    border = QColor(theme.tokens.color["border"])
+    accent = QColor(theme.tokens.color["interactive"])
+    rect = QRectF(1, 1, size - 2, size - 2)
+
+    off = QPixmap(size, size)
+    off.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(off)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QPen(border, 1))
+    painter.drawRoundedRect(rect, 2, 2)
+    painter.end()
+
+    on = QPixmap(size, size)
+    on.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(on)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QPen(accent, 1))
+    painter.drawRoundedRect(rect, 2, 2)
+    check_pen = QPen(accent, 2)
+    check_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    check_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(check_pen)
+    painter.drawLine(QPointF(3, 7), QPointF(6, 10))
+    painter.drawLine(QPointF(6, 10), QPointF(11, 4))
+    painter.end()
+
+    icon = QIcon()
+    icon.addPixmap(off, QIcon.Mode.Normal, QIcon.State.Off)
+    icon.addPixmap(on, QIcon.Mode.Normal, QIcon.State.On)
+    return icon
 
 
 class OverviewTab(QWidget):
@@ -86,6 +142,27 @@ class OverviewTab(QWidget):
         self._dock_host.splitDockWidget(heat_map_dock, score_dock, Qt.Orientation.Horizontal)
         for left, right in zip(placeholder_docks, placeholder_docks[1:], strict=False):
             self._dock_host.splitDockWidget(left, right, Qt.Orientation.Horizontal)
+
+        # Builds a Manage Analytics dropdown so that analytics visuals can be displayed or hidden.
+        # It is a QPushButton with a menu.
+        # _PersistentCheckMenu keeps the menu open across several toggles.
+        # A plain QMenu closes after every single one.
+        checkbox_icon = _checkbox_icon(theme)
+        view_menu = _PersistentCheckMenu(self._dock_host)
+        for dock in (generate_dock, histogram_dock, heat_map_dock, score_dock, *placeholder_docks):
+            action = dock.toggleViewAction()
+            action.setIcon(checkbox_icon)
+            view_menu.addAction(action)
+        view_button = QPushButton("Manage Analytics")
+        view_button.setProperty("role", "secondary")
+        view_button.setMenu(view_menu)
+
+        view_bar = QWidget()
+        view_bar_layout = QHBoxLayout(view_bar)
+        view_bar_layout.setContentsMargins(8, 4, 8, 4)
+        view_bar_layout.addWidget(view_button)
+        view_bar_layout.addStretch(1)
+        self._dock_host.setMenuWidget(view_bar)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)

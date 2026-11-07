@@ -251,6 +251,10 @@ def _qss_push_button(t: ThemeTokens) -> str:
         color: {c["text_disabled"]};
         border-color: transparent;
     }}
+    QPushButton::menu-indicator {{
+        image: none;
+        width: 0;
+    }}
     """
 
 
@@ -562,6 +566,10 @@ def _qss_menu(t: ThemeTokens) -> str:
     }}
     QMenu::item:disabled {{
         color: {c["input_placeholder"]};
+    }}
+    QMenu::indicator {{
+        width: 0;
+        image: none;
     }}
     """
 
