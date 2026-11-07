@@ -223,4 +223,4 @@ def write_heat_map_report(result: GenerateHeatMapReportResult, output_path: Path
             for p in result.missing_human_score_pairs
         ],
     }
-    output_path.write_text(json.dumps(payload, indent=2))
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
