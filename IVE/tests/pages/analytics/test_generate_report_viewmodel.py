@@ -10,6 +10,7 @@ from GAVEL.app.workspace.dataset import DatasetReaders
 from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
 from GAVEL.app.workspace.manifest import (
     AssignmentEntry,
+    load_manifest,
     new_manifest,
     record_assignment,
     save_manifest,
@@ -22,6 +23,7 @@ _MODULE_9_COLUMN = "Module 9: Programming (Gradescope) (9001)"
 _OTHER_COLUMN = "Module 1: Activity (5001)"
 _ALL_TEST_NAMES = list(SER334_M9.test_names())
 _RUBRIC_ASSIGNMENT_ID = 9002
+_OTHER_RUBRIC_ASSIGNMENT_ID = 9003
 
 
 @pytest.fixture
@@ -279,3 +281,43 @@ def test_generate_heat_map_writes_a_report_to_the_runs_folder(
         outcome.output_path
         != vm.generate(workspace_root, course, 9, "ser334_m9", _MODULE_9_COLUMN).output_path
     )
+
+
+def test_generate_heat_map_output_paths_do_not_collide_across_rubric_assignments(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    workspace_root = _build_course(tmp_path, with_rubric=True)
+    folder = Workspace(workspace_root).course(CourseKey.parse(_FOLDER_NAME))
+
+    other_folder = folder.anonymized.assignment(_OTHER_RUBRIC_ASSIGNMENT_ID, module_number=9)
+    _write_rubric_definition(other_folder.rubric_definition_json)
+    _write_rubric_assessments(other_folder.rubric_assessments_json)
+
+    manifest = load_manifest(folder.manifest_path)
+    manifest = record_assignment(
+        manifest,
+        AssignmentEntry(
+            canvas_id=_OTHER_RUBRIC_ASSIGNMENT_ID,
+            name="Programming (Manual, retake)",
+            module_number=9,
+            has_rubric=True,
+        ),
+    )
+    save_manifest(folder.manifest_path, manifest)
+
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+    assignments = vm.list_rubric_assignments(course, 9)
+    assert {a.canvas_id for a in assignments} == {
+        _RUBRIC_ASSIGNMENT_ID,
+        _OTHER_RUBRIC_ASSIGNMENT_ID,
+    }
+
+    outcomes = [
+        vm.generate_heat_map(workspace_root, course, 9, "ser334_m9", assignment)
+        for assignment in assignments
+    ]
+
+    output_paths = {outcome.output_path for outcome in outcomes}
+    assert len(output_paths) == 2
+    assert all(path.exists() for path in output_paths)
