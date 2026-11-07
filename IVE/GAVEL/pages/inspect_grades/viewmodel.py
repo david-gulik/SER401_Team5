@@ -77,25 +77,24 @@ class InspectGradesViewModel:
                         "Rubric definition is not available for this assignment."
                     )
             except (
-                MissingArtifactError,
-                ManifestError,
-                OSError,
-                ValueError,
-                KeyError,
-                IndexError,
+                    MissingArtifactError,
+                    ManifestError,
+                    OSError,
+                    ValueError,
+                    KeyError,
+                    IndexError,
             ) as exc:
                 self.rubric_definition_error = str(exc)
 
-        if assignment.has_rubric:
             try:
                 self.human_grades = dataset.rubric_assessments(assignment.canvas_id)
             except (
-                MissingArtifactError,
-                ManifestError,
-                OSError,
-                ValueError,
-                KeyError,
-                IndexError,
+                    MissingArtifactError,
+                    ManifestError,
+                    OSError,
+                    ValueError,
+                    KeyError,
+                    IndexError,
             ) as exc:
                 self.human_grades_error = str(exc)
         else:
