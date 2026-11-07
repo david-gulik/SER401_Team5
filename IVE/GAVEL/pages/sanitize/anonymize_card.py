@@ -87,7 +87,10 @@ def result_rows(
         ("Gradebook", GRADEBOOK_FILE, result.gradebook),
     ):
         tracked = course.file(path)
-        if tracked is None or tracked.original_at is None:
+        failure = result.failure(path)
+        if failure is not None:
+            rows.append((label, "—", "—", f"Failed ({failure.error}), not anonymized"))
+        elif tracked is None or tracked.original_at is None:
             rows.append((label, "—", "—", "Not in original/, skipped"))
         else:
             removed = report.skipped_count + report.excluded_count
@@ -108,6 +111,12 @@ def result_rows(
                 f"Assessments across {rubric_files} file{'' if rubric_files == 1 else 's'}",
             )
         )
+    # Everything else that failed, one row each, after the summary rows.
+    rows.extend(
+        (failure.path, "—", "—", f"Failed ({failure.error}), not anonymized")
+        for failure in result.failures
+        if failure.path not in (ROSTER_FILE, GRADEBOOK_FILE)
+    )
     return rows
 
 
@@ -214,6 +223,14 @@ class AnonymizeCard(SectionCard):
             status = "Running…"
         elif run_state is RunState.FAILED:
             status = f"The run failed: {state.run_error}"
+        elif result is not None and result.failures:
+            count = len(result.failures)
+            one = count == 1
+            status = (
+                f"From the run just now. {count} file{'' if one else 's'} could not be "
+                f"anonymized and {'was' if one else 'were'} left out; everything else was "
+                f"written. Fix {'it' if one else 'them'} and anonymize again."
+            )
         elif result is not None:
             status = "From the run just now. Open folder shows what was written."
         elif course.anonymized_at:

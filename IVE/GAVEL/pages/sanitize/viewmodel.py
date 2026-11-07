@@ -223,6 +223,14 @@ def page_status(state: SanitizeUiState) -> tuple[Status, str, str]:
     if run_state is RunState.FAILED:
         return Status.CRITICAL, f"Anonymization failed: {state.run_error}", ""
     if run_state is RunState.SUCCEEDED:
+        failed = len(state.run_result.failures) if state.run_result else 0
+        if failed:
+            return (
+                Status.CAUTION,
+                f"Anonymized {state.included_count} students to {output}, but {failed} "
+                f"file{'' if failed == 1 else 's'} could not be anonymized. See Results.",
+                output,
+            )
         return Status.NOMINAL, f"Anonymized {state.included_count} students to {output}", output
     if not state.consent_form_found:
         return Status.CRITICAL, f"{label} has no consent form in original/.", ""
