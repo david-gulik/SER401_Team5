@@ -47,6 +47,12 @@ class FailedSubmission:
 
 
 @dataclass(frozen=True)
+class MissingHumanScore:
+    student_identifier: str
+    criterion: str
+
+
+@dataclass(frozen=True)
 class GenerateHeatMapReportResult:
     rows: tuple[HeatMapScoreRow, ...]
     unmatched_submissions: tuple[str, ...]
@@ -54,6 +60,9 @@ class GenerateHeatMapReportResult:
     # Matched a gradebook row, but that student has no rubric assessment for
     # this assignment at all (declined consent, never graded, ...).
     students_without_human_scores: tuple[str, ...] = ()
+    # One entry per (student, criterion) skipped for a missing human score,
+    # whether or not that student also appears in students_without_human_scores.
+    missing_human_score_pairs: tuple[MissingHumanScore, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -91,6 +100,7 @@ def compute_heat_map_rows(
     unmatched: list[str] = []
     failed: list[FailedSubmission] = []
     missing_human: list[str] = []
+    missing_human_pairs: list[MissingHumanScore] = []
 
     for submission in submissions:
         login = student_key(submission.submitter.email)
@@ -121,6 +131,9 @@ def compute_heat_map_rows(
                 (row.canvas_id, rubric_criterion.description)
             )
             if human_points is None:
+                missing_human_pairs.append(
+                    MissingHumanScore(student_identifier=login, criterion=criterion.name)
+                )
                 continue
             rows.append(
                 HeatMapScoreRow(
@@ -140,6 +153,7 @@ def compute_heat_map_rows(
         unmatched_submissions=tuple(unmatched),
         failed_submissions=tuple(failed),
         students_without_human_scores=tuple(missing_human),
+        missing_human_score_pairs=tuple(missing_human_pairs),
     )
 
 
@@ -204,5 +218,9 @@ def write_heat_map_report(result: GenerateHeatMapReportResult, output_path: Path
             for f in result.failed_submissions
         ],
         "students_without_human_scores": list(result.students_without_human_scores),
+        "missing_human_score_pairs": [
+            {"student_identifier": p.student_identifier, "criterion": p.criterion}
+            for p in result.missing_human_score_pairs
+        ],
     }
     output_path.write_text(json.dumps(payload, indent=2))
