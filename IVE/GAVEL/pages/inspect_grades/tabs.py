@@ -214,7 +214,6 @@ class InspectGradesTab(ScrollableTab):
             self.proxy_panel.total_label.setText("Total: — (proxy scores not yet calculated)")
 
     def _render_grading_status(self) -> None:
-        """Display the human and proxy grading data loading results."""
         if self._viewmodel.selected_assignment is None:
             self.status_label.setText("Select an assignment.")
             return
