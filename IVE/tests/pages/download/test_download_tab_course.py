@@ -102,13 +102,17 @@ def test_manual_id_is_stored_while_typing_but_committed_on_enter(qapp, env):
     assert env.canvas.assignment_calls[-1] == TYPED
 
 
-def test_focus_out_without_a_change_does_not_refetch(env):
+def test_focus_out_without_a_change_does_not_refetch(qapp, env):
     course = env.course
     course.set_mode(InputMode.MANUAL)
     course.manual_field().setText(str(TYPED))
     course.manual_field().editingFinished.emit()
+    # Fetches run on the thread pool: let each one land before counting.
+    pump(qapp)
     fetched = len(env.canvas.quiz_calls)
     course.manual_field().editingFinished.emit()
+    pump(qapp)
+    assert env.canvas.quiz_calls[-1] == TYPED
     assert len(env.canvas.quiz_calls) == fetched
 
 
