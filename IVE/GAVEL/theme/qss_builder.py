@@ -93,8 +93,8 @@ def _qss_main(t: ThemeTokens) -> str:
     }}
     QMainWindow::separator {{
         background-color: {c["border"]};
-        width: 1px;
-        height: 1px;
+        width: 6px;
+        height: 6px;
     }}
     QStatusBar {{
         background-color: {c["global_status_bar"]};
@@ -250,6 +250,10 @@ def _qss_push_button(t: ThemeTokens) -> str:
         background-color: transparent;
         color: {c["text_disabled"]};
         border-color: transparent;
+    }}
+    QPushButton::menu-indicator {{
+        image: none;
+        width: 0;
     }}
     """
 
@@ -562,6 +566,10 @@ def _qss_menu(t: ThemeTokens) -> str:
     }}
     QMenu::item:disabled {{
         color: {c["input_placeholder"]};
+    }}
+    QMenu::indicator {{
+        width: 0;
+        image: none;
     }}
     """
 
