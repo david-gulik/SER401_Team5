@@ -23,7 +23,6 @@ from GAVEL.ui_components.section_card import SectionCard
 
 
 class ComparisonCellDelegate(QStyledItemDelegate):
-
     def paint(self, painter, option, index):
         super().paint(painter, option, index)
 
@@ -53,7 +52,6 @@ class ComparisonCellDelegate(QStyledItemDelegate):
 
 
 class StudentGradeMatrix(QWidget):
-
     def __init__(self, theme: ThemeContext) -> None:
         super().__init__()
 
