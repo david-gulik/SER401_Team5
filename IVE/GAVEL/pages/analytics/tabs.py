@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
+from PyQt6.QtCore import QByteArray, QPointF, QRectF, QSettings, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QMouseEvent, QPainter, QPen, QPixmap, QShowEvent
 from PyQt6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDockWidget,
     QFormLayout,
@@ -33,6 +34,10 @@ _PLACEHOLDER_VISUALIZATIONS = (
     "Multi-Autograder Heat Map",
     "R² Chart",
 )
+
+# Dock position, size, and visibility, saved under the same per-app settings
+# as the last course pick.
+_DOCK_LAYOUT_SETTINGS_KEY = "analytics/dock_layout"
 
 
 class _PersistentCheckMenu(QMenu):
@@ -94,9 +99,11 @@ class OverviewTab(QWidget):
         self,
         theme: ThemeContext,
         dataset_readers: DatasetReaders,
+        settings: QSettings,
     ) -> None:
         super().__init__()
         self._theme = theme
+        self._settings = settings
 
         self._generate_card = GenerateReportCard(theme, dataset_readers)
         histogram_card = SignedErrorHistogramCard(theme)
@@ -164,9 +171,22 @@ class OverviewTab(QWidget):
         view_bar_layout.addStretch(1)
         self._dock_host.setMenuWidget(view_bar)
 
+        # Restores a layout saved from a previous run if there is one.
+        saved_layout = settings.value(_DOCK_LAYOUT_SETTINGS_KEY, QByteArray(), type=QByteArray)
+        if saved_layout:
+            self._dock_host.restoreState(saved_layout)
+
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._save_dock_layout)
+
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._dock_host)
+
+    def _save_dock_layout(self) -> None:
+        self._settings.setValue(_DOCK_LAYOUT_SETTINGS_KEY, self._dock_host.saveState())
+        self._settings.sync()
 
     def _make_dock(self, title: str, widget: QWidget) -> QDockWidget:
         # A custom title bar (e.g. via setTitleBarWidget) breaks Qt's own
@@ -174,6 +194,10 @@ class OverviewTab(QWidget):
         # bar; the card's own duplicate title text is cleared instead.
         widget.clear_title()
         dock = QDockWidget(title, self._dock_host)
+        # restoreState matches a saved dock by its object name. Every dock
+        # defaults to the same empty name, so saved layouts cannot be
+        # restored without setting a distinct one here.
+        dock.setObjectName(title)
         dock.setWidget(widget)
         return dock
 
