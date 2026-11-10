@@ -76,7 +76,7 @@ python -m GAVEL.cli.main canvas-gradebook download \
 | course_id must be a valid integer. | Invalid input | Use a numeric course ID |
 | course_id must be greater than zero. | Invalid input | Use a positive course ID |
 | Failed to download gradebook CSV: ... | API/auth issue | Check CANVAS_BASE_URL and CANVAS_TOKEN |
-| `... was already downloaded ...` | The course folder already holds a gradebook | Delete the course folder, or pass `--overwrite` |
+| `... was already downloaded ...` | The course folder already holds a gradebook | Pass `--overwrite`, or delete `original/gradebook.csv` |
 | `has no ASU course code to name the course folder` | Training or renamed Canvas course | Pass `--course-folder`, e.g. `ser222_25sc_12345` |
 
 ---

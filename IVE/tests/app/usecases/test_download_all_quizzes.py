@@ -202,3 +202,34 @@ def test_progress_counts_every_quiz_whatever_its_outcome(tmp_path):
         (3, 3, "Quiz Three"),
     ]
     assert seen[-1].text == "Downloading quizzes 3 of 3"
+
+
+def test_quiz_ids_limits_the_run_to_those_quizzes(tmp_path):
+    client = FakeCanvasClient(
+        quizzes=[CanvasQuiz(id=101, name="Quiz One"), CanvasQuiz(id=202, name="Quiz Two")],
+        responses={101: b"a\n", 202: b"b\n"},
+    )
+
+    result = DownloadAllQuizzesUseCase(client).execute(
+        DownloadAllQuizzesRequest(
+            course_id=123, folder=course_folder(tmp_path), quiz_ids=frozenset({202})
+        )
+    )
+
+    assert client.attempted_quiz_ids == [202]
+    assert [o.quiz_id for o in result.outcomes] == [202]
+
+
+def test_deleted_report_still_in_the_manifest_is_downloaded_again(tmp_path):
+    client = FakeCanvasClient(
+        quizzes=[CanvasQuiz(id=101, name="Quiz One")], responses={101: b"a\n"}
+    )
+    folder = course_folder(tmp_path)
+    request = DownloadAllQuizzesRequest(course_id=123, folder=folder)
+    DownloadAllQuizzesUseCase(client).execute(request)
+    folder.original.quiz_csv(101).unlink()
+
+    result = DownloadAllQuizzesUseCase(client).execute(request)
+
+    assert [o.quiz_id for o in result.succeeded] == [101]
+    assert folder.original.quiz_csv(101).read_bytes() == b"a\n"

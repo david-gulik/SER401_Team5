@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -339,6 +340,55 @@ class TestGuard:
         with pytest.raises(ArtifactExistsError, match="submissions.zip"):
             run(canvas, folder, scraper)
         assert scraper.downloads == 1
+
+    def test_deleted_module_is_downloaded_again_and_the_rest_kept(self, canvas, folder):
+        scraper = FakeScraper(
+            {
+                "Module 2 Programming": export_zip("alice_1"),
+                "Module 3 Programming": export_zip("carol_3"),
+            }
+        )
+        run(canvas, folder, scraper)
+        m2 = folder.original.module_submissions(2)
+        m3 = folder.original.module_submissions(3)
+        shutil.rmtree(m2.path)
+        m3_zip_before = m3.zip_path.read_bytes()
+        scraper.exports = {
+            "Module 2 Programming": export_zip("alice_1_new"),
+            "Module 3 Programming": export_zip("carol_3_new"),
+        }
+
+        result = run(canvas, folder, scraper)
+
+        assert scraper.downloads == 2
+        assert (m2.extracted_dir / "alice_1_new").exists()
+        assert m3.zip_path.read_bytes() == m3_zip_before
+        assert not (m3.extracted_dir / "carol_3_new").exists()
+        assert result.kept == (m3.zip_path,)
+        assert [a.module_number for a in result.matched] == [2]
+        assert "1 already on disk and kept" in result.message
+        assert not list((folder.original.submissions_dir / "_staging").glob("*.zip"))
+
+    def test_module_whose_extraction_was_deleted_is_filed_again(self, canvas, folder):
+        scraper = FakeScraper({"Module 2 Programming": export_zip("alice_1")})
+        run(canvas, folder, scraper)
+        module = folder.original.module_submissions(2)
+        shutil.rmtree(module.extracted_dir)
+
+        result = run(canvas, folder, scraper)
+
+        assert (module.extracted_dir / "alice_1").exists()
+        assert result.kept == ()
+
+    def test_everything_deleted_but_still_in_the_manifest_downloads_again(self, canvas, folder):
+        scraper = FakeScraper({"Module 2 Programming": export_zip("alice_1")})
+        run(canvas, folder, scraper)
+        shutil.rmtree(folder.original.submissions_dir)
+
+        run(canvas, folder, scraper)
+
+        assert (folder.original.module_submissions(2).extracted_dir / "alice_1").exists()
+        assert scraper.downloads == 2
 
     def test_overwrite_downloads_again_and_replaces_the_extraction(self, canvas, folder):
         scraper = FakeScraper({"Module 2 Programming": export_zip("alice_1")})
