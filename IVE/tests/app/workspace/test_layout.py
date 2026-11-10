@@ -285,7 +285,7 @@ class TestDiscovery:
 class TestModuleSubmissions:
     def test_paths(self, tmp_path: Path) -> None:
         module = DataTree(tmp_path).module_submissions(4)
-        assert module.path == tmp_path / "submissions" / "m4"
+        assert module.path == tmp_path / "gradescope_submissions" / "m4"
         assert module.module_number == 4
         assert module.zip_path == module.path / "submissions.zip"
         assert module.extracted_dir == module.path / "extracted"

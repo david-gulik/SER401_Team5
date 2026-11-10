@@ -129,7 +129,12 @@ def write_rubric(snapshot_dir: Path) -> Path:
 
 def write_gradescope_submissions(snapshot_dir: Path) -> None:
     extracted_dir = (
-        snapshot_dir / "original" / "submissions" / "m1" / "extracted" / "assignment_123_export"
+        snapshot_dir
+        / "original"
+        / "gradescope_submissions"
+        / "m1"
+        / "extracted"
+        / "assignment_123_export"
     )
     extracted_dir.mkdir(parents=True, exist_ok=True)
 
@@ -356,7 +361,7 @@ class TestFullPipeline:
 
         use_case.execute(request)
 
-        output_dir = tmp_path / "anonymized" / "submissions" / "m1"
+        output_dir = tmp_path / "anonymized" / "gradescope_submissions" / "m1"
 
         included_file = output_dir / "submission_1" / "Main_anon.java"
         excluded_file = output_dir / "submission_2" / "Main_anon.java"
