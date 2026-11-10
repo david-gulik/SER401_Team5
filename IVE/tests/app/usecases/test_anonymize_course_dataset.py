@@ -43,22 +43,27 @@ from GAVEL.infra.json.rubric_assessment_json_reader import (
 from GAVEL.infra.yaml.yaml_gradescope_reader import YamlGradescopeReader
 
 
+def make_use_case(**overrides) -> AnonymizeCourseDatasetUseCase:
+    parts = {
+        "consent_form_reader": CanvasConsentFormCSVReader(),
+        "downselect_use_case": DownselectConsentedStudentsUseCase(),
+        "id_map_use_case": GenerateAnonymousIdMapUseCase(),
+        "roster_reader": CanvasRosterCSVReader(),
+        "anonymize_roster_use_case": AnonymizeRosterUseCase(),
+        "gradebook_reader": LegacyGradebookCSVReader(),
+        "anonymize_gradebook_use_case": AnonymizeGradebookUseCase(),
+        "anonymize_consent_form_use_case": AnonymizeConsentFormUseCase(),
+        "rubric_reader": RubricAssessmentJSONReader(),
+        "anonymize_rubric_use_case": AnonymizeRubricAssessmentUseCase(),
+        "gradescope_reader": YamlGradescopeReader(),
+        "anonymize_gradescope_use_case": AnonymizeGradescopeSubmissionsUseCase(),
+    }
+    return AnonymizeCourseDatasetUseCase(**{**parts, **overrides})
+
+
 @pytest.fixture
 def use_case() -> AnonymizeCourseDatasetUseCase:
-    return AnonymizeCourseDatasetUseCase(
-        consent_form_reader=CanvasConsentFormCSVReader(),
-        downselect_use_case=DownselectConsentedStudentsUseCase(),
-        id_map_use_case=GenerateAnonymousIdMapUseCase(),
-        roster_reader=CanvasRosterCSVReader(),
-        anonymize_roster_use_case=AnonymizeRosterUseCase(),
-        gradebook_reader=LegacyGradebookCSVReader(),
-        anonymize_gradebook_use_case=AnonymizeGradebookUseCase(),
-        anonymize_consent_form_use_case=AnonymizeConsentFormUseCase(),
-        rubric_reader=RubricAssessmentJSONReader(),
-        anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
-        gradescope_reader=YamlGradescopeReader(),
-        anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
-    )
+    return make_use_case()
 
 
 def write_consent_form(snapshot_dir: Path) -> None:
@@ -655,3 +660,130 @@ class TestRecordsSources:
             .courses
         )
         assert course.status is AnonymizationStatus.UP_TO_DATE
+
+
+class WritesThenFails:
+    """A submission anonymizer that gets one file out before failing."""
+
+    def execute(self, request) -> None:
+        output = Path(request.output_folder)
+        output.mkdir(parents=True)
+        (output / "Main_anon.java").write_text("class Main {}\n", encoding="utf-8")
+        raise OSError("disk full")
+
+
+def write_broken_rubric(snapshot_dir: Path) -> Path:
+    assignment_dir = snapshot_dir / "original" / "assignments" / "7216984_m2"
+    assignment_dir.mkdir(parents=True, exist_ok=True)
+    (assignment_dir / "rubric_definition.json").write_text("{}", encoding="utf-8")
+    rubric_path = assignment_dir / "rubric_assessments.json"
+    rubric_path.write_text("[{not json", encoding="utf-8")
+    return rubric_path
+
+
+def gradescope_metadata(course_dir: Path) -> Path:
+    return next((course_dir / "original" / "submissions").rglob("submission_metadata.yml"))
+
+
+class TestPartialFailures:
+    @pytest.fixture
+    def course_dir(self, tmp_path: Path) -> Path:
+        course_dir = tmp_path / "courses" / "ser222_26f_11111"
+        write_consent_form(course_dir)
+        write_roster(course_dir)
+        write_gradebook(course_dir)
+        write_rubric(course_dir)
+        write_gradescope_submissions(course_dir)
+        return course_dir
+
+    def test_a_clean_run_reports_no_failures(self, use_case, course_dir: Path):
+        result = use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        assert result.failures == ()
+
+    def test_a_broken_rubric_file_does_not_stop_the_others(self, use_case, course_dir: Path):
+        write_broken_rubric(course_dir)
+
+        result = use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        anonymized = course_dir / "anonymized"
+        assert [(f.path, f.error) for f in result.failures] == [
+            ("assignments/7216984_m2/rubric_assessments.json", "JSONDecodeError")
+        ]
+        assert (anonymized / "assignments" / "7216983_m1" / "rubric_assessments.json").is_file()
+        assert not (anonymized / "assignments" / "7216984_m2" / "rubric_assessments.json").exists()
+        assert result.rubric_assessment.processed_count == 1
+        # Steps after the rubrics still run.
+        assert (anonymized / "submissions" / "m1" / "submission_1").is_dir()
+
+    def test_a_failed_rubric_leaves_no_copied_definition(self, use_case, course_dir: Path):
+        write_broken_rubric(course_dir)
+
+        use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        copied = course_dir / "anonymized" / "assignments" / "7216984_m2" / "rubric_definition.json"
+        assert not copied.exists()
+
+    def test_an_unreadable_roster_still_anonymizes_everything_else(
+        self, use_case, course_dir: Path
+    ):
+        # No Units column, so the reader cannot build the students.
+        (course_dir / "original" / "roster.csv").write_text(
+            "ID,First Name\n9999999999,Test\n", encoding="utf-8"
+        )
+
+        result = use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        anonymized = course_dir / "anonymized"
+        assert [f.path for f in result.failures] == ["roster.csv"]
+        assert not (anonymized / "roster.csv").exists()
+        assert (anonymized / "consent_form.csv").is_file()
+        assert (anonymized / "gradebook.csv").is_file()
+        assert result.gradebook.processed_count == 1
+
+    def test_unreadable_gradescope_metadata_is_reported(self, use_case, course_dir: Path):
+        gradescope_metadata(course_dir).write_text("submission_1: [unclosed\n", encoding="utf-8")
+
+        result = use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        assert [f.path for f in result.failures] == [
+            "submissions/m1/extracted/assignment_123_export/submission_metadata.yml"
+        ]
+        assert (course_dir / "anonymized" / "gradebook.csv").is_file()
+
+    def test_a_submission_that_fails_partway_leaves_nothing_behind(self, course_dir: Path):
+        use_case = make_use_case(anonymize_gradescope_use_case=WritesThenFails())
+
+        result = use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        assert [(f.path, f.error) for f in result.failures] == [
+            ("submissions/m1/extracted/assignment_123_export/submission_1", "OSError")
+        ]
+        assert not (course_dir / "anonymized" / "submissions" / "m1" / "submission_1").exists()
+
+    def test_failure_names_the_error_type_but_not_its_message(self, use_case, course_dir: Path):
+        # Parser messages can quote the offending line, student names and all.
+        gradescope_metadata(course_dir).write_text("Test Student: [unclosed\n", encoding="utf-8")
+
+        result = use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        assert "Test Student" not in result.failures[0].error
+
+    def test_failed_input_is_not_recorded_so_the_course_is_out_of_date(
+        self, use_case, course_dir: Path
+    ):
+        write_broken_rubric(course_dir)
+
+        use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        anonymization = load_manifest(course_dir / "manifest.json").anonymization
+        recorded = {s.path for s in anonymization.sources}
+        assert "original/assignments/7216984_m2/rubric_assessments.json" not in recorded
+        assert "original/assignments/7216984_m2/rubric_definition.json" not in recorded
+        assert "original/gradebook.csv" in recorded
+        (course,) = (
+            ListWorkspaceCoursesUseCase()
+            .execute(ListWorkspaceCoursesRequest(course_dir.parents[1]))
+            .courses
+        )
+        assert course.status is AnonymizationStatus.OUT_OF_DATE
