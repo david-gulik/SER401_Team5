@@ -140,9 +140,10 @@ class AutograderRow(QWidget):
 
         self.status.set_status(Status.UNKNOWN)
 
-        self.metadata.setText(
-            f"Last run: {self.autograder.last_run} ({self.autograder.duration_seconds:.2f}s)"
-        )
+        if self.autograder.duration_seconds:
+            self.metadata.setText(
+                f"Last run: {self.autograder.last_run} ({self.autograder.duration_seconds:.2f}s)"
+            )
 
         if self.autograder.last_status == "never_run":
             self.status.set_status(Status.UNKNOWN)

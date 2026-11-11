@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -9,20 +8,9 @@ import time
 import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from enum import Enum
+from pathlib import Path
 
 # TODO: figure out C stuff
-
-# LOCAL CONFIGURATION
-if platform.system() == "Windows":
-    FOLDER_SER222_AUTOGRADERS = "C:\\Users\\Ruben\\Dropbox\\Git\\ser222\\homework_projects"
-    FOLDER_SER334_AUTOGRADERS = None
-elif platform.system() == "Linux":
-    FOLDER_SER222_AUTOGRADERS = None
-    FOLDER_SER334_AUTOGRADERS = "/home/ruben/Git/ser334/homework_projects"
-else:
-    print(f"Unsupported OS found: {platform.system()}")
-    exit()
-
 
 class Language(Enum):
     JAVA = 1
@@ -33,8 +21,11 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     """
     Runs the autograder for a single submission in a fully isolated worker directory.
     """
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    log = logging.getLogger("autograder_client")
+    start = time.perf_counter()
 
-    print(f"Starting autograder for {filename}...")
+    log.info(f"Starting autograder for {Path(filename).name}...")
 
     # clone workspace
     worker_root = os.path.join("/tmp", f"autograder_worker_{filename.split('.')[0]}_{os.getpid()}")
@@ -64,7 +55,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
             if os.path.exists(src):
                 shutil.copy(src, dst)
             else:
-                print(f"  Missing required file: {req} in {filename}")
+                log.info(f"  Missing required file: {req} in {filename}")
     else:
         if filename.endswith(".java") or filename.endswith(".c"):
             target_file = os.path.join(worker_src, required_files[0])
@@ -84,7 +75,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
                 skipped = [x for x in compressed if x not in required_files]
 
                 if skipped:
-                    print(f"  Skipping {len(skipped)} files in ZIP ({skipped})")
+                    log.info(f"  Skipping {len(skipped)} files in ZIP ({skipped})")
 
                 zipf.extractall(worker_src, members=selected)
 
@@ -126,15 +117,22 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     finally:
         # clean up directory
         shutil.rmtree(worker_root, ignore_errors=True)
+    time_elapsed = time.perf_counter() - start
+    return f"{filename}: done (elapsed time: {time_elapsed} seconds)"
 
-    return f"{filename}: done"
 
+def autograde_submissions_folder(lang, input_folder, output_folder, autograder_folder_arg) -> float | type[Exception]:
 
-def autograde_submissions_folder(lang, input_folder, output_folder, autograder_folder_arg) -> float:
-
+    """
+    :param lang: programming language, "Language.JAVA" or "Language.C"
+    :param input_folder: submissions input folder
+    :param output_folder: desired output folder
+    :param autograder_folder_arg: autograder folder
+    :return: time elapsed
+    """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("autograder_client")
-    log.info(f"Autograding started on {input_folder}...")
+    log.info(f"Autograding started on {Path(input_folder).name} using {Path(autograder_folder_arg).name}...")
 
     start = time.perf_counter()
 
@@ -156,34 +154,38 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
     course_specific_output_folder = os.path.join(
         output_folder, os.path.basename(autograder_folder_arg)
     )
-    print(course_specific_output_folder)
     os.makedirs(course_specific_output_folder, exist_ok=True)
 
-    log.info(f"Found {len(submissions)} submissions.")
-
+    log.info(f"Found {len(submissions)} submissions for {Path(input_folder).name}.")
+    completed_tasks = 0
     # Parallel execution
     # TODO: is this max_workers count acceptable? Problems would start here...
+    try:
+        with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
 
-    with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
-        futures = [
-            pool.submit(
-                grade_one_submission,
-                filename,
-                config,
-                lang,
-                autograder_root,
-                input_folder,
-                course_specific_output_folder,
-            )
-            for filename in submissions
-        ]
+            futures = [
+                pool.submit(
+                    grade_one_submission,
+                    filename,
+                    config,
+                    lang,
+                    autograder_root,
+                    input_folder,
+                    course_specific_output_folder,
+                )
+                for filename in submissions
+            ]
 
-        for fut in as_completed(futures):
-            print(fut.result())
+            for fut in as_completed(futures):
+                completed_tasks += 1
+                log.info(f"{fut.result()} ({completed_tasks}/{len(futures)})")
 
-    # print(f"Time taken: {time.perf_counter() - start}")
-    log.info(f"Autograding completed on {input_folder}, {autograder_folder_arg}.")
-    return time.perf_counter() - start
+
+        log.info(f"Autograding complete! ({Path(input_folder).name} using autograder {Path(autograder_folder_arg).name}.)")
+        return time.perf_counter() - start
+    except Exception as e:
+        log.warning(f"Autograding failed!! ({Path(input_folder).name} using autograder {Path(autograder_folder_arg).name}.)")
+        return Exception
 
 
 # testing area

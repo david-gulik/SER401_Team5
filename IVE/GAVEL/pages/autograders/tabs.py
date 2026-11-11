@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from GAVEL.core.background import run_in_background
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.infra.autograders.autograder_metadata import (
     AutograderInfo,
@@ -81,12 +82,19 @@ class RunAutogradersTab(ScrollableTab):
         autograder_logger = logging.getLogger("autograder_client")
 
         autograder_logger.addHandler(self.log_handler)
-        log_card = SectionCard(self._theme, "Execution Log")
-        log_card.add_row(self.log_output)
+        self._log_card = SectionCard(self._theme, "Execution Log")
+        self._log_card.add_row(self.log_output)
 
-        self.add_section(log_card)
+        clear_log_btn = QPushButton("Clear Log")
+        clear_log_btn.clicked.connect(self._clear_text_log)
+        self._log_card.add_title_suffix(clear_log_btn)
+
+        self.add_section(self._log_card)
 
         self.add_stretch()
+
+    def _clear_text_log(self):
+        self.log_output.clear()
 
     # building a stub description card
 
@@ -235,27 +243,40 @@ class RunAutogradersTab(ScrollableTab):
 
     def _run_autograders(self):
         for row in self.autograder_rows:
-            if row.checkbox.isChecked():
-                try:
-                    elapsed = autograde_submissions_folder(
-                        Language.JAVA,
-                        input_folder=r"C:/Users\dcgul\OneDrive\Desktop\SER401 Project\SER401_Team5\data_original/10_24_autograder_test",
-                        output_folder=r"C:/Users\dcgul\OneDrive\Desktop\SER401 Project\SER401_Team5\data_original/autograder_test_output",
-                        autograder_folder_arg=row.autograder.path.resolve(),
-                    )
-                    row.autograder.has_run = True
-                    row.autograder.duration_seconds = elapsed
-                    row.autograder.last_run = datetime.now()
-                    row.autograder.last_status = "success"
-                    save_autograder_metadata(row.autograder)
-                    row.refresh()
-                except Exception:
-                    row.autograder.has_run = False
-                    row.autograder.duration_seconds = None
-                    row.autograder.last_run = None
-                    row.autograder.last_status = "failure"
-                    save_autograder_metadata(row.autograder)
-                    row.refresh()
+            if not row.checkbox.isChecked():
+                continue
+
+            def work(row=row):
+                return autograde_submissions_folder(
+                    Language.JAVA,
+                    input_folder=r"C:/Users/dcgul/OneDrive/Desktop/SER401 Project/SER401_Team5/data_original/10_24_autograder_test",
+                    output_folder=r"C:/Users/dcgul/OneDrive/Desktop/SER401 Project/SER401_Team5/data_original/autograder_test_output",
+                    autograder_folder_arg=row.autograder.path.resolve(),
+                )
+
+            def on_result(elapsed, row=row):
+                row.autograder.has_run = True
+                row.autograder.duration_seconds = elapsed
+                row.autograder.last_run = datetime.now()
+                row.autograder.last_status = "success"
+
+                save_autograder_metadata(row.autograder)
+                row.refresh()
+
+            def on_error(exc, row=row):
+                row.autograder.has_run = True
+                row.autograder.duration_seconds = None
+                row.autograder.last_run = None
+                row.autograder.last_status = "failure"
+
+                save_autograder_metadata(row.autograder)
+                row.refresh()
+
+            run_in_background(
+                work,
+                on_result,
+                on_error,
+            )
 
     def _update_run_button_state(self) -> None:
         self.run_btn.setEnabled(self._can_run())
