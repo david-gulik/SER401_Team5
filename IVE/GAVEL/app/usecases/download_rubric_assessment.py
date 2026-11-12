@@ -11,7 +11,7 @@ from GAVEL.app.workspace.layout import (
     DataTree,
     module_number_from_name,
 )
-from GAVEL.app.workspace.manifest import AssignmentEntry
+from GAVEL.app.workspace.manifest import assignment_entry
 from GAVEL.app.workspace.recording import (
     guard_not_downloaded,
     note_assignment,
@@ -82,9 +82,8 @@ class DownloadRubricAssessmentUseCase:
 
         note_assignment(
             request.folder,
-            AssignmentEntry(
-                canvas_id=assignment.id,
-                name=assignment.name,
+            assignment_entry(
+                assignment,
                 module_number=target_folder.module_number,
                 has_rubric=definition is not None,
             ),

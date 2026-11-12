@@ -23,7 +23,10 @@
         "term_code": { "type": ["string", "null"], "pattern": "^2[0-9]{2}[1479]$" },
         "canvas_course_id": { "type": ["integer", "null"] },
         "canvas_course_name": { "type": ["string", "null"] },
-        "canvas_course_code": { "type": ["string", "null"] }
+        "canvas_course_code": { "type": ["string", "null"] },
+        "canvas_time_zone": { "type": ["string", "null"] },
+        "canvas_start_at": { "type": ["string", "null"], "format": "date-time" },
+        "canvas_end_at": { "type": ["string", "null"], "format": "date-time" }
       }
     },
     "created_at": { "type": "string", "format": "date-time" },
@@ -37,7 +40,9 @@
         "additionalProperties": false,
         "properties": {
           "id": { "type": "integer" },
-          "name": { "type": "string" }
+          "name": { "type": "string" },
+          "position": { "type": ["integer", "null"] },
+          "unlock_at": { "type": ["string", "null"], "format": "date-time" }
         }
       }
     },
@@ -54,7 +59,37 @@
           "has_rubric": { "type": "boolean" },
           "due_at": { "type": ["string", "null"], "format": "date-time" },
           "points_possible": { "type": ["number", "null"] },
-          "gradescope_name": { "type": ["string", "null"] }
+          "gradescope_name": { "type": ["string", "null"] },
+          "unlock_at": { "type": ["string", "null"], "format": "date-time" },
+          "lock_at": { "type": ["string", "null"], "format": "date-time" },
+          "has_overrides": { "type": ["boolean", "null"] },
+          "submission_types": { "type": ["array", "null"], "items": { "type": "string" } },
+          "assignment_group_id": { "type": ["integer", "null"] },
+          "published": { "type": ["boolean", "null"] },
+          "omit_from_final_grade": { "type": ["boolean", "null"] },
+          "grading_type": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "quizzes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["canvas_id", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "canvas_id": { "type": "integer" },
+          "name": { "type": "string" },
+          "due_at": { "type": ["string", "null"], "format": "date-time" },
+          "points_possible": { "type": ["number", "null"] },
+          "unlock_at": { "type": ["string", "null"], "format": "date-time" },
+          "lock_at": { "type": ["string", "null"], "format": "date-time" },
+          "quiz_type": { "type": ["string", "null"] },
+          "assignment_id": { "type": ["integer", "null"] },
+          "allowed_attempts": { "type": ["integer", "null"] },
+          "time_limit": { "type": ["integer", "null"] },
+          "question_count": { "type": ["integer", "null"] },
+          "published": { "type": ["boolean", "null"] }
         }
       }
     },

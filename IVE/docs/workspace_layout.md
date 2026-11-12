@@ -65,11 +65,14 @@ Written by GAVEL, updated after every download.
 | Field | Meaning |
 | --- | --- |
 | `schema_version` | `1`. Bump when the shape changes. |
-| `course` | The folder name parts plus `term_code`, `canvas_course_id`, `canvas_course_name`, `canvas_course_code`. |
+| `course` | The folder name parts plus `term_code`, `canvas_course_id`, `canvas_course_name`, `canvas_course_code`, `canvas_time_zone` (IANA name, the course's local time for reading due dates), `canvas_start_at`, `canvas_end_at`. |
 | `created_at`, `updated_at` | ISO 8601 UTC. |
 | `gavel_version` | The GAVEL build that last wrote the file. |
-| `modules` | Canvas modules (`id`, `name`) for the course. |
-| `assignments` | One entry per Canvas assignment seen: `canvas_id`, `name`, `module_number`, `has_rubric`, and `due_at`, `points_possible`, `gradescope_name` when known. |
+| `modules` | Canvas modules (`id`, `name`, `position`, `unlock_at`) for the course. |
+| `assignments` | One entry per Canvas assignment seen: `canvas_id`, `name`, `module_number`, `has_rubric`, and when known `gradescope_name` plus the Canvas fields `due_at`, `points_possible`, `unlock_at`, `lock_at`, `has_overrides`, `submission_types`, `assignment_group_id`, `published`, `omit_from_final_grade`, `grading_type`. `has_overrides` true means some sections or students have their own dates, which `due_at` does not show. |
+| `quizzes` | One entry per downloaded Canvas quiz: `canvas_id`, `name`, and when known `due_at`, `points_possible`, `unlock_at`, `lock_at`, `quiz_type` (`assignment`, `practice_quiz`, `graded_survey`, `survey`), `assignment_id` (the quiz's assignment and gradebook column), `allowed_attempts` (`-1` is unlimited), `time_limit` (minutes, `null` is none), `question_count`, `published`. |
+
+All Canvas timestamps (`due_at`, `unlock_at`, `lock_at`, `canvas_start_at`, ...) are stored with a UTC offset (`+00:00`), like the manifest's own; use `canvas_time_zone` to show them in course-local time.
 | `artifacts` | One entry per downloaded file: `kind`, `path` (relative to the course folder, `/` separators), `downloaded_at`, `sha256`, `size_bytes`, `source_id` (quiz or assignment id), `label` (quiz title or Gradescope assignment name when the path alone does not say). |
 | `anonymization` | The last run that wrote `anonymized/`: `anonymized_at`, and `sources`, the `path` and `sha256` of each `original/` file it read. The Sanitize page marks a course Out of date when an original no longer matches its recorded hash, or when it has no recorded hash. `null` until the course is anonymized. |
 

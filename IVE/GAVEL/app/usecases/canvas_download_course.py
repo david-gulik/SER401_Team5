@@ -21,7 +21,8 @@ class DownloadCourseDataResult:
 
 
 class DownloadCourseDataUseCase:
-    """Records the Canvas course's name, code and modules in ``manifest.json``.
+    """Records the Canvas course's name, code, dates, time zone and modules in
+    ``manifest.json``.
 
     There is no separate course file any more: the manifest is where course
     metadata lives, so this can be re-run to refresh it at any time.
@@ -40,6 +41,9 @@ class DownloadCourseDataUseCase:
             canvas_course_id=course_data.course.id,
             canvas_course_name=course_data.course.name,
             canvas_course_code=course_data.course.course_code,
+            canvas_time_zone=course_data.course.time_zone,
+            canvas_start_at=course_data.course.start_at,
+            canvas_end_at=course_data.course.end_at,
             modules=tuple(course_data.modules),
         )
 
