@@ -268,3 +268,70 @@ def test_missing_rubric_definition_does_not_block_grades(vm, monkeypatch):
 
     assert vm.rubric_definition is None
     assert vm.rubric_definition_error is None
+
+
+def test_autograder_zips_are_discovered(vm, tmp_path):
+    from GAVEL.app.workspace.layout import CourseFolder, Workspace
+
+    workspace = Workspace(tmp_path)
+    course = CourseFolder(
+        workspace.courses_dir / COURSE.key.folder_name,
+        COURSE.key,
+    )
+
+    autograder_dir = workspace.course_autograders_dir(course.key)
+    autograder_dir.mkdir(parents=True)
+
+    first_zip = autograder_dir / "autograder_v1.zip"
+    second_zip = autograder_dir / "autograder_v2.zip"
+
+    first_zip.touch()
+    second_zip.touch()
+    (autograder_dir / "notes.txt").touch()
+
+    vm.select_course(course)
+
+    assert vm.available_autograder_zips == (first_zip, second_zip)
+    assert vm.selected_autograder_zip is None
+    assert vm.autograder_zip_error is None
+
+
+def test_autograder_selection_resets_when_course_changes(vm, tmp_path):
+    from GAVEL.app.workspace.layout import CourseFolder, Workspace
+
+    workspace = Workspace(tmp_path)
+    course = CourseFolder(
+        workspace.courses_dir / COURSE.key.folder_name,
+        COURSE.key,
+    )
+
+    autograder_dir = workspace.course_autograders_dir(course.key)
+    autograder_dir.mkdir(parents=True)
+
+    zip_path = autograder_dir / "autograder.zip"
+    zip_path.touch()
+
+    vm.select_course(course)
+    vm.select_autograder_zip(zip_path)
+
+    assert vm.selected_autograder_zip == zip_path
+
+    vm.select_course(None)
+
+    assert vm.available_autograder_zips == ()
+    assert vm.selected_autograder_zip is None
+
+
+def test_rejects_unknown_autograder_zip(vm, tmp_path):
+    from GAVEL.app.workspace.layout import CourseFolder, Workspace
+
+    workspace = Workspace(tmp_path)
+    course = CourseFolder(
+        workspace.courses_dir / COURSE.key.folder_name,
+        COURSE.key,
+    )
+
+    vm.select_course(course)
+
+    with pytest.raises(ValueError):
+        vm.select_autograder_zip(tmp_path / "unknown.zip")

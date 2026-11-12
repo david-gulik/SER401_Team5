@@ -142,3 +142,113 @@ def test_selecting_assignment_populates_student_matrix(qapp, theme, monkeypatch)
     assert tab.student_grade_matrix.table.columnCount() == 0
 
     tab.deleteLater()
+
+
+def test_autograder_zip_dropdown_selection(qapp, theme, tmp_path, monkeypatch):
+    from GAVEL.app.workspace.layout import Workspace
+
+    autograder_dir = tmp_path / "autograders" / "ser222"
+    autograder_dir.mkdir(parents=True)
+
+    first_zip = autograder_dir / "autograder_v1.zip"
+    second_zip = autograder_dir / "autograder_v2.zip"
+
+    first_zip.touch()
+    second_zip.touch()
+
+    monkeypatch.setattr(
+        Workspace,
+        "course_autograders_dir",
+        lambda self, key: autograder_dir,
+    )
+
+    tab, vm = _tab(theme)
+
+    assert not tab.autograder_zip_combo.isEnabled()
+
+    tab.set_course(COURSE)
+
+    assert tab.autograder_zip_combo.count() == 3
+    assert not tab.autograder_zip_combo.isEnabled()
+
+    tab.assignment_combo.setCurrentIndex(2)
+
+    assert tab.autograder_zip_combo.isEnabled()
+
+    tab.autograder_zip_combo.setCurrentIndex(1)
+
+    assert vm.selected_autograder_zip == first_zip
+
+    tab.assignment_combo.setCurrentIndex(1)
+
+    assert vm.selected_autograder_zip is None
+    assert tab.autograder_zip_combo.currentIndex() == 0
+    assert tab.autograder_zip_combo.isEnabled()
+
+    tab.autograder_zip_combo.setCurrentIndex(2)
+
+    assert vm.selected_autograder_zip == second_zip
+
+    tab.set_course(None)
+
+    assert vm.selected_autograder_zip is None
+    assert vm.available_autograder_zips == ()
+    assert not tab.autograder_zip_combo.isEnabled()
+
+    tab.deleteLater()
+
+
+def test_autograder_zip_dropdown_handles_no_files(qapp, theme, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        Workspace,
+        "course_autograders_dir",
+        lambda self, key: tmp_path / "autograders" / "ser222",
+    )
+
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    assert vm.available_autograder_zips == ()
+    assert vm.selected_autograder_zip is None
+
+    assert tab.autograder_zip_combo.count() == 1
+    assert tab.autograder_zip_combo.currentText() == "No autograder ZIPs available"
+    assert not tab.autograder_zip_combo.isEnabled()
+
+    assert len(vm.human_grades) == 2
+    assert len(vm.proxy_grades) == 2
+
+    tab.deleteLater()
+
+
+def test_refresh_resets_autograder_zip_selection(qapp, theme, tmp_path, monkeypatch):
+    autograder_dir = tmp_path / "autograders" / "ser222"
+    autograder_dir.mkdir(parents=True)
+
+    zip_path = autograder_dir / "autograder_v1.zip"
+    zip_path.touch()
+
+    monkeypatch.setattr(
+        Workspace,
+        "course_autograders_dir",
+        lambda self, key: autograder_dir,
+    )
+
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    tab.autograder_zip_combo.setCurrentIndex(1)
+
+    assert vm.selected_autograder_zip == zip_path
+
+    tab.refresh_button.click()
+
+    assert vm.selected_assignment == vm.assignments[1]
+    assert vm.selected_autograder_zip is None
+    assert tab.autograder_zip_combo.currentIndex() == 0
+    assert tab.autograder_zip_combo.isEnabled()
+
+    tab.deleteLater()

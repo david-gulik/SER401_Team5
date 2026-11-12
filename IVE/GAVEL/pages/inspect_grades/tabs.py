@@ -11,8 +11,6 @@ from GAVEL.ui_components.section_card import SectionCard
 
 
 class InspectGradesTab(ScrollableTab):
-    """Displays assignments and grading data for the active course."""
-
     def __init__(
         self,
         theme: ThemeContext,
@@ -24,6 +22,11 @@ class InspectGradesTab(ScrollableTab):
         card = SectionCard(theme, "Assignment Selection")
 
         self.assignment_combo = QComboBox()
+        self.autograder_zip_combo = QComboBox()
+        self.autograder_zip_combo.setEnabled(False)
+        self.autograder_zip_combo.setToolTip(
+            "Select an available autograder ZIP for the current course."
+        )
         self.status_label = QLabel()
         self.status_label.setProperty("role", "text_muted")
         self.status_label.setWordWrap(True)
@@ -34,6 +37,7 @@ class InspectGradesTab(ScrollableTab):
         form_widget = QWidget()
         form = QFormLayout(form_widget)
         form.addRow("Assignment", self.assignment_combo)
+        form.addRow("Autograder ZIP (Proxy Grades)", self.autograder_zip_combo)
 
         card.add_row(form_widget)
         card.add_row(self.refresh_button)
@@ -47,17 +51,18 @@ class InspectGradesTab(ScrollableTab):
         self.add_stretch()
 
         self.assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
+        self.autograder_zip_combo.currentIndexChanged.connect(self._on_autograder_zip_changed)
 
         self._render_assignments()
+        self._render_autograder_zips()
 
     def set_course(self, course: CourseFolder | None) -> None:
-        """Update assignments when the active course changes."""
         self._viewmodel.select_course(course)
         self.student_grade_matrix.clear()
         self._render_assignments()
+        self._render_autograder_zips()
 
     def refresh(self) -> None:
-        """Refresh assignments and preserve the previous selection."""
         previous_assignment = self._viewmodel.selected_assignment
 
         self.set_course(self._viewmodel.selected_course)
@@ -97,6 +102,7 @@ class InspectGradesTab(ScrollableTab):
     def _on_assignment_changed(self, index: int) -> None:
         assignment = self.assignment_combo.itemData(index)
         self._viewmodel.select_assignment(assignment)
+        self._render_autograder_zips()
         self._render_grading_status()
 
         self.student_grade_matrix.clear()
@@ -107,8 +113,42 @@ class InspectGradesTab(ScrollableTab):
                 self._viewmodel.rubric_definition,
             )
 
+    def _render_autograder_zips(self) -> None:
+        self.autograder_zip_combo.blockSignals(True)
+        self.autograder_zip_combo.clear()
+
+        if self._viewmodel.autograder_zip_error:
+            placeholder = "Could not load autograder ZIPs"
+        elif not self._viewmodel.available_autograder_zips:
+            placeholder = "No autograder ZIPs available"
+        else:
+            placeholder = "Select an autograder ZIP"
+
+        self.autograder_zip_combo.addItem(placeholder, None)
+
+        for zip_path in self._viewmodel.available_autograder_zips:
+            self.autograder_zip_combo.addItem(zip_path.name, zip_path)
+
+        selected_zip = self._viewmodel.selected_autograder_zip
+
+        if selected_zip is not None:
+            index = self.autograder_zip_combo.findData(selected_zip)
+            if index >= 0:
+                self.autograder_zip_combo.setCurrentIndex(index)
+
+        self.autograder_zip_combo.setEnabled(
+            self._viewmodel.selected_assignment is not None
+            and bool(self._viewmodel.available_autograder_zips)
+            and self._viewmodel.autograder_zip_error is None
+        )
+
+        self.autograder_zip_combo.blockSignals(False)
+
+    def _on_autograder_zip_changed(self, index: int) -> None:
+        zip_path = self.autograder_zip_combo.itemData(index)
+        self._viewmodel.select_autograder_zip(zip_path)
+
     def _render_grading_status(self) -> None:
-        """Display the human and proxy grading data loading results."""
         if self._viewmodel.selected_assignment is None:
             self.status_label.setText("Select an assignment.")
             return

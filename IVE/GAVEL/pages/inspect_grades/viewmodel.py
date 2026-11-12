@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from zipfile import BadZipFile
 
 from GAVEL.app.dtos.gradescope import GradescopeSubmission
@@ -10,7 +11,7 @@ from GAVEL.app.workspace.dataset import (
     DatasetReaders,
     MissingArtifactError,
 )
-from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.layout import CourseFolder, Workspace
 from GAVEL.app.workspace.manifest import AssignmentEntry, ManifestError
 
 
@@ -33,12 +34,17 @@ class InspectGradesViewModel:
         self.rubric_definition: RubricDefinition | None = None
         self.rubric_definition_error: str | None = None
 
+        self.available_autograder_zips: tuple[Path, ...] = ()
+        self.selected_autograder_zip: Path | None = None
+        self.autograder_zip_error: str | None = None
+
     def select_course(self, course: CourseFolder | None) -> None:
         self.selected_course = course
         self.selected_assignment = None
         self.assignments = ()
         self.assignment_error = None
         self._clear_grades()
+        self._clear_autograder_zips()
 
         if course is None:
             return
@@ -50,6 +56,8 @@ class InspectGradesViewModel:
         except (MissingArtifactError, ManifestError, OSError) as exc:
             self.assignment_error = str(exc)
 
+        self._load_autograder_zips()
+
     def select_assignment(
         self,
         assignment: AssignmentEntry | None,
@@ -59,6 +67,7 @@ class InspectGradesViewModel:
 
         self.selected_assignment = assignment
         self._clear_grades()
+        self.selected_autograder_zip = None
 
         if assignment is None or self.selected_course is None:
             return
@@ -122,3 +131,33 @@ class InspectGradesViewModel:
         self.proxy_grades_error = None
         self.rubric_definition = None
         self.rubric_definition_error = None
+
+    def _clear_autograder_zips(self) -> None:
+        self.available_autograder_zips = ()
+        self.selected_autograder_zip = None
+        self.autograder_zip_error = None
+
+    def _load_autograder_zips(self) -> None:
+        if self.selected_course is None:
+            return
+
+        workspace = Workspace(self.selected_course.workspace_root)
+        directory = workspace.course_autograders_dir(self.selected_course.key)
+
+        try:
+            if directory.is_dir():
+                self.available_autograder_zips = tuple(
+                    sorted(
+                        path
+                        for path in directory.iterdir()
+                        if path.is_file() and path.suffix.lower() == ".zip"
+                    )
+                )
+        except OSError as exc:
+            self.autograder_zip_error = str(exc)
+
+    def select_autograder_zip(self, zip_path: Path | None) -> None:
+        if zip_path is not None and zip_path not in self.available_autograder_zips:
+            raise ValueError("Autograder ZIP is not available for this course.")
+
+        self.selected_autograder_zip = zip_path
