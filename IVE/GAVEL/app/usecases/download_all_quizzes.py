@@ -27,6 +27,8 @@ class DownloadAllQuizzesRequest:
     course_id: int
     folder: CourseFolder
     overwrite: bool = False
+    # Only these quizzes, when given; used to retry the ones refused as already downloaded.
+    quiz_ids: frozenset[int] | None = None
 
 
 @dataclass(frozen=True)
@@ -74,7 +76,8 @@ class DownloadAllQuizzesUseCase:
     """Saves every quiz's student analysis export as ``original/quizzes/<quiz id>.csv``.
 
     The quiz title goes on the manifest entry's ``label`` so the folder stays
-    keyed by id. A quiz already in the folder is skipped, not overwritten.
+    keyed by id. A quiz already in the folder is skipped unless the request
+    asks to overwrite.
     ``on_progress`` hears once the quiz list is known and again as each quiz
     finishes, whether it was saved, skipped, or failed.
     """
@@ -93,6 +96,8 @@ class DownloadAllQuizzesUseCase:
         tree = request.folder.original
         log.info("Listing quizzes for course %s", request.course_id)
         quizzes = self._canvas_client.list_quizzes(request.course_id)
+        if request.quiz_ids is not None:
+            quizzes = [q for q in quizzes if q.id in request.quiz_ids]
         total = len(quizzes)
         log.info("Found %d quiz(zes) for course %s", total, request.course_id)
         report(on_progress, PROGRESS_LABEL, 0, total)

@@ -395,6 +395,24 @@ class TestAlreadyDownloaded:
         assert len(result.succeeded) == len(ASSIGNMENTS)
         assert result.already_downloaded == ()
 
+    def test_assignment_ids_limits_the_run_to_those_assignments(
+        self, use_case, request_, client, folder
+    ):
+        use_case.execute(request_)
+        client.fetch_rubric_calls.clear()
+
+        result = use_case.execute(
+            DownloadAllRubricAssessmentsRequest(
+                course_id=COURSE_ID,
+                folder=folder,
+                overwrite=True,
+                assignment_ids=frozenset({102}),
+            )
+        )
+
+        assert [aid for _, aid in client.fetch_rubric_calls] == [102]
+        assert [o.assignment_id for o in result.succeeded] == [102]
+
 
 class TestProgress:
     def test_reports_once_up_front_and_once_per_assignment(self, use_case, request_):

@@ -11,6 +11,11 @@ the course's folder in the workspace-level ``autograders/`` area, where every
 section of the course can use them. A submissions export whose module cannot
 be told goes to ``submissions/_unmatched/`` and is still recorded in the
 manifest, so nothing downloaded is ever lost.
+
+Gradescope hands over every export at once, so a download that finds some
+exports still on disk files only the missing ones and keeps the rest as they
+are, unless the request asks to overwrite. When nothing is missing it refuses
+before opening the browser.
 """
 
 from __future__ import annotations
@@ -28,7 +33,7 @@ from typing import Any
 from GAVEL.app.dtos.canvas_course import CanvasAssignment
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.progress import ProgressCallback
-from GAVEL.app.workspace.layout import CourseFolder, Workspace, module_number_from_name
+from GAVEL.app.workspace.layout import CourseFolder, DataTree, Workspace, module_number_from_name
 from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.app.workspace.recording import (
     ArtifactExistsError,
@@ -37,6 +42,7 @@ from GAVEL.app.workspace.recording import (
     note_assignment,
     note_course,
     record,
+    relative_posix,
     sha256_of,
 )
 from GAVEL.infra.gradescope.http_gradescope_client import (
@@ -126,6 +132,8 @@ class DownloadGradescopeSubmissionsResult:
     saved_path: Path  # the submissions folder
     artifacts: tuple[GradescopeArtifact, ...]
     message: str
+    # Exports left alone because they were already on disk; empty when overwriting.
+    kept: tuple[Path, ...] = ()
 
     @property
     def matched(self) -> tuple[GradescopeArtifact, ...]:
@@ -178,7 +186,7 @@ class DownloadGradescopeSubmissionsUseCase:
         tree = folder.original
         workspace = Workspace(folder.workspace_root)
         if not request.overwrite:
-            self._guard_nothing_downloaded_yet(folder)
+            self._guard_something_missing(folder)
 
         assignments_unavailable = False
         log.info("Listing Canvas assignments for course %s to file exports", request.course_id)
@@ -211,6 +219,7 @@ class DownloadGradescopeSubmissionsUseCase:
         ]
 
         artifacts: list[GradescopeArtifact] = []
+        kept: list[Path] = []
         for zip_path, name, kind in staged:
             module, assignment = module_for_export(name, assignments)
             if kind == "autograder":
@@ -221,6 +230,13 @@ class DownloadGradescopeSubmissionsUseCase:
                     target = tree.submissions_dir / UNMATCHED_DIR / zip_path.name
                 else:
                     target = tree.module_submissions(module).zip_path
+                if _export_on_disk(tree, module, target):
+                    if not request.overwrite:
+                        log.info("'%s' is already at %s; kept it", name, target)
+                        zip_path.unlink()
+                        kept.append(target)
+                        continue
+                    log.warning("Overwriting %s", relative_posix(folder, target))
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(zip_path), str(target))
                 if module is None:
@@ -275,24 +291,52 @@ class DownloadGradescopeSubmissionsUseCase:
         if result.unmatched:
             names = ", ".join(sorted({a.gradescope_name for a in result.unmatched}))
             message += f", {len(result.unmatched)} left in {UNMATCHED_DIR}/: {names}"
+        if kept:
+            message += f", {len(kept)} already on disk and kept"
         if assignments_unavailable:
             message += "; the Canvas assignment list could not be fetched"
         message += ")"
         return DownloadGradescopeSubmissionsResult(
-            saved_path=result.saved_path, artifacts=result.artifacts, message=message
+            saved_path=result.saved_path,
+            artifacts=result.artifacts,
+            message=message,
+            kept=tuple(kept),
         )
 
     @staticmethod
-    def _guard_nothing_downloaded_yet(folder: CourseFolder) -> None:
-        """Gradescope is all-or-nothing: refuse if any export is already in the folder."""
+    def _guard_something_missing(folder: CourseFolder) -> None:
+        """Refuse before the browser opens when every export downloaded so far is still on disk.
+
+        Something counts as missing when the manifest lists an export or
+        autograder that is gone from disk, or a module's zip is there but its
+        extracted copy is not.
+        """
         manifest = load_or_create_manifest(folder)
+        present: list[Path] = []
+        missing = False
         for kind in ("submissions", "autograder"):
-            existing = manifest.artifacts_of_kind(kind)
-            if existing:
-                raise ArtifactExistsError(folder, artifact_path(folder, existing[0]))
+            for entry in manifest.artifacts_of_kind(kind):
+                path = artifact_path(folder, entry)
+                if path.exists():
+                    present.append(path)
+                else:
+                    missing = True
         for module in folder.original.list_module_submissions():
-            if module.zip_path.exists():
-                raise ArtifactExistsError(folder, module.zip_path)
+            if not module.zip_path.exists():
+                continue
+            if not module.extracted_dir.is_dir():
+                missing = True
+            elif module.zip_path not in present:
+                present.append(module.zip_path)
+        if present and not missing:
+            raise ArtifactExistsError(folder, present[0])
+
+
+def _export_on_disk(tree: DataTree, module: int | None, target: Path) -> bool:
+    """A filed export is complete: its zip is there and, for a module, so is its extraction."""
+    if not target.exists():
+        return False
+    return module is None or tree.module_submissions(module).extracted_dir.is_dir()
 
 
 def _file_autograder(zip_path: Path, directory: Path) -> Path:
