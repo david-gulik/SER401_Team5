@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -124,7 +125,7 @@ class AnonymizeGradescopeSubmissionsUseCase:
 
         if not input_path.exists():
             raise FileNotFoundError(f"Input folder does not exist: {input_path}")
-
+        log = logging.getLogger("AnonymizeGradescopeSubmissionsUseCase")
         file_extensions = {".java", ".c", ".h", ".cpp", ".cc", ".cxx", ".hpp"}
 
         processed_count = 0
@@ -143,12 +144,13 @@ class AnonymizeGradescopeSubmissionsUseCase:
                 text = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 text = path.read_text(encoding="latin-1")
-
-            cleaned = strip_gradescope_comments(text)
-
+            try:
+                cleaned = strip_gradescope_comments(text)
+            except Exception:
+                log.info(f"ERROR: {path}")
             # Build output path
             rel = path.relative_to(input_path)
-            anon_name = rel.with_name(rel.stem + "_anon" + rel.suffix)
+            anon_name = rel.with_name(rel.stem + rel.suffix)
             out_path = output_path / anon_name
 
             out_path.parent.mkdir(parents=True, exist_ok=True)

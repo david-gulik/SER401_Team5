@@ -23,6 +23,10 @@ from GAVEL.app.usecases.anonymize_gradescope_submissions import (
     AnonymizeGradescopeSubmissionsRequest,
     AnonymizeGradescopeSubmissionsUseCase,
 )
+from GAVEL.app.usecases.anonymize_gradescope_yml import (
+    AnonymizeGradescopeYMLRequest,
+    AnonymizeGradescopeYMLUseCase,
+)
 from GAVEL.app.usecases.anonymize_roster import (
     AnonymizeRosterRequest,
     AnonymizeRosterUseCase,
@@ -158,6 +162,7 @@ class AnonymizeCourseDatasetUseCase:
         anonymize_rubric_use_case: AnonymizeRubricAssessmentUseCase,
         gradescope_reader: YamlGradescopeReader,
         anonymize_gradescope_use_case: AnonymizeGradescopeSubmissionsUseCase,
+        anonymize_gradescope_yml_use_case: AnonymizeGradescopeYMLUseCase,
     ) -> None:
         self._consent_form_reader = consent_form_reader
         self._downselect_use_case = downselect_use_case
@@ -171,6 +176,7 @@ class AnonymizeCourseDatasetUseCase:
         self._anonymize_rubric_use_case = anonymize_rubric_use_case
         self._gradescope_reader = gradescope_reader
         self._anonymize_gradescope_use_case = anonymize_gradescope_use_case
+        self._anonymize_gradescope_yml_use_case = anonymize_gradescope_yml_use_case
 
     def execute(
         self,
@@ -363,6 +369,11 @@ class AnonymizeCourseDatasetUseCase:
                 output_dir / "submissions",
                 set(roster_consented_ids),
                 failures,
+            )
+            self._anonymize_ymls(
+                submissions_dir,
+                consented_ids=roster_consented_ids,
+                id_map=roster_id_map,
             )
 
         if course_folder is not None:
@@ -620,6 +631,36 @@ class AnonymizeCourseDatasetUseCase:
                     outputs=(submission_output,),
                 )
 
+    def _anonymize_ymls(
+        self,
+        course_folder: Path,
+        consented_ids: tuple[int, ...],
+        id_map: tuple[tuple[int, int], ...],
+    ):
+        original_root = course_folder.parent
+        anonymized_root = original_root.parent / "anonymized"
+
+        for yml_path in original_root.rglob("submission_metadata.yml"):
+            # Path relative to original/
+            relative_path = yml_path.relative_to(original_root)
+
+            # Equivalent destination under anonymized/
+            output_path = anonymized_root / relative_path
+            output_path = output_path.parents[2]
+            output_path = output_path / "submission_metadata.yml"
+
+            # Ensure parent directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            self._anonymize_gradescope_yml_use_case.execute(
+                AnonymizeGradescopeYMLRequest(
+                    input_YML=yml_path,
+                    consented_ids=consented_ids,
+                    id_map=id_map,
+                    output_YML=output_path,
+                )
+            )
+
 
 def _course_folder(snapshot_dir: Path) -> CourseFolder | None:
     """The course folder being anonymized, or None for a folder not named like one.
@@ -649,4 +690,5 @@ def build_anonymize_course_dataset_use_case() -> AnonymizeCourseDatasetUseCase:
         anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
         gradescope_reader=YamlGradescopeReader(),
         anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
+        anonymize_gradescope_yml_use_case=AnonymizeGradescopeYMLUseCase(),
     )
