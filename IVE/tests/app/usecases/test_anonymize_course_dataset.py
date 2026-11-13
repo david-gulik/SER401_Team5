@@ -14,6 +14,7 @@ from GAVEL.app.usecases.anonymize_gradebook import AnonymizeGradebookUseCase
 from GAVEL.app.usecases.anonymize_gradescope_submissions import (
     AnonymizeGradescopeSubmissionsUseCase,
 )
+from GAVEL.app.usecases.anonymize_gradescope_yml import AnonymizeGradescopeYMLUseCase
 from GAVEL.app.usecases.anonymize_roster import AnonymizeRosterUseCase
 from GAVEL.app.usecases.anonymize_rubric_assessment import (
     AnonymizeRubricAssessmentUseCase,
@@ -57,6 +58,7 @@ def make_use_case(**overrides) -> AnonymizeCourseDatasetUseCase:
         "anonymize_rubric_use_case": AnonymizeRubricAssessmentUseCase(),
         "gradescope_reader": YamlGradescopeReader(),
         "anonymize_gradescope_use_case": AnonymizeGradescopeSubmissionsUseCase(),
+        "anonymize_gradescope_yml_use_case": AnonymizeGradescopeYMLUseCase(),
     }
     return AnonymizeCourseDatasetUseCase(**{**parts, **overrides})
 
@@ -363,8 +365,8 @@ class TestFullPipeline:
 
         output_dir = tmp_path / "anonymized" / "submissions" / "m1"
 
-        included_file = output_dir / "submission_1" / "Main_anon.java"
-        excluded_file = output_dir / "submission_2" / "Main_anon.java"
+        included_file = output_dir / "submission_1" / "Main.java"
+        excluded_file = output_dir / "submission_2" / "Main.java"
 
         assert included_file.exists()
         assert not excluded_file.exists()
@@ -668,7 +670,7 @@ class WritesThenFails:
     def execute(self, request) -> None:
         output = Path(request.output_folder)
         output.mkdir(parents=True)
-        (output / "Main_anon.java").write_text("class Main {}\n", encoding="utf-8")
+        (output / "Main.java").write_text("class Main {}\n", encoding="utf-8")
         raise OSError("disk full")
 
 
