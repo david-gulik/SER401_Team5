@@ -14,6 +14,12 @@ class CriterionScorePair:
     criterion: str
     human_points: float
     proxy_points: float
+    # An anonymized student identifier.
+    # Defaults to "" so callers that only need the score values are unaffected.
+    # Note: tested with fixtures, but will not work against real data until
+    # anonymize_course_dataset.py writes an anonymized submission_metadata.yml
+    # into anonymized/. The anonymized data should be written to that location.
+    student_identifier: str = ""
 
 
 @dataclass(frozen=True)

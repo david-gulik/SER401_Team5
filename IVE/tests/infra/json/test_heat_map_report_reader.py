@@ -18,20 +18,34 @@ def test_reads_rows_in_order(tmp_path: Path) -> None:
     _write_report(
         path,
         [
-            {"criterion": "main menu", "human_points": 1.0, "proxy_points": 2.0},
-            {"criterion": "memory leaks", "human_points": 2.0, "proxy_points": 2.0},
+            {
+                "student_identifier": "anon_01",
+                "criterion": "main menu",
+                "human_points": 1.0,
+                "proxy_points": 2.0,
+            },
+            {
+                "student_identifier": "anon_02",
+                "criterion": "memory leaks",
+                "human_points": 2.0,
+                "proxy_points": 2.0,
+            },
         ],
     )
 
     pairs = read_criterion_score_pairs(path)
 
     assert pairs == (
-        CriterionScorePair("main menu", human_points=1.0, proxy_points=2.0),
-        CriterionScorePair("memory leaks", human_points=2.0, proxy_points=2.0),
+        CriterionScorePair(
+            "main menu", human_points=1.0, proxy_points=2.0, student_identifier="anon_01"
+        ),
+        CriterionScorePair(
+            "memory leaks", human_points=2.0, proxy_points=2.0, student_identifier="anon_02"
+        ),
     )
 
 
-def test_student_identifiers_are_not_returned(tmp_path: Path) -> None:
+def test_student_identifiers_are_returned(tmp_path: Path) -> None:
     path = tmp_path / "report.json"
     _write_report(
         path,
@@ -47,8 +61,7 @@ def test_student_identifiers_are_not_returned(tmp_path: Path) -> None:
 
     pairs = read_criterion_score_pairs(path)
 
-    assert pairs == (CriterionScorePair("main menu", human_points=1.0, proxy_points=2.0),)
-    assert not hasattr(pairs[0], "student_identifier")
+    assert pairs[0].student_identifier == "anon_01"
 
 
 def test_empty_report_gives_empty_tuple(tmp_path: Path) -> None:
