@@ -35,7 +35,9 @@ class AnonymizeGradescopeYMLUseCase:
     Use case for anonymizing Gradescope YML
     """
 
-    def execute(self, request: AnonymizeGradescopeYMLRequest) -> AnonymizeGradescopeYMLResult | None:
+    def execute(
+        self, request: AnonymizeGradescopeYMLRequest
+    ) -> AnonymizeGradescopeYMLResult | None:
 
         # TODO: preserve original yaml formatting
         # class LiteralString(str):
