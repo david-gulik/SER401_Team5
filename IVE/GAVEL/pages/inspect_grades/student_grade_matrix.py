@@ -23,8 +23,6 @@ from GAVEL.ui_components.section_card import SectionCard
 
 
 class ComparisonCellDelegate(QStyledItemDelegate):
-    """Keep comparison colors visible"""
-
     def paint(self, painter, option, index):
         super().paint(painter, option, index)
 
@@ -54,12 +52,10 @@ class ComparisonCellDelegate(QStyledItemDelegate):
 
 
 class StudentGradeMatrix(QWidget):
-    """Displays student grades organized by rubric criterion."""
-
     def __init__(self, theme: ThemeContext) -> None:
         super().__init__()
 
-        self._card = SectionCard(theme, "Student Grade Matrix")
+        self._card = SectionCard(theme, "Grade Matrix")
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search by student ID...")
@@ -112,7 +108,6 @@ class StudentGradeMatrix(QWidget):
         self.clear()
 
     def clear(self) -> None:
-        """Remove all displayed student and rubric data."""
         self.table.clear()
         self.table.setRowCount(0)
         self.table.setColumnCount(0)
@@ -127,7 +122,6 @@ class StudentGradeMatrix(QWidget):
         rubric: RubricDefinition,
         proxy_scores_by_student: dict[int, dict[str, float]] | None = None,
     ) -> None:
-        """Display human grades and optional proxy comparisons."""
         self.clear()
 
         criteria = rubric.criteria
@@ -195,8 +189,6 @@ class StudentGradeMatrix(QWidget):
 
             self._set_item(row, 1, human_text)
 
-            # A proxy total is available only when every rubric criterion
-            # has a corresponding proxy score.
             proxy_complete = bool(criteria) and all(
                 proxy_scores.get(criterion.id) is not None for criterion in criteria
             )
@@ -208,7 +200,6 @@ class StudentGradeMatrix(QWidget):
                 proxy_total = sum(proxy_scores[criterion.id] for criterion in criteria)
                 proxy_text = self._format_score(proxy_total)
 
-                # Only compare totals when both assessments are complete.
                 if human_complete:
                     difference = human_total - proxy_total
                     difference_text = self._format_score(difference)
@@ -253,7 +244,6 @@ class StudentGradeMatrix(QWidget):
         self.table.clearSelection()
 
     def _filter_rows(self) -> None:
-        """Filter students by ID and verified rubric mismatches."""
         search_text = self.search_input.text().strip().casefold()
         only_mismatches = self.mismatch_checkbox.isChecked()
         visible_count = 0
