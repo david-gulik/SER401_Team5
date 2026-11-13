@@ -365,8 +365,8 @@ class TestFullPipeline:
 
         output_dir = tmp_path / "anonymized" / "submissions" / "m1"
 
-        included_file = output_dir / "submission_1" / "Main_anon.java"
-        excluded_file = output_dir / "submission_2" / "Main_anon.java"
+        included_file = output_dir / "submission_1" / "Main.java"
+        excluded_file = output_dir / "submission_2" / "Main.java"
 
         assert included_file.exists()
         assert not excluded_file.exists()
@@ -670,7 +670,7 @@ class WritesThenFails:
     def execute(self, request) -> None:
         output = Path(request.output_folder)
         output.mkdir(parents=True)
-        (output / "Main_anon.java").write_text("class Main {}\n", encoding="utf-8")
+        (output / "Main.java").write_text("class Main {}\n", encoding="utf-8")
         raise OSError("disk full")
 
 
