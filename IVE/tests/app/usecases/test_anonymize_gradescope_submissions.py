@@ -53,7 +53,7 @@ def test_usecase_processes_valid_files(tmp_path):
     assert result.processed_count == 1
     assert result.skipped_count == 0
 
-    out_file = output_dir / "test_anon.java"
+    out_file = output_dir / "test.java"
     assert out_file.exists()
     assert "//" not in out_file.read_text()
 
@@ -99,7 +99,7 @@ def test_usecase_recurses_directories(tmp_path):
 
     assert result.processed_count == 1
 
-    out_file = output_dir / "nested" / "a_anon.cpp"
+    out_file = output_dir / "nested" / "a.cpp"
     assert out_file.exists()
     assert "//" not in out_file.read_text()
 
@@ -123,6 +123,6 @@ def test_usecase_handles_encoding_fallback(tmp_path):
 
     assert result.processed_count == 1
 
-    out_file = output_dir / "latin_anon.c"
+    out_file = output_dir / "latin.c"
     assert out_file.exists()
     assert "//" not in out_file.read_text()
