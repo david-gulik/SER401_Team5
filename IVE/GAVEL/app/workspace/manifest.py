@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from GAVEL.app.dtos.canvas_course import CanvasModule
+from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasModule, CanvasQuiz
 from GAVEL.app.workspace.layout import CourseKey
 
 MANIFEST_SCHEMA_VERSION = 1
@@ -73,9 +73,8 @@ class ArtifactEntry:
 class AssignmentEntry:
     """A Canvas assignment as known at download time.
 
-    ``due_at`` and ``points_possible`` stay None until the Canvas client
-    exposes them; the fields exist now so the manifest shape does not change
-    when they arrive.
+    The Canvas fields are as on ``CanvasAssignment``: timestamps are ISO 8601
+    with a UTC offset, like the manifest's own, and None means not known.
     """
 
     canvas_id: int
@@ -85,6 +84,86 @@ class AssignmentEntry:
     due_at: str | None = None
     points_possible: float | None = None
     gradescope_name: str | None = None
+    unlock_at: str | None = None
+    lock_at: str | None = None
+    has_overrides: bool | None = None
+    submission_types: tuple[str, ...] | None = None
+    assignment_group_id: int | None = None
+    published: bool | None = None
+    omit_from_final_grade: bool | None = None
+    grading_type: str | None = None
+
+
+# Filled from Canvas; a download that only knew the id leaves them None.
+_ASSIGNMENT_CANVAS_FIELDS = (
+    "due_at",
+    "points_possible",
+    "unlock_at",
+    "lock_at",
+    "has_overrides",
+    "submission_types",
+    "assignment_group_id",
+    "published",
+    "omit_from_final_grade",
+    "grading_type",
+)
+
+
+def assignment_entry(
+    assignment: CanvasAssignment,
+    *,
+    module_number: int | None,
+    has_rubric: bool,
+    gradescope_name: str | None = None,
+) -> AssignmentEntry:
+    """Manifest entry carrying every Canvas field of ``assignment``."""
+    return AssignmentEntry(
+        canvas_id=assignment.id,
+        name=assignment.name,
+        module_number=module_number,
+        has_rubric=has_rubric,
+        gradescope_name=gradescope_name,
+        **{f: getattr(assignment, f) for f in _ASSIGNMENT_CANVAS_FIELDS},
+    )
+
+
+@dataclass(frozen=True)
+class QuizEntry:
+    """A Canvas quiz as known at download time; fields as on ``CanvasQuiz``."""
+
+    canvas_id: int
+    name: str
+    due_at: str | None = None
+    points_possible: float | None = None
+    unlock_at: str | None = None
+    lock_at: str | None = None
+    quiz_type: str | None = None
+    assignment_id: int | None = None
+    allowed_attempts: int | None = None
+    time_limit: int | None = None
+    question_count: int | None = None
+    published: bool | None = None
+
+
+_QUIZ_CANVAS_FIELDS = (
+    "due_at",
+    "points_possible",
+    "unlock_at",
+    "lock_at",
+    "quiz_type",
+    "assignment_id",
+    "allowed_attempts",
+    "time_limit",
+    "question_count",
+    "published",
+)
+
+
+def quiz_entry(quiz: CanvasQuiz) -> QuizEntry:
+    """Manifest entry carrying every Canvas field of ``quiz``."""
+    return QuizEntry(
+        canvas_id=quiz.id, name=quiz.name, **{f: getattr(quiz, f) for f in _QUIZ_CANVAS_FIELDS}
+    )
 
 
 @dataclass(frozen=True)
@@ -121,9 +200,13 @@ class CourseManifest:
     canvas_course_id: int | None = None
     canvas_course_name: str | None = None
     canvas_course_code: str | None = None
+    canvas_time_zone: str | None = None
+    canvas_start_at: str | None = None
+    canvas_end_at: str | None = None
     gavel_version: str | None = None
     modules: tuple[CanvasModule, ...] = ()
     assignments: tuple[AssignmentEntry, ...] = ()
+    quizzes: tuple[QuizEntry, ...] = ()
     artifacts: tuple[ArtifactEntry, ...] = ()
     # None when no anonymization is recorded for the course.
     anonymization: AnonymizationEntry | None = None
@@ -136,6 +219,9 @@ class CourseManifest:
 
     def assignment(self, canvas_id: int) -> AssignmentEntry | None:
         return next((a for a in self.assignments if a.canvas_id == canvas_id), None)
+
+    def quiz(self, canvas_id: int) -> QuizEntry | None:
+        return next((q for q in self.quizzes if q.canvas_id == canvas_id), None)
 
 
 def new_manifest(
@@ -177,11 +263,33 @@ def record_artifact(
 def record_assignment(
     manifest: CourseManifest, entry: AssignmentEntry, *, now: str | None = None
 ) -> CourseManifest:
-    """Manifest with ``entry`` added, replacing any entry with the same Canvas id."""
+    """Manifest with ``entry`` added, replacing any entry with the same Canvas id.
+
+    A download that only knew the assignment id keeps the Canvas fields
+    (due date, points, ...) an earlier download recorded.
+    """
+    earlier = manifest.assignment(entry.canvas_id)
+    if earlier is not None:
+        kept_fields = {
+            f: getattr(earlier, f) for f in _ASSIGNMENT_CANVAS_FIELDS if getattr(entry, f) is None
+        }
+        entry = replace(entry, **kept_fields)
     kept = tuple(a for a in manifest.assignments if a.canvas_id != entry.canvas_id)
     return replace(
         manifest,
         assignments=tuple(sorted((*kept, entry), key=lambda a: a.canvas_id)),
+        updated_at=now or utc_now_iso(),
+    )
+
+
+def record_quiz(
+    manifest: CourseManifest, entry: QuizEntry, *, now: str | None = None
+) -> CourseManifest:
+    """Manifest with ``entry`` added, replacing any entry with the same Canvas id."""
+    kept = tuple(q for q in manifest.quizzes if q.canvas_id != entry.canvas_id)
+    return replace(
+        manifest,
+        quizzes=tuple(sorted((*kept, entry), key=lambda q: q.canvas_id)),
         updated_at=now or utc_now_iso(),
     )
 
@@ -202,6 +310,9 @@ def set_course_metadata(
     canvas_course_id: int | None = None,
     canvas_course_name: str | None = None,
     canvas_course_code: str | None = None,
+    canvas_time_zone: str | None = None,
+    canvas_start_at: str | None = None,
+    canvas_end_at: str | None = None,
     term_code: str | None = None,
     modules: tuple[CanvasModule, ...] | None = None,
     now: str | None = None,
@@ -214,6 +325,12 @@ def set_course_metadata(
         changes["canvas_course_name"] = canvas_course_name
     if canvas_course_code is not None:
         changes["canvas_course_code"] = canvas_course_code
+    if canvas_time_zone is not None:
+        changes["canvas_time_zone"] = canvas_time_zone
+    if canvas_start_at is not None:
+        changes["canvas_start_at"] = canvas_start_at
+    if canvas_end_at is not None:
+        changes["canvas_end_at"] = canvas_end_at
     if term_code is not None:
         changes["term_code"] = term_code
     if modules is not None:
@@ -237,11 +354,17 @@ def manifest_to_dict(manifest: CourseManifest) -> dict[str, Any]:
             "canvas_course_id": manifest.canvas_course_id,
             "canvas_course_name": manifest.canvas_course_name,
             "canvas_course_code": manifest.canvas_course_code,
+            "canvas_time_zone": manifest.canvas_time_zone,
+            "canvas_start_at": manifest.canvas_start_at,
+            "canvas_end_at": manifest.canvas_end_at,
         },
         "created_at": manifest.created_at,
         "updated_at": manifest.updated_at,
         "gavel_version": manifest.gavel_version,
-        "modules": [{"id": m.id, "name": m.name} for m in manifest.modules],
+        "modules": [
+            {"id": m.id, "name": m.name, "position": m.position, "unlock_at": m.unlock_at}
+            for m in manifest.modules
+        ],
         "assignments": [
             {
                 "canvas_id": a.canvas_id,
@@ -251,8 +374,26 @@ def manifest_to_dict(manifest: CourseManifest) -> dict[str, Any]:
                 "due_at": a.due_at,
                 "points_possible": a.points_possible,
                 "gradescope_name": a.gradescope_name,
+                "unlock_at": a.unlock_at,
+                "lock_at": a.lock_at,
+                "has_overrides": a.has_overrides,
+                "submission_types": (
+                    None if a.submission_types is None else list(a.submission_types)
+                ),
+                "assignment_group_id": a.assignment_group_id,
+                "published": a.published,
+                "omit_from_final_grade": a.omit_from_final_grade,
+                "grading_type": a.grading_type,
             }
             for a in sorted(manifest.assignments, key=lambda a: a.canvas_id)
+        ],
+        "quizzes": [
+            {
+                "canvas_id": q.canvas_id,
+                "name": q.name,
+                **{f: getattr(q, f) for f in _QUIZ_CANVAS_FIELDS},
+            }
+            for q in sorted(manifest.quizzes, key=lambda q: q.canvas_id)
         ],
         "artifacts": [
             {
@@ -319,9 +460,18 @@ def manifest_from_dict(data: dict[str, Any]) -> CourseManifest:
             canvas_course_id=course.get("canvas_course_id"),
             canvas_course_name=course.get("canvas_course_name"),
             canvas_course_code=course.get("canvas_course_code"),
+            canvas_time_zone=course.get("canvas_time_zone"),
+            canvas_start_at=course.get("canvas_start_at"),
+            canvas_end_at=course.get("canvas_end_at"),
             gavel_version=data.get("gavel_version"),
             modules=tuple(
-                CanvasModule(id=int(m["id"]), name=str(m["name"])) for m in data.get("modules", [])
+                CanvasModule(
+                    id=int(m["id"]),
+                    name=str(m["name"]),
+                    position=m.get("position"),
+                    unlock_at=m.get("unlock_at"),
+                )
+                for m in data.get("modules", [])
             ),
             assignments=tuple(
                 AssignmentEntry(
@@ -332,8 +482,26 @@ def manifest_from_dict(data: dict[str, Any]) -> CourseManifest:
                     due_at=a.get("due_at"),
                     points_possible=a.get("points_possible"),
                     gradescope_name=a.get("gradescope_name"),
+                    unlock_at=a.get("unlock_at"),
+                    lock_at=a.get("lock_at"),
+                    has_overrides=a.get("has_overrides"),
+                    submission_types=(
+                        None if a.get("submission_types") is None else tuple(a["submission_types"])
+                    ),
+                    assignment_group_id=a.get("assignment_group_id"),
+                    published=a.get("published"),
+                    omit_from_final_grade=a.get("omit_from_final_grade"),
+                    grading_type=a.get("grading_type"),
                 )
                 for a in data.get("assignments", [])
+            ),
+            quizzes=tuple(
+                QuizEntry(
+                    canvas_id=int(q["canvas_id"]),
+                    name=str(q["name"]),
+                    **{f: q.get(f) for f in _QUIZ_CANVAS_FIELDS},
+                )
+                for q in data.get("quizzes", [])
             ),
             artifacts=tuple(
                 ArtifactEntry(

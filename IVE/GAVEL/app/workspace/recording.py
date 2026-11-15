@@ -30,11 +30,13 @@ from GAVEL.app.workspace.manifest import (
     ArtifactEntry,
     AssignmentEntry,
     CourseManifest,
+    QuizEntry,
     SourceEntry,
     load_manifest,
     new_manifest,
     record_artifact,
     record_assignment,
+    record_quiz,
     save_manifest,
     set_anonymization,
     set_course_metadata,
@@ -155,6 +157,9 @@ def note_course(
     canvas_course_id: int | None = None,
     canvas_course_name: str | None = None,
     canvas_course_code: str | None = None,
+    canvas_time_zone: str | None = None,
+    canvas_start_at: str | None = None,
+    canvas_end_at: str | None = None,
     term_code: str | None = None,
     modules: tuple[CanvasModule, ...] | None = None,
     gavel_version: str | None = None,
@@ -168,6 +173,9 @@ def note_course(
         canvas_course_id=canvas_course_id,
         canvas_course_name=canvas_course_name,
         canvas_course_code=canvas_course_code,
+        canvas_time_zone=canvas_time_zone,
+        canvas_start_at=canvas_start_at,
+        canvas_end_at=canvas_end_at,
         term_code=term_code,
         modules=modules,
         now=stamp,
@@ -187,6 +195,22 @@ def note_assignment(
     stamp = now or utc_now_iso()
     manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
     manifest = record_assignment(manifest, entry, now=stamp)
+    save_manifest(folder.manifest_path, manifest)
+    return manifest
+
+
+def note_quizzes(
+    folder: CourseFolder,
+    entries: list[QuizEntry],
+    *,
+    gavel_version: str | None = None,
+    now: str | None = None,
+) -> CourseManifest:
+    """Add or replace quiz entries on the manifest and save it once."""
+    stamp = now or utc_now_iso()
+    manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
+    for entry in entries:
+        manifest = record_quiz(manifest, entry, now=stamp)
     save_manifest(folder.manifest_path, manifest)
     return manifest
 
