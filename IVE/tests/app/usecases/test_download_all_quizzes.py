@@ -233,3 +233,53 @@ def test_deleted_report_still_in_the_manifest_is_downloaded_again(tmp_path):
 
     assert [o.quiz_id for o in result.succeeded] == [101]
     assert folder.original.quiz_csv(101).read_bytes() == b"a\n"
+
+
+def test_manifest_records_quiz_due_date_and_points(tmp_path):
+    client = FakeCanvasClient(
+        quizzes=[
+            CanvasQuiz(
+                id=101,
+                name="Quiz One",
+                due_at="2026-09-21T06:59:00+00:00",
+                points_possible=10.0,
+                quiz_type="assignment",
+                assignment_id=9001,
+            ),
+            CanvasQuiz(id=202, name="Practice Quiz", quiz_type="practice_quiz"),
+            CanvasQuiz(id=303, name="No Report"),
+        ],
+        responses={
+            101: b"a\n",
+            202: b"b\n",
+            303: QuizReportUnavailableError("no attempts"),
+        },
+    )
+
+    DownloadAllQuizzesUseCase(client).execute(
+        DownloadAllQuizzesRequest(course_id=123, folder=course_folder(tmp_path))
+    )
+
+    manifest = load_manifest(course_folder(tmp_path).manifest_path)
+    assert manifest.quiz(101).due_at == "2026-09-21T06:59:00+00:00"
+    assert manifest.quiz(101).points_possible == 10.0
+    assert manifest.quiz(101).quiz_type == "assignment"
+    assert manifest.quiz(101).assignment_id == 9001
+    assert manifest.quiz(202).quiz_type == "practice_quiz"
+    assert manifest.quiz(202).due_at is None
+    assert manifest.quiz(202).points_possible is None
+    assert manifest.quiz(303) is None
+
+
+def test_rerun_fills_in_due_dates_for_quizzes_already_downloaded(tmp_path):
+    client = FakeCanvasClient(
+        quizzes=[CanvasQuiz(id=101, name="Quiz One")], responses={101: b"a\n"}
+    )
+    request = DownloadAllQuizzesRequest(course_id=123, folder=course_folder(tmp_path))
+    DownloadAllQuizzesUseCase(client).execute(request)
+    client.quizzes = [CanvasQuiz(id=101, name="Quiz One", due_at="2026-09-21T06:59:00+00:00")]
+
+    DownloadAllQuizzesUseCase(client).execute(request)
+
+    manifest = load_manifest(course_folder(tmp_path).manifest_path)
+    assert manifest.quiz(101).due_at == "2026-09-21T06:59:00+00:00"

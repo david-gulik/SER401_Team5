@@ -34,7 +34,7 @@ from GAVEL.app.dtos.canvas_course import CanvasAssignment
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.progress import ProgressCallback
 from GAVEL.app.workspace.layout import CourseFolder, DataTree, Workspace, module_number_from_name
-from GAVEL.app.workspace.manifest import AssignmentEntry
+from GAVEL.app.workspace.manifest import assignment_entry
 from GAVEL.app.workspace.recording import (
     ArtifactExistsError,
     artifact_path,
@@ -256,9 +256,8 @@ class DownloadGradescopeSubmissionsUseCase:
             if assignment is not None:
                 note_assignment(
                     folder,
-                    AssignmentEntry(
-                        canvas_id=assignment.id,
-                        name=assignment.name,
+                    assignment_entry(
+                        assignment,
                         module_number=module,
                         has_rubric=assignment.has_rubric,
                         gradescope_name=name,
