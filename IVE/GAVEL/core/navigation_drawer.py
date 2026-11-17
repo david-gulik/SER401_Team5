@@ -45,6 +45,7 @@ class NavigationDrawer(QFrame):
     - exclusive selection
     - animated collapse/expand
     - icon-only collapsed mode
+    - a heading above each page group, with a rule between groups
     """
 
     def __init__(
@@ -104,7 +105,15 @@ class NavigationDrawer(QFrame):
 
         self._buttons_by_id: dict[str, QToolButton] = {}
         self._icons_by_id: dict[str, QIcon] = {}
+        self._section_labels: list[QLabel] = []
+        self._dividers: list[QFrame] = []
+        group: str | None = None
         for spec in pages:
+            # Pages arrive sorted by group, so a change of group starts a new section.
+            if spec.group != group:
+                self._add_section_heading(spec.group, divider=group is not None)
+                group = spec.group
+
             btn = QToolButton(self)
             btn.setCheckable(True)
             btn.setAutoExclusive(True)
@@ -131,6 +140,28 @@ class NavigationDrawer(QFrame):
         root.addLayout(self._buttons_layout)
 
         self._render_buttons()
+
+    @property
+    def section_labels(self) -> list[QLabel]:
+        return self._section_labels
+
+    @property
+    def dividers(self) -> list[QFrame]:
+        return self._dividers
+
+    def _add_section_heading(self, group: str, divider: bool) -> None:
+        """The group's name above its pages, under a rule when another group sits above."""
+        if divider:
+            line = QFrame(self)
+            line.setProperty("role", "nav_divider")
+            line.setFixedHeight(1)
+            self._dividers.append(line)
+            self._buttons_layout.addWidget(line)
+
+        label = QLabel(group.upper(), self)
+        label.setProperty("role", "nav_section")
+        self._section_labels.append(label)
+        self._buttons_layout.addWidget(label)
 
     def set_current(self, page_id: str) -> None:
         btn = self._buttons_by_id.get(page_id)
@@ -175,6 +206,9 @@ class NavigationDrawer(QFrame):
         self._anim_group.start()
 
     def _render_buttons(self) -> None:
+        # Headings do not fit the icon-only drawer; the rules between groups still do.
+        for label in self._section_labels:
+            label.setVisible(not self._is_collapsed)
         for page_id, btn in self._buttons_by_id.items():
             spec = self._specs_by_id[page_id]
             has_icon = page_id in self._icons_by_id

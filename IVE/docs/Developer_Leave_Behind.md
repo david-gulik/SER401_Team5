@@ -420,7 +420,7 @@ PageRegistry.get().register(
         title=MyFeaturePage.title,
         icon_text="🧩",
         factory=lambda ctx: MyFeaturePage(ctx),
-        group="Integrations",
+        group="Preparation",  # sidebar section; see GROUP_ORDER in core/page_registry.py
         order=40,
     )
 )

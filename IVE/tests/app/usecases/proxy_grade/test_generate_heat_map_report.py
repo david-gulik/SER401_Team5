@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -181,3 +182,50 @@ def test_submission_with_no_matching_gradebook_row_is_reported_as_unmatched(
 
     assert result.rows == ()
     assert result.unmatched_submissions == ("2",)
+
+
+def test_writes_missing_human_score_pairs_to_the_report_file(tmp_path: Path) -> None:
+    submissions_dir = tmp_path / "submissions"
+    submissions_dir.mkdir()
+    yaml_path = submissions_dir / "student1.yml"
+    yaml_path.write_text("placeholder")
+
+    submission = _submission("1", "student1@asu.edu", set(_ALL_TEST_NAMES))
+    gradebook = CanvasGradebook(
+        columns=(),
+        rows=(
+            GradebookStudentRow(
+                student_name="One, Student",
+                canvas_id=1,
+                sis_login_id="student1",
+                section="001",
+                assignment_scores={_GRADEBOOK_COLUMN: 4.0},
+            ),
+        ),
+    )
+    # Only "main menu" (c1) has a human score; "memory leaks" (c2) has none.
+    assessments = [_assessment(1, {"c1": 1.0})]
+    output_path = tmp_path / "report.json"
+
+    use_case = GenerateHeatMapReportUseCase(
+        gradescope_reader=FakeGradescopeReader({yaml_path: [submission]}),
+        gradebook_reader=FakeGradebookReader(gradebook),
+        rubric_definition_reader=FakeRubricDefinitionReader(_RUBRIC),
+        rubric_assessment_reader=FakeRubricAssessmentReader(assessments),
+    )
+
+    use_case.execute(
+        GenerateHeatMapReportRequest(
+            submissions_dir=submissions_dir,
+            mapping=_MAPPING,
+            gradebook_path=tmp_path / "gradebook.csv",
+            rubric_definition_path=tmp_path / "rubric_definition.json",
+            rubric_assessments_path=tmp_path / "rubric_assessments.json",
+            output_path=output_path,
+        )
+    )
+
+    payload = json.loads(output_path.read_text())
+    assert payload["missing_human_score_pairs"] == [
+        {"student_identifier": "student1", "criterion": "memory leaks"}
+    ]

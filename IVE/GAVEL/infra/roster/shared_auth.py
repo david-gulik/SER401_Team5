@@ -21,6 +21,7 @@ import requests
 from selenium.common.exceptions import TimeoutException
 
 from GAVEL.infra.asu_auth.browser_session import AsuBrowserSession, host_of
+from GAVEL.infra.http_logging import log_http_calls
 from GAVEL.services.config_service import RosterConfig
 
 logger = logging.getLogger(__name__)
@@ -111,25 +112,24 @@ class SharedAuthProvider:
         with self._browser.use() as driver:
             # Phase 1: catalog API token
             if self._browser.has_credentials:
-                print(
-                    "[AUTH] Browser ready. Canvas credentials are filled in automatically; "
+                logger.info(
+                    "Browser ready. Canvas credentials are filled in automatically; "
                     "approve the Duo prompt on your device if one appears "
                     f"(timeout: {self._cfg.mfa_timeout}s)."
                 )
             else:
-                print(
-                    f"[AUTH] Browser ready. If a sign-in page appears, complete CAS login "
-                    f"and Duo MFA.\n"
-                    f"[AUTH] Tip: set CANVAS_USERNAME and CANVAS_PASSWORD in .env to auto-fill.\n"
-                    f"[AUTH] Waiting up to {self._cfg.mfa_timeout}s..."
+                logger.info(
+                    "Browser ready. If a sign-in page appears, complete CAS login and Duo MFA "
+                    f"(timeout: {self._cfg.mfa_timeout}s). Tip: set CANVAS_USERNAME and "
+                    "CANVAS_PASSWORD in .env to auto-fill."
                 )
             self._catalog_token = self._obtain_catalog_token(driver)
-            print("[AUTH] Catalog API token acquired.")
+            logger.info("Catalog API token acquired.")
 
             # Phase 2: roster cookies (CAS session already active — no second MFA)
-            print("[AUTH] Navigating to MyASU for roster cookies...")
+            logger.info("Navigating to MyASU for roster cookies...")
             self._roster_session = self._obtain_roster_session(driver)
-            print("[AUTH] Roster session ready.")
+            logger.info("Roster session ready.")
 
     def _try_silent_refresh(self) -> bool:
         """Attempt to refresh credentials using the existing CAS session.
@@ -219,7 +219,6 @@ class SharedAuthProvider:
                                 self._roster_session = roster_session
                                 self._authenticated_at = time.time()
                                 logger.info("Silent token refresh succeeded.")
-                                print("[AUTH] Session refreshed silently.")
                                 return True
                             time.sleep(1)
                         # Timed out waiting for the token exchange.
@@ -325,7 +324,7 @@ class SharedAuthProvider:
         }
         allow_url = f"{config.active_allow_url}?{urlencode(allow_params)}"
 
-        print("[AUTH] Redirecting to CAS login...")
+        logger.info("Redirecting to CAS login...")
         driver.get(allow_url)
 
         # 4. Wait for the browser to land back on the catalog domain, helping
@@ -344,7 +343,7 @@ class SharedAuthProvider:
 
             if current != last_printed:
                 display = current[:120] + ("..." if len(current) > 120 else "")
-                print(f"[AUTH] Current URL: {display}")
+                logger.info(f"Current URL: {display}")
                 last_printed = current
 
             self._browser.assist_login(driver)
@@ -407,7 +406,7 @@ class SharedAuthProvider:
 
             if current != last_printed_url:
                 display = current[:120] + ("..." if len(current) > 120 else "")
-                print(f"[AUTH] Current URL: {display}")
+                logger.info(f"Current URL: {display}")
                 last_printed_url = current
 
             if host_of(current) == myasu_domain:
@@ -464,6 +463,7 @@ class SharedAuthProvider:
     @staticmethod
     def _transfer_cookies(driver) -> requests.Session:
         session = requests.Session()
+        log_http_calls(session)
         for cookie in driver.get_cookies():
             session.cookies.set(
                 cookie["name"],

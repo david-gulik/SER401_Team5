@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from pathlib import Path
 
 import pytest
@@ -55,15 +56,43 @@ class TestGuard:
         assert err.folder is folder
         assert "SER 222" in str(err)
         assert "ser222_25sc_12345" in str(err)
-        assert "delete the course folder" in str(err)
+        assert "overwrite" in str(err)
         assert isinstance(err, FileExistsError)
 
-    def test_raises_when_manifest_lists_it_but_file_is_gone(self, folder: CourseFolder) -> None:
+    def test_passes_when_manifest_lists_it_but_file_is_gone(
+        self, folder: CourseFolder, caplog: pytest.LogCaptureFixture
+    ) -> None:
         target = write(folder.original.gradebook_csv)
         record(folder, "gradebook", target, now=T0)
         target.unlink()
-        with pytest.raises(ArtifactExistsError):
+        with caplog.at_level(logging.INFO):
             guard_not_downloaded(folder, target)
+        assert "original/gradebook.csv is in the manifest but missing on disk" in caplog.text
+
+    def test_downloading_a_deleted_file_again_replaces_its_entry(
+        self, folder: CourseFolder
+    ) -> None:
+        target = write(folder.original.gradebook_csv, b"old\n")
+        record(folder, "gradebook", target, now=T0)
+        target.unlink()
+
+        guard_not_downloaded(folder, target)
+        write(target, b"newer,longer\n")
+        record(folder, "gradebook", target, now="2026-11-09T10:00:00+00:00")
+
+        entries = load_manifest(folder.manifest_path).artifacts_of_kind("gradebook")
+        assert len(entries) == 1
+        assert entries[0].downloaded_at == "2026-11-09T10:00:00+00:00"
+        assert entries[0].sha256 == hashlib.sha256(b"newer,longer\n").hexdigest()
+        assert entries[0].size_bytes == len(b"newer,longer\n")
+
+    def test_overwriting_a_file_on_disk_logs_a_warning(
+        self, folder: CourseFolder, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        target = write(folder.original.gradebook_csv)
+        with caplog.at_level(logging.WARNING):
+            guard_not_downloaded(folder, target, overwrite=True)
+        assert "Overwriting original/gradebook.csv" in caplog.text
 
     def test_other_artifacts_do_not_block(self, folder: CourseFolder) -> None:
         record(folder, "gradebook", write(folder.original.gradebook_csv), now=T0)
@@ -131,12 +160,13 @@ class TestRecord:
 
 
 class TestWorkspaceRelativePaths:
-    def test_autograder_snapshot_is_recorded_relative_to_the_workspace(
+    def test_autograder_is_recorded_relative_to_the_workspace(
         self, folder: CourseFolder, tmp_path: Path
     ) -> None:
-        target = write(Workspace(tmp_path).autograder_snapshot(folder.key, 2), b"grader")
+        directory = Workspace(tmp_path).course_autograders_dir(folder.key)
+        target = write(directory / "SER222Module2Autograder.zip", b"grader")
         entry = record(folder, "autograder", target, now=T0)
-        assert entry.path == "autograders/ser222/m2/ser222_25sc_12345/autograder.zip"
+        assert entry.path == "autograders/ser222/SER222Module2Autograder.zip"
         assert artifact_path(folder, entry) == target
 
     def test_course_paths_resolve_back_to_the_course_folder(self, folder: CourseFolder) -> None:

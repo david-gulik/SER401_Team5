@@ -1,4 +1,5 @@
-"""The scraper writes one zip per export into the folder it is given, and nowhere else."""
+"""The scraper writes one zip per export, and each autograder under its uploaded name, into the
+folder it is given and nowhere else."""
 
 from __future__ import annotations
 
@@ -6,7 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from GAVEL.infra.gradescope.http_gradescope_client import GradescopeSession, http_gradescope_client
+from GAVEL.infra.gradescope.http_gradescope_client import (
+    AUTOGRADERS_SUBFOLDER,
+    GradescopeSession,
+    http_gradescope_client,
+)
 
 GS_COURSE = "999"
 BASE = "https://www.gradescope.com"
@@ -15,7 +20,8 @@ ASSIGNMENTS_HTML = f"""
 <div data-assignment-id="11" aria-describedby="course-{GS_COURSE}">Module 3: Programming</div>
 <div data-assignment-id="12" aria-describedby="course-{GS_COURSE}">Module 4: ADJ Problem Set</div>
 """
-AUTOGRADER_HTML = f'<a href="{BASE}/files/autograder_ser222_m3.zip?x=1">Download Autograder</a>'
+UPLOADED_NAME = "SER222Module3Autograder_SEP10b_hotfix1.zip"
+AUTOGRADER_HTML = f'<a href="{BASE}/files/{UPLOADED_NAME}?x=1">Download Autograder</a>'
 NO_AUTOGRADER_HTML = "<html><body>no autograder</body></html>"
 EXPORT_READY_HTML = '<a class="js-bulkExportModalDownload" href="/exports/11/download.zip">zip</a>'
 EXPORT_MISSING_HTML = '<meta name="csrf-token" content="csrf123"><div>nothing exported yet</div>'
@@ -39,20 +45,21 @@ class FakeSession:
         self.gets: list[str] = []
         self.posts: list[str] = []
         self.polls = 0
+        self.autograder_html = AUTOGRADER_HTML
 
     def get(self, url: str) -> FakeResponse:
         self.gets.append(url)
         if url.endswith(f"/courses/{GS_COURSE}/assignments"):
             return FakeResponse(text=ASSIGNMENTS_HTML)
         if url.endswith("/assignments/11/configure_autograder"):
-            return FakeResponse(text=AUTOGRADER_HTML)
+            return FakeResponse(text=self.autograder_html)
         if url.endswith("/assignments/12/configure_autograder"):
             return FakeResponse(text=NO_AUTOGRADER_HTML)
         if url.endswith("/assignments/11/review_grades"):
             return FakeResponse(text=EXPORT_READY_HTML)
         if url.endswith("/assignments/12/review_grades"):
             return FakeResponse(text=EXPORT_MISSING_HTML)
-        if "autograder_ser222_m3.zip" in url:
+        if f"{BASE}/files/" in url:
             return FakeResponse(content=b"AUTOGRADER")
         if url.endswith("/exports/11/download.zip"):
             return FakeResponse(content=b"SUBS-11")
@@ -85,25 +92,37 @@ def client(tmp_path: Path, monkeypatch) -> tuple[http_gradescope_client, FakeSes
     return client, session, folder
 
 
-# TODO: fix this to read a generic autograder filename if possible, e.g., SER334Module2Autograder_SEP10b_hotfix1.zip
+def files_under(folder: Path) -> list[str]:
+    return sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*") if p.is_file())
 
-# def test_every_export_lands_in_submissions_folder(client, tmp_path, monkeypatch):
-#     monkeypatch.chdir(tmp_path)  # any hard-coded relative path would show up here
-#     scraper, session, folder = client
-#
-#     written = scraper.download_all_assignments(username="u", password="p")
-#
-#     assert sorted(p.name for p in folder.iterdir()) == [
-#         "Module 3 Programming.zip",
-#         "Module 3 Programming_autograder.zip",
-#         "Module 4 ADJ Problem Set.zip",
-#     ]
-#     assert (folder / "Module 3 Programming.zip").read_bytes() == b"SUBS-11"
-#     assert (folder / "Module 3 Programming_autograder.zip").read_bytes() == b"AUTOGRADER"
-#     assert (folder / "Module 4 ADJ Problem Set.zip").read_bytes() == b"SUBS-12"
-#     assert sorted(Path(w).name for w in written) == sorted(p.name for p in folder.iterdir())
-#     assert not (tmp_path / "GAVEL").exists()
-#
+
+def test_every_export_lands_in_submissions_folder(client, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # any hard-coded relative path would show up here
+    scraper, session, folder = client
+
+    written = scraper.download_all_assignments(username="u", password="p")
+
+    autograder = f"autograders/Module 3 Programming/{UPLOADED_NAME}"
+    assert files_under(folder) == [
+        "Module 3 Programming.zip",
+        "Module 4 ADJ Problem Set.zip",
+        autograder,
+    ]
+    assert (folder / "Module 3 Programming.zip").read_bytes() == b"SUBS-11"
+    assert (folder / autograder).read_bytes() == b"AUTOGRADER"
+    assert (folder / "Module 4 ADJ Problem Set.zip").read_bytes() == b"SUBS-12"
+    assert sorted(Path(w).relative_to(folder).as_posix() for w in written) == files_under(folder)
+    assert not (tmp_path / "GAVEL").exists()
+
+
+def test_uploaded_autograder_name_is_unescaped_and_made_safe(client):
+    scraper, session, folder = client
+    session.autograder_html = (
+        f'<a href="{BASE}/files/SER222%20Module%203%3A%20Grader.zip">Download Autograder</a>'
+    )
+    scraper.download_all_assignments(username="u", password="p")
+    staged = folder / "autograders" / "Module 3 Programming"
+    assert [p.name for p in staged.iterdir()] == ["SER222 Module 3 Grader.zip"]
 
 
 def test_missing_export_is_triggered_and_polled(client):
@@ -116,7 +135,8 @@ def test_missing_export_is_triggered_and_polled(client):
 def test_zip_is_kept_as_is_not_extracted(client):
     scraper, _, folder = client
     scraper.download_all_assignments(username="u", password="p")
-    assert [p for p in folder.iterdir() if p.is_dir()] == []
+    assert [p for p in folder.iterdir() if p.is_dir()] == [folder / AUTOGRADERS_SUBFOLDER]
+    assert all(name.endswith(".zip") for name in files_under(folder))
 
 
 def test_folder_is_created_when_missing(client):

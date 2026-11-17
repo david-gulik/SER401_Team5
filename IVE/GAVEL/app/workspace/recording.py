@@ -8,13 +8,16 @@ Two calls, in this order:
     target.write_bytes(...)
     record(folder, "gradebook", target)         # hashes, stamps, saves manifest
 
-Keeping both here means the re-download policy agreed with Dr. Acuna (warn,
-never overwrite, delete the folder to refresh) lives in one place.
+Keeping both here means the re-download policy lives in one place: a file
+already on disk is never replaced unless the caller asks to overwrite it, and
+a file the manifest lists but that was deleted from disk is simply downloaded
+again.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 from pathlib import Path
 
 from GAVEL.app.dtos.canvas_course import CanvasModule
@@ -30,20 +33,25 @@ from GAVEL.app.workspace.manifest import (
     ArtifactEntry,
     AssignmentEntry,
     CourseManifest,
+    QuizEntry,
     SourceEntry,
     load_manifest,
     new_manifest,
     record_artifact,
     record_assignment,
+    record_quiz,
     save_manifest,
     set_anonymization,
+    set_consent_override,
     set_course_metadata,
     utc_now_iso,
 )
 
+log = logging.getLogger(__name__)
+
 
 class ArtifactExistsError(FileExistsError):
-    """The file was already downloaded for this course."""
+    """The file was already downloaded for this course and is still on disk."""
 
     def __init__(self, folder: CourseFolder, target: Path) -> None:
         self.folder = folder
@@ -51,8 +59,7 @@ class ArtifactExistsError(FileExistsError):
         self.relative_path = relative_posix(folder, target)
         super().__init__(
             f"{self.relative_path} was already downloaded for {folder.key.course_label} "
-            f"({folder.key.folder_name}). To refresh it, delete the course folder "
-            f"{folder.path} and download again."
+            f"({folder.key.folder_name}). Download it again with overwrite to replace it."
         )
 
 
@@ -103,15 +110,21 @@ def sha256_of(path: Path) -> str:
 
 
 def guard_not_downloaded(folder: CourseFolder, target: Path, overwrite: bool = False) -> None:
-    """Raise ``ArtifactExistsError`` if ``target`` exists on disk or in the manifest."""
-    if overwrite:
-        return
+    """Raise ``ArtifactExistsError`` if ``target`` is on disk and ``overwrite`` is off.
+
+    Only the disk counts. A file the manifest lists but that was deleted is
+    downloaded again, and ``record`` then replaces its manifest entry.
+    """
     if target.exists():
-        raise ArtifactExistsError(folder, target)
+        if not overwrite:
+            raise ArtifactExistsError(folder, target)
+        log.warning("Overwriting %s", relative_posix(folder, target))
+        return
     if folder.manifest_path.exists():
         manifest = load_manifest(folder.manifest_path)
-        if manifest.artifact(relative_posix(folder, target)) is not None:
-            raise ArtifactExistsError(folder, target)
+        relative = relative_posix(folder, target)
+        if manifest.artifact(relative) is not None:
+            log.info("%s is in the manifest but missing on disk; downloading it again", relative)
 
 
 def load_or_create_manifest(
@@ -155,6 +168,9 @@ def note_course(
     canvas_course_id: int | None = None,
     canvas_course_name: str | None = None,
     canvas_course_code: str | None = None,
+    canvas_time_zone: str | None = None,
+    canvas_start_at: str | None = None,
+    canvas_end_at: str | None = None,
     term_code: str | None = None,
     modules: tuple[CanvasModule, ...] | None = None,
     gavel_version: str | None = None,
@@ -168,6 +184,9 @@ def note_course(
         canvas_course_id=canvas_course_id,
         canvas_course_name=canvas_course_name,
         canvas_course_code=canvas_course_code,
+        canvas_time_zone=canvas_time_zone,
+        canvas_start_at=canvas_start_at,
+        canvas_end_at=canvas_end_at,
         term_code=term_code,
         modules=modules,
         now=stamp,
@@ -191,6 +210,22 @@ def note_assignment(
     return manifest
 
 
+def note_quizzes(
+    folder: CourseFolder,
+    entries: list[QuizEntry],
+    *,
+    gavel_version: str | None = None,
+    now: str | None = None,
+) -> CourseManifest:
+    """Add or replace quiz entries on the manifest and save it once."""
+    stamp = now or utc_now_iso()
+    manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
+    for entry in entries:
+        manifest = record_quiz(manifest, entry, now=stamp)
+    save_manifest(folder.manifest_path, manifest)
+    return manifest
+
+
 def hash_sources(folder: CourseFolder, sources: list[Path]) -> tuple[SourceEntry, ...]:
     """Hash the ``original/`` files an anonymization is about to read."""
     return tuple(
@@ -202,14 +237,33 @@ def note_anonymization(
     folder: CourseFolder,
     sources: tuple[SourceEntry, ...],
     *,
+    consent_overrides: frozenset[int] = frozenset(),
     gavel_version: str | None = None,
     now: str | None = None,
 ) -> CourseManifest:
-    """Record which originals ``anonymized/`` was just written from, and save the manifest."""
+    """Record which originals and consent overrides ``anonymized/`` was just
+    written from, and save the manifest."""
     stamp = now or utc_now_iso()
     manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
-    manifest = set_anonymization(
-        manifest, AnonymizationEntry(anonymized_at=stamp, sources=sources), now=stamp
+    entry = AnonymizationEntry(
+        anonymized_at=stamp, sources=sources, consent_overrides=tuple(sorted(consent_overrides))
     )
+    manifest = set_anonymization(manifest, entry, now=stamp)
+    save_manifest(folder.manifest_path, manifest)
+    return manifest
+
+
+def note_consent_override(
+    folder: CourseFolder,
+    sis_id: int,
+    overridden: bool,
+    *,
+    gavel_version: str | None = None,
+    now: str | None = None,
+) -> CourseManifest:
+    """Add (``overridden``) or remove one student's consent override and save the manifest."""
+    stamp = now or utc_now_iso()
+    manifest = load_or_create_manifest(folder, gavel_version=gavel_version, now=stamp)
+    manifest = set_consent_override(manifest, sis_id, overridden, now=stamp)
     save_manifest(folder.manifest_path, manifest)
     return manifest

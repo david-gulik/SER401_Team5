@@ -131,7 +131,7 @@ def test_successful_run_returns_0_and_prints_summary(
     assert result == 0
     assert "Anonymized dataset written to" in captured.out
     assert (
-        "Consent filtering: 1 included, 0 declined, 0 name blank, 0 possible typo, 0 name mismatch, 0 no response"
+        "Consent filtering: 1 included, 0 overridden, 0 declined, 0 name blank, 0 possible typo, 0 name mismatch, 0 no response"
     ) in captured.out
     assert "Consent form:" in captured.out
     assert "Roster:" in captured.out
@@ -145,3 +145,30 @@ def test_successful_run_returns_0_and_prints_summary(
     assert (
         snapshot_dir / "anonymized" / "assignments" / "7216983_m1" / "rubric_assessments.json"
     ).exists()
+
+
+def test_partial_run_writes_what_it_can_lists_failures_and_returns_1(
+    tmp_path: Path,
+    capsys,
+):
+    ctx = make_context()
+
+    snapshot_dir = tmp_path / "snapshot"
+
+    write_consent_form(snapshot_dir)
+    write_roster(snapshot_dir)
+    write_gradebook(snapshot_dir)
+    write_rubric(snapshot_dir)
+    broken = snapshot_dir / "original" / "assignments" / "7216984_m2" / "rubric_assessments.json"
+    broken.parent.mkdir(parents=True)
+    broken.write_text("[{not json", encoding="utf-8")
+
+    result = handle_anonymize_run(ctx, Namespace(dataset_dir=str(snapshot_dir)))
+
+    captured = capsys.readouterr()
+
+    assert result == 1
+    assert "Anonymized dataset written to" in captured.out
+    assert "1 file(s) could not be anonymized" in captured.err
+    assert "original/assignments/7216984_m2/rubric_assessments.json" in captured.err
+    assert (snapshot_dir / "anonymized" / "gradebook.csv").exists()

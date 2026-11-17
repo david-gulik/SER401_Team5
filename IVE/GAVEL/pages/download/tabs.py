@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQuiz
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.download.overwrite_prompt import ask_overwrite
 from GAVEL.pages.download.section_match import course_for_class
 from GAVEL.pages.download.section_picker import SectionSearchPicker
 from GAVEL.pages.download.viewmodel import (
@@ -29,9 +30,11 @@ from GAVEL.pages.download.viewmodel import (
     QUIZ_REPORTS_DOWNLOAD,
     ROSTER_DOWNLOAD,
     RUBRIC_DOWNLOAD,
+    AskOverwrite,
     DownloadUiState,
     DownloadViewModel,
     FocusCourseFolder,
+    OverwriteChoice,
     ShowError,
     ShowInfo,
     assignment_ids_error,
@@ -48,6 +51,9 @@ from GAVEL.ui_components.input_mode_toggle import (
     InputModeToggle,
 )
 from GAVEL.ui_components.layout import set_h_margins, set_spacing
+from GAVEL.ui_components.message_dialog import show_message
+from GAVEL.ui_components.progress_panel import ProgressPanel
+from GAVEL.ui_components.scrolling_label import ScrollingLabel
 from GAVEL.ui_components.section_card import SectionCard
 from GAVEL.ui_components.status_pill import StatusPill
 from GAVEL.ui_components.sub_panel import SubPanel
@@ -95,11 +101,26 @@ _CANVAS_DOWNLOAD_ORDER = (
 )
 
 
+# About five lines of status text before it scrolls.
+STATUS_MESSAGE_MAX_HEIGHT = 88
+
+OVERWRITE_SESSION_TEXT = (
+    "Overwrite is on: files already downloaded are replaced without asking until GAVEL closes."
+)
+
+
 class DownloadTab(ScrollableTab):
-    def __init__(self, theme: ThemeContext, vm: DownloadViewModel) -> None:
+    def __init__(
+        self,
+        theme: ThemeContext,
+        vm: DownloadViewModel,
+        ask_overwrite: Callable[[QWidget, Sequence[str]], OverwriteChoice] = ask_overwrite,
+    ) -> None:
+        """``ask_overwrite`` shows the prompt for files already on disk; tests replace it."""
         super().__init__(theme)
         self._theme = theme
         self._vm = vm
+        self._ask_overwrite = ask_overwrite
         self._rendering = False
         self._render_pending = False
         self._reverting_course = False
@@ -113,6 +134,14 @@ class DownloadTab(ScrollableTab):
         self._build_widgets()
         self._connect_signals()
         self.layout().insertWidget(0, self._busy_bar)
+        # Pinned above the scroll area so a long download stays in view.
+        progress_host = QWidget()
+        progress_layout = QVBoxLayout(progress_host)
+        set_h_margins(progress_layout, self._theme, 16, 8)
+        progress_layout.addWidget(self._progress_panel)
+        self._progress_host = progress_host
+        progress_host.hide()
+        self.layout().insertWidget(1, progress_host)
 
         self.add_section(self._build_output_path_card())
         self.add_section(self._build_myasu_card())
@@ -165,6 +194,10 @@ class DownloadTab(ScrollableTab):
         """The optional course folder override under the workspace path."""
         return self._course_folder_input
 
+    @property
+    def progress_panel(self) -> ProgressPanel:
+        return self._progress_panel
+
     def download_button(self, name: str) -> QPushButton:
         """The primary button for a download name such as ROSTER_DOWNLOAD. Exposed for tests."""
         return self._download_buttons[name][0]
@@ -178,6 +211,8 @@ class DownloadTab(ScrollableTab):
         self._busy_bar.setTextVisible(False)
         self._busy_bar.setFixedHeight(6)
         self._busy_bar.hide()
+        # Batch download progress, e.g. "Downloading quizzes" 10 of 22
+        self._progress_panel = ProgressPanel(self._theme)
 
         # Output path
         self._output_path = QLineEdit()
@@ -368,8 +403,8 @@ class DownloadTab(ScrollableTab):
 
         # Status
         self._status_pill = StatusPill(self._theme)
-        self._message_label = QLabel("")
-        self._message_label.setWordWrap(True)
+        # Long summaries (Download All lists every file) scroll instead of growing the card.
+        self._message_label = ScrollingLabel(STATUS_MESSAGE_MAX_HEIGHT)
         self._last_saved_label = QLabel("")
         self._last_saved_label.setWordWrap(True)
         self._last_saved_label.setProperty("role", "text_muted")
@@ -522,6 +557,22 @@ class DownloadTab(ScrollableTab):
     def _build_status_card(self) -> QWidget:
         card = SectionCard(self._theme, "Status")
 
+        # Shown only while overwrite is on for the session, so it can be turned off.
+        self._overwrite_session_row = QWidget()
+        overwrite_layout = QHBoxLayout(self._overwrite_session_row)
+        overwrite_layout.setContentsMargins(0, 0, 0, 0)
+        set_spacing(overwrite_layout, self._theme, 8)
+        overwrite_label = QLabel(OVERWRITE_SESSION_TEXT)
+        overwrite_label.setProperty("role", "warning")
+        overwrite_label.setWordWrap(True)
+        overwrite_layout.addWidget(overwrite_label, 1)
+        self._overwrite_off_btn = QPushButton("Turn off")
+        self._overwrite_off_btn.setProperty("role", "secondary")
+        self._overwrite_off_btn.clicked.connect(lambda: self._vm.set_overwrite_session(False))
+        overwrite_layout.addWidget(self._overwrite_off_btn)
+        self._overwrite_session_row.hide()
+        card.add_row(self._overwrite_session_row)
+
         host = QWidget()
         form = QFormLayout(host)
         form.setContentsMargins(0, 0, 0, 0)
@@ -657,8 +708,7 @@ class DownloadTab(ScrollableTab):
         )
         if already_loaded:
             return
-        self._vm.load_quizzes(course_id)
-        self._vm.load_assignments(course_id)
+        self._vm.load_course_lists(course_id)
 
     def _on_reload_quizzes(self) -> None:
         course_id = self._vm.get_state().selected_course_id
@@ -705,7 +755,7 @@ class DownloadTab(ScrollableTab):
             self._rendering = False
 
     def _render(self, state: DownloadUiState) -> None:
-        self._busy_bar.setVisible(state.is_busy)
+        self._render_progress(state)
         self._park_focus_while_busy(state.is_busy)
 
         if self._output_path.text() != state.output_dir:
@@ -768,6 +818,7 @@ class DownloadTab(ScrollableTab):
         self._gradescope_credentials_recheck_btn.setVisible(credentials_missing)
         self._status_pill.set_status(state.status)
         self._message_label.setText(state.message)
+        self._overwrite_session_row.setVisible(state.overwrite_session)
 
         section_warning = state.section_warning
         self._section_mismatch_warning.setText(section_warning or "")
@@ -833,6 +884,16 @@ class DownloadTab(ScrollableTab):
 
         self._restore_focus_when_idle(state.is_busy)
 
+    def _render_progress(self, state: DownloadUiState) -> None:
+        """A batch download gets the progress panel; quicker work just spins the busy bar."""
+        progress = state.progress if state.is_busy else None
+        if progress is None:
+            self._progress_panel.clear()
+        else:
+            self._progress_panel.show_progress(progress)
+        self._progress_host.setVisible(progress is not None)
+        self._busy_bar.setVisible(state.is_busy and progress is None)
+
     def _park_focus_while_busy(self, busy: bool) -> None:
         """Hold focus on an invisible anchor while buttons are disabled.
 
@@ -857,9 +918,11 @@ class DownloadTab(ScrollableTab):
 
     def _handle_event(self, event: object) -> None:
         if isinstance(event, ShowError):
-            QMessageBox.critical(self, "Roster Download", event.message)
+            show_message(self, "Download failed", event.message, critical=True)
         elif isinstance(event, ShowInfo):
-            QMessageBox.information(self, "Roster Download", event.message)
+            show_message(self, "Download", event.message)
+        elif isinstance(event, AskOverwrite):
+            self._vm.answer_overwrite(self._ask_overwrite(self, event.paths))
         elif isinstance(event, FocusCourseFolder):
             self._scroll.ensureWidgetVisible(self._course_folder_input)
             self._course_folder_input.setFocus(Qt.FocusReason.OtherFocusReason)

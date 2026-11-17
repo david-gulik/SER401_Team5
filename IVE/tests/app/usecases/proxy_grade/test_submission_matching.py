@@ -10,7 +10,7 @@ from GAVEL.app.usecases.proxy_grade.compute_proxy_grade import (
     compute_proxy_grade,
 )
 from GAVEL.app.usecases.proxy_grade.submission_matching import (
-    match_submission_to_gradebook_row,
+    gradebook_rows_by_login,
     no_tests_ran_on_the_submitted_code,
     student_key,
 )
@@ -34,25 +34,23 @@ def test_student_key_takes_the_email_local_part_lowercased() -> None:
     assert student_key("Student1@ASU.edu") == "student1"
 
 
-def test_matches_a_submission_to_its_gradebook_row_by_login() -> None:
-    submission = _submission("student1@asu.edu")
+def test_gradebook_rows_by_login_keys_each_row_by_its_lowercased_login() -> None:
     row = GradebookStudentRow(
         student_name="One, Student",
         canvas_id=1,
-        sis_login_id="student1",
+        sis_login_id="Student1",
         section="001",
         assignment_scores={},
     )
     gradebook = CanvasGradebook(columns=(), rows=(row,))
 
-    assert match_submission_to_gradebook_row(submission, gradebook) is row
+    assert gradebook_rows_by_login(gradebook) == {"student1": row}
 
 
-def test_no_match_when_no_row_has_that_login() -> None:
-    submission = _submission("nobody@asu.edu")
+def test_gradebook_rows_by_login_is_empty_for_an_empty_gradebook() -> None:
     gradebook = CanvasGradebook(columns=(), rows=())
 
-    assert match_submission_to_gradebook_row(submission, gradebook) is None
+    assert gradebook_rows_by_login(gradebook) == {}
 
 
 def test_no_tests_ran_is_true_when_every_test_is_missing_and_not_an_autograder_crash() -> None:

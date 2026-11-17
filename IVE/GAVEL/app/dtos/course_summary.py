@@ -14,7 +14,8 @@ class AnonymizationStatus(Enum):
     # original/consent_form.csv is missing, so nobody can be included
     NO_CONSENT_FORM = "no_consent_form"
     NOT_ANONYMIZED = "not_anonymized"
-    # some input in original/ changed or appeared after it was anonymized
+    # some input in original/ changed or appeared, or a consent override was
+    # added or removed, after it was anonymized
     OUT_OF_DATE = "out_of_date"
     UP_TO_DATE = "up_to_date"
 
@@ -104,6 +105,8 @@ class CourseSummary:
     consent: ConsentTally | None = None
     consent_unreadable: bool = False
     canvas_course_name: str | None = None
+    # The manifest's consent overrides differ from those the last run used.
+    consent_overrides_changed: bool = False
 
     @property
     def folder_name(self) -> str:
@@ -128,13 +131,18 @@ class CourseSummary:
         return max((f.anonymized_at for f in self.files if f.anonymized_at), default=None)
 
     @property
+    def files_changed(self) -> bool:
+        """Some original has no current anonymized copy."""
+        return any(
+            f.needs_anonymizing or f.anonymized_state is FileState.OUT_OF_DATE for f in self.files
+        )
+
+    @property
     def status(self) -> AnonymizationStatus:
         if not self.has_consent_form:
             return AnonymizationStatus.NO_CONSENT_FORM
         if self.anonymized_at is None:
             return AnonymizationStatus.NOT_ANONYMIZED
-        if any(
-            f.needs_anonymizing or f.anonymized_state is FileState.OUT_OF_DATE for f in self.files
-        ):
+        if self.files_changed or self.consent_overrides_changed:
             return AnonymizationStatus.OUT_OF_DATE
         return AnonymizationStatus.UP_TO_DATE

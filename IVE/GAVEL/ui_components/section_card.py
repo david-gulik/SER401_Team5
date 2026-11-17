@@ -88,3 +88,11 @@ class SectionCard(QFrame):
     @property
     def body_layout(self):
         return self._body_layout
+    def clear_title(self) -> None:
+        """Empties this card's own title text.
+
+        For a caller that already shows the title elsewhere, such as a
+        QDockWidget's own title bar, so the text is not shown twice. The
+        hint icon, action buttons, and subtitle stay in place.
+        """
+        self._title.setText("")
