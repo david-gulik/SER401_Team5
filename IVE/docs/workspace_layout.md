@@ -22,7 +22,7 @@ This layout was agreed with Dr. Acuña on 2026-09-10.
 │       │   │   └── <assignment id>_m<module>/     # e.g. 7216983_m4
 │       │   │       ├── rubric_definition.json     # criteria, ratings, points
 │       │   │       └── rubric_assessments.json    # one entry per graded submission
-│       │   └── submissions/
+│       │   └── gradescope_submissions/
 │       │       ├── m<module>/                     # Gradescope exports, grouped by module
 │       │       │   ├── submissions.zip            # the bulk export as downloaded
 │       │       │   └── extracted/                 # the same, unzipped
@@ -35,6 +35,9 @@ This layout was agreed with Dr. Acuña on 2026-09-10.
 
 `original/` and `anonymized/` have exactly the same shape. Sharing a course
 means zipping the course folder and deleting `original/` first.
+
+Gradescope data is in `gradescope_submissions/`, not `submissions/`, so it is not
+mistaken for the Canvas data in `assignments/` (agreed with Dr. Acuña on 2026-10-29).
 
 ## 2. Course folder name
 
@@ -82,11 +85,27 @@ Artifact kinds: `roster`, `gradebook`, `consent_form`, `quiz`,
 
 ## 5. Re-downloading
 
-A course is downloaded once. If a file is already present on disk or listed in
-the manifest, the download stops with:
+A file that is already on disk is never replaced without asking. The CLI stops with:
 
 > `original/gradebook.csv` was already downloaded for SER 222 (ser222_25sc_12345).
-> To refresh it, delete the course folder … and download again.
+> Download it again with overwrite to replace it.
+
+and `--overwrite` replaces it. On the Download page, the same situation opens a prompt
+listing the files that are already there, with three answers:
+
+- **Overwrite** replaces those files this time only.
+- **Overwrite for this session** replaces them and every later one without asking until
+  GAVEL closes. The Status card shows that it is on and has a button to turn it off.
+- **Skip** keeps them and shows the usual download summary.
+
+A batch download (Download All, all quiz reports, several rubrics) asks once for the
+whole batch, and an overwrite re-runs only the files that were refused. Each replaced
+file is logged as a warning, and its manifest entry gets the new timestamp, checksum
+and size.
+
+A file the manifest lists but that was deleted from disk is downloaded again without
+asking. Gradescope sends every export at once, so its download files only the modules
+that are missing (no zip, or no extracted copy) and keeps the ones still on disk.
 
 ## 6. Reading a course folder from code
 
@@ -141,10 +160,10 @@ derive the course folder from `--course-id` when `--course-folder` is omitted;
 `--course-folder` in `--class-number` mode.
 
 Gradescope exports are grouped by the module number in the Gradescope assignment name
-(`Module 2: Programming` goes to `submissions/m2/`), because the assignment that carries
+(`Module 2: Programming` goes to `gradescope_submissions/m2/`), because the assignment that carries
 the rubric and the one Gradescope grades are usually different Canvas assignments in
 the same module. The zip is kept and also extracted next to itself. An export whose
-module cannot be told is kept in `original/submissions/_unmatched/` and still recorded
+module cannot be told is kept in `original/gradescope_submissions/_unmatched/` and still recorded
 in the manifest. Autograder zips go to the workspace-level `autograders/` area under
 their course (`autograders/ser334/`), not their section, because any section can run
 any of the course's autograders. They keep the filename the instructor uploaded

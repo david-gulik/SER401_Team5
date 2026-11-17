@@ -19,7 +19,7 @@ The layout, with one course as an example:
     │       │   ├── assignments/<assignment id>_m<module>/   AssignmentFolder
     │       │   │   ├── rubric_definition.json
     │       │   │   └── rubric_assessments.json
-    │       │   └── submissions/m<module>/                   ModuleSubmissions
+    │       │   └── gradescope_submissions/m<module>/        ModuleSubmissions
     │       │       ├── submissions.zip                      Gradescope bulk export
     │       │       └── extracted/                           the same, unzipped
     │       └── anonymized/             DataTree, same shape as original/
@@ -55,7 +55,8 @@ ASSIGNMENTS_DIR = "assignments"
 
 RUBRIC_DEFINITION_FILE = "rubric_definition.json"
 RUBRIC_ASSESSMENTS_FILE = "rubric_assessments.json"
-SUBMISSIONS_DIR = "submissions"
+# Prefixed so it is not mistaken for Canvas data, which lives under assignments/.
+SUBMISSIONS_DIR = "gradescope_submissions"
 SUBMISSIONS_FILE = "submissions.zip"
 EXTRACTED_DIR = "extracted"
 
@@ -304,7 +305,7 @@ class AssignmentFolder:
 
 @dataclass(frozen=True)
 class ModuleSubmissions:
-    """``submissions/m<module>/``: one module's Gradescope bulk export, zipped and extracted.
+    """``gradescope_submissions/m<module>/``: one module's Gradescope export, zipped and extracted.
 
     Gradescope exports are grouped by module rather than by Canvas assignment
     because the assignment that carries the rubric and the one Gradescope
