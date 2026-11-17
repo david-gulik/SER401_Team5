@@ -689,7 +689,9 @@ def write_broken_rubric(snapshot_dir: Path) -> Path:
 
 
 def gradescope_metadata(course_dir: Path) -> Path:
-    return next((course_dir / "original" / "gradescope_submissions").rglob("submission_metadata.yml"))
+    return next(
+        (course_dir / "original" / "gradescope_submissions").rglob("submission_metadata.yml")
+    )
 
 
 class TestPartialFailures:
@@ -766,7 +768,9 @@ class TestPartialFailures:
         assert [(f.path, f.error) for f in result.failures] == [
             ("gradescope_submissions/m1/extracted/assignment_123_export/submission_1", "OSError")
         ]
-        assert not (course_dir / "anonymized" / "gradescope_submissions" / "m1" / "submission_1").exists()
+        assert not (
+            course_dir / "anonymized" / "gradescope_submissions" / "m1" / "submission_1"
+        ).exists()
 
     def test_failure_names_the_error_type_but_not_its_message(self, use_case, course_dir: Path):
         # Parser messages can quote the offending line, student names and all.
