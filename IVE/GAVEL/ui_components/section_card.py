@@ -88,6 +88,7 @@ class SectionCard(QFrame):
     @property
     def body_layout(self):
         return self._body_layout
+
     def clear_title(self) -> None:
         """Empties this card's own title text.
 
