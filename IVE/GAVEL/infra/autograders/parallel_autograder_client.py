@@ -37,8 +37,10 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
 
     if lang == Language.JAVA:
         worker_src = os.path.join(worker_root, config_proj_loc[19:])
+        print(f"Java worker_src: {worker_src}")
     else:
-        worker_src = os.path.join(worker_root, config_proj_loc[12:])
+        worker_src = os.path.join(worker_root, config_proj_loc)
+        print(f"C worker_src: {worker_src}")
 
     os.makedirs(worker_src, exist_ok=True)
 
@@ -206,8 +208,8 @@ def autograde_submissions_folder(
 # testing area
 if __name__ == "__main__":
     autograde_submissions_folder(
-        Language.JAVA,
-        "../../../../data_original/10_24_autograder_test",
-        "../../../../data_original/10_24_autograder_test/output",
-        "../../../../data_original/10_22_autograder",
+
+        Path("C:/Users\dcgul\Downloads\GAVEL\courses/trn226_26sc_12345/anonymized\submissions\m2"),
+        "C:/Users\dcgul\Downloads\GAVEL\courses/trn226_26sc_12345/anonymized\submissions\m2/output",
+        "C:/Users\dcgul\Downloads\GAVEL/autograders/trn226\m2\SER334Module2Autograder_SEP10b_hotfix1",
     )
