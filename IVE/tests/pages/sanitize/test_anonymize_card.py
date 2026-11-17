@@ -174,6 +174,50 @@ class TestRunning:
         assert "failed" in page.card.results_status.text()
 
 
+class TestPartialRun:
+    @pytest.fixture
+    def broken_rubric(self, workspace) -> str:
+        assignments = workspace / "courses" / NEW / "original" / "assignments"
+        broken = sorted(assignments.glob("*/rubric_assessments.json"))[0]
+        broken.write_text("[{not json", encoding="utf-8")
+        return broken.relative_to(assignments.parent).as_posix()
+
+    def test_run_still_succeeds_and_lists_the_failed_file(self, page, vm, broken_rubric):
+        vm.select_course(NEW)
+
+        page.card.run_button.click()
+
+        assert vm.get_state().run_state is RunState.SUCCEEDED
+        rows = page.card.result_texts()
+        assert rows[-1] == [broken_rubric, "—", "—", "Failed (JSONDecodeError), not anonymized"]
+        assert "1 file could not be anonymized" in page.card.results_status.text()
+
+    def test_status_card_cautions(self, page, vm, broken_rubric):
+        vm.select_course(NEW)
+
+        page.card.run_button.click()
+
+        status, message, _ = page_status(vm.get_state())
+        assert status is Status.CAUTION
+        assert "1 file could not be anonymized" in message
+
+    def test_course_reads_as_out_of_date_afterwards(self, page, vm, broken_rubric):
+        vm.select_course(NEW)
+
+        page.card.run_button.click()
+
+        assert vm.get_state().selected_summary.status is AnonymizationStatus.OUT_OF_DATE
+
+    def test_failed_gradebook_shows_on_its_own_row(self, page, vm, workspace):
+        (workspace / "courses" / NEW / "original" / "gradebook.csv").write_bytes(b"\x00")
+        vm.select_course(NEW)
+
+        page.card.run_button.click()
+
+        rows = {row[0]: row for row in page.card.result_texts()}
+        assert rows["Gradebook"][3].startswith("Failed (")
+
+
 class TestWhileRunning:
     @pytest.fixture
     def held(self, qapp, theme, workspace):

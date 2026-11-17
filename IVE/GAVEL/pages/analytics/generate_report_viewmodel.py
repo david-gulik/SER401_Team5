@@ -151,7 +151,9 @@ class GenerateReportViewModel:
         rubric_definition = dataset.rubric_definition(rubric_assignment.canvas_id)
         if rubric_definition is None:
             raise MissingArtifactError(
-                dataset.tree, f"rubric definition for {rubric_assignment.name}", dataset.tree.root
+                dataset.tree,
+                f"rubric definition for {rubric_assignment.name}",
+                dataset.assignment_folder(rubric_assignment.canvas_id).rubric_definition_json,
             )
         rubric_assessments = dataset.rubric_assessments(rubric_assignment.canvas_id)
 
@@ -161,8 +163,8 @@ class GenerateReportViewModel:
 
         workspace = Workspace(workspace_root)
         output_path = (
-            workspace.runs_dir
-            / f"{course.key.folder_name}_m{module_number}_{mapping_name}_heatmap.json"
+            workspace.runs_dir / f"{course.key.folder_name}_m{module_number}_{mapping_name}"
+            f"_{rubric_assignment.canvas_id}_heatmap.json"
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         write_heat_map_report(result, output_path)

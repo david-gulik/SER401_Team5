@@ -83,4 +83,14 @@ def handle_anonymize_run(ctx: AppContext, args: Namespace) -> int:
         f"{result.rubric_assessment.excluded_count} excluded"
     )
 
+    if result.failures:
+        print(
+            f"{len(result.failures)} file(s) could not be anonymized and were left out "
+            "of the output (details in the log):",
+            file=sys.stderr,
+        )
+        for failure in result.failures:
+            print(f"  original/{failure.path}: {failure.error}", file=sys.stderr)
+        return 1
+
     return 0

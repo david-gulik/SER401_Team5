@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from GAVEL.infra.json.signed_error_report_reader import read_signed_errors
+from GAVEL.infra.json.signed_error_report_reader import (
+    SignedErrorWithIdentity,
+    read_signed_errors,
+    read_signed_errors_with_identity,
+)
 
 
 def _report(rows: list[dict]) -> dict:
@@ -97,3 +101,46 @@ def test_a_file_whose_top_level_is_a_list_raises_a_clear_error(tmp_path: Path) -
 
     with pytest.raises(ValueError, match="not a report file"):
         read_signed_errors(path)
+
+
+def test_with_identity_pairs_each_signed_error_with_its_student(tmp_path: Path) -> None:
+    path = tmp_path / "report.json"
+    path.write_text(
+        json.dumps(
+            _report(
+                [
+                    {
+                        "student_identifier": "a",
+                        "human_score": 4.0,
+                        "proxy_score": 5.0,
+                        "signed_error": -1.0,
+                    },
+                    {
+                        "student_identifier": "b",
+                        "human_score": 3.0,
+                        "proxy_score": 1.5,
+                        "signed_error": 1.5,
+                    },
+                ]
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    assert read_signed_errors_with_identity(path) == (
+        SignedErrorWithIdentity(student_identifier="a", signed_error=-1.0),
+        SignedErrorWithIdentity(student_identifier="b", signed_error=1.5),
+    )
+
+
+def test_with_identity_a_heat_map_report_raises_a_clear_error(tmp_path: Path) -> None:
+    path = tmp_path / "report.json"
+    path.write_text(
+        json.dumps(
+            {"rows": [{"criterion": "main menu", "human_points": 1.0, "proxy_points": 2.0}]}
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="not a signed-error report"):
+        read_signed_errors_with_identity(path)

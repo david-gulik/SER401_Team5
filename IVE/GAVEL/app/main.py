@@ -67,8 +67,10 @@ def main() -> None:
     # The login browser stays open between downloads; close it with the app.
     app.aboutToQuit.connect(asu_browser.close)
 
-    # The last pick is kept with the user's other per-app settings (the registry on Windows).
-    active_course = ActiveCourse(Workspace(default_workspace_root()), QSettings("GAVEL", "GAVEL"))
+    # Settings persist to the user's other per-app settings (the registry on
+    # Windows). Shared by the last course pick and the Analytics dock layout.
+    settings = QSettings("GAVEL", "GAVEL")
+    active_course = ActiveCourse(Workspace(default_workspace_root()), settings)
 
     ctx = AppContext(
         theme=theme,
@@ -76,6 +78,7 @@ def main() -> None:
         logger=logger,
         services=services,
         active_course=active_course,
+        settings=settings,
     )
 
     registry = PageRegistry.get()

@@ -11,6 +11,7 @@ from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionSc
 from GAVEL.app.dtos.rubric_definition import RubricCriterionDefinition, RubricDefinition
 from GAVEL.app.usecases.proxy_grade.generate_heat_map_report import (
     HeatMapScoreRow,
+    MissingHumanScore,
     compute_heat_map_rows,
 )
 
@@ -112,6 +113,25 @@ def test_matched_student_with_no_rubric_assessment_is_listed() -> None:
 
     assert result.students_without_human_scores == ("student1",)
     assert result.rows == ()
+    assert set(result.missing_human_score_pairs) == {
+        MissingHumanScore("student1", "main menu"),
+        MissingHumanScore("student1", "memory leaks"),
+    }
+
+
+def test_a_criterion_missing_its_human_score_does_not_block_the_rest() -> None:
+    submissions = [_submission("1", "student1@asu.edu", set(_ALL_TEST_NAMES))]
+    gradebook = CanvasGradebook(columns=(), rows=(_gradebook_row(1, "student1"),))
+    # Only "main menu" (c1) has a human score; "memory leaks" (c2) has none.
+    assessments = [_assessment(1, {"c1": 1.0})]
+
+    result = compute_heat_map_rows(submissions, gradebook, _RUBRIC, assessments, _MAPPING)
+
+    assert result.students_without_human_scores == ()
+    assert result.rows == (
+        HeatMapScoreRow("student1", "main menu", human_points=1.0, proxy_points=2.0),
+    )
+    assert result.missing_human_score_pairs == (MissingHumanScore("student1", "memory leaks"),)
 
 
 def test_an_empty_submission_list_produces_an_empty_result() -> None:
