@@ -1,4 +1,4 @@
-"""Gradescope bulk exports into ``original/submissions/m<module>/``.
+"""Gradescope bulk exports into ``original/gradescope_submissions/m<module>/``.
 
 The Gradescope scraper only knows Gradescope's assignment names and writes
 ``<name>.zip`` plus ``autograders/<name>/<uploaded filename>`` into one folder.
@@ -9,7 +9,7 @@ module is what ties submissions to rubric assessments. Submissions are
 extracted next to the zip. Autograders keep their uploaded filename and go to
 the course's folder in the workspace-level ``autograders/`` area, where every
 section of the course can use them. A submissions export whose module cannot
-be told goes to ``submissions/_unmatched/`` and is still recorded in the
+be told goes to ``gradescope_submissions/_unmatched/`` and is still recorded in the
 manifest, so nothing downloaded is ever lost.
 """
 

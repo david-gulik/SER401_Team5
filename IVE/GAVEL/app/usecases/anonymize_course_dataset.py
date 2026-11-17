@@ -44,7 +44,12 @@ from GAVEL.app.usecases.generate_anonymous_id_map import (
     GenerateAnonymousIdMapRequest,
     GenerateAnonymousIdMapUseCase,
 )
-from GAVEL.app.workspace.layout import RUBRIC_DEFINITION_FILE, CourseFolder, CourseKey
+from GAVEL.app.workspace.layout import (
+    RUBRIC_DEFINITION_FILE,
+    SUBMISSIONS_DIR,
+    CourseFolder,
+    CourseKey,
+)
 from GAVEL.app.workspace.recording import hash_sources, note_anonymization
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
     CanvasConsentFormCSVReader,
@@ -194,7 +199,7 @@ class AnonymizeCourseDatasetUseCase:
         roster_path = original_dir / "roster.csv"
         gradebook_path = original_dir / "gradebook.csv"
         assignments_dir = original_dir / "assignments"
-        submissions_dir = original_dir / "submissions"
+        submissions_dir = original_dir / SUBMISSIONS_DIR
 
         if not consent_form_path.exists():
             raise ValueError("Consent form is missing from the dataset")
@@ -366,7 +371,7 @@ class AnonymizeCourseDatasetUseCase:
         if submissions_dir.exists():
             self._anonymize_submissions(
                 submissions_dir,
-                output_dir / "submissions",
+                output_dir / SUBMISSIONS_DIR,
                 set(roster_consented_ids),
                 failures,
             )

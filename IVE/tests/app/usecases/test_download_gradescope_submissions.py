@@ -201,7 +201,7 @@ class TestFiling:
             ),
         )
         manifest = load_manifest(folder.manifest_path)
-        subs = manifest.artifact("original/submissions/m3/submissions.zip")
+        subs = manifest.artifact("original/gradescope_submissions/m3/submissions.zip")
         grader = manifest.artifact("autograders/ser222/SER222Module3Autograder.zip")
         assert subs is not None and subs.kind == "submissions"
         assert subs.source_id == 7216972 and subs.label == "Module 3 Programming"
@@ -229,7 +229,7 @@ class TestFiling:
         assert [a.gradescope_name for a in result.unmatched] == ["Practice Exam"]
         assert "Practice Exam" in result.message
         entry = load_manifest(folder.manifest_path).artifact(
-            "original/submissions/_unmatched/Practice Exam.zip"
+            "original/gradescope_submissions/_unmatched/Practice Exam.zip"
         )
         assert entry is not None
         assert entry.kind == "submissions" and entry.source_id is None

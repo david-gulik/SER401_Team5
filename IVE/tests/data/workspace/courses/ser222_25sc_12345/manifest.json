@@ -67,7 +67,7 @@
     },
     {
       "kind": "submissions",
-      "path": "anonymized/submissions/m4/extracted/submission_metadata.yml",
+      "path": "anonymized/gradescope_submissions/m4/extracted/submission_metadata.yml",
       "downloaded_at": "2026-11-01T17:53:48+00:00",
       "sha256": "dfecf061177d0984f9c0ed8064f30234cc632e61c2576d968da7ee26cde04519",
       "size_bytes": 842,
