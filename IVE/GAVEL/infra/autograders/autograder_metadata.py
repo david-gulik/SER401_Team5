@@ -41,7 +41,6 @@ def load_autograder(folder: Path) -> AutograderInfo:
         with open(metadata_file, "w") as f:
             json.dump(DEFAULT_METADATA, f, indent=4)
     try:
-
         with open(metadata_file) as f:
             data = json.load(f)
     except JSONDecodeError:

@@ -12,6 +12,7 @@ from pathlib import Path
 
 # TODO: figure out C stuff
 
+
 class Language(Enum):
     JAVA = 1
     C = 2
@@ -120,6 +121,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     time_elapsed = time.perf_counter() - start
     return f"{filename}: done (elapsed time: {time_elapsed} seconds)"
 
+
 def _detect_language(input_folder) -> Language | None:
     for file in input_folder.rglob("*"):
         if not file.is_file():
@@ -130,8 +132,10 @@ def _detect_language(input_folder) -> Language | None:
             return Language.C
     return None
 
-def autograde_submissions_folder(input_folder, output_folder, autograder_folder_arg) -> float | type[Exception]:
 
+def autograde_submissions_folder(
+    input_folder, output_folder, autograder_folder_arg
+) -> float | type[Exception]:
     """
     :param lang: programming language, "Language.JAVA" or "Language.C"
     :param input_folder: submissions input folder
@@ -141,7 +145,9 @@ def autograde_submissions_folder(input_folder, output_folder, autograder_folder_
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("autograder_client")
-    log.info(f"Autograding started on {Path(input_folder).name} using {Path(autograder_folder_arg).name}...")
+    log.info(
+        f"Autograding started on {Path(input_folder).name} using {Path(autograder_folder_arg).name}..."
+    )
 
     start = time.perf_counter()
     lang = _detect_language(input_folder)
@@ -169,7 +175,6 @@ def autograde_submissions_folder(input_folder, output_folder, autograder_folder_
     # TODO: is this max_workers count acceptable? Problems would start here...
     try:
         with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
-
             futures = [
                 pool.submit(
                     grade_one_submission,
@@ -187,11 +192,14 @@ def autograde_submissions_folder(input_folder, output_folder, autograder_folder_
                 completed_tasks += 1
                 log.info(f"{fut.result()} ({completed_tasks}/{len(futures)})")
 
-
-        log.info(f"Autograding complete! ({Path(input_folder).name} using autograder {Path(autograder_folder_arg).name}.)")
+        log.info(
+            f"Autograding complete! ({Path(input_folder).name} using autograder {Path(autograder_folder_arg).name}.)"
+        )
         return time.perf_counter() - start
-    except Exception as e:
-        log.warning(f"Autograding failed!! ({Path(input_folder).name} using autograder {Path(autograder_folder_arg).name}.)")
+    except Exception:
+        log.warning(
+            f"Autograding failed!! ({Path(input_folder).name} using autograder {Path(autograder_folder_arg).name}.)"
+        )
         return Exception
 
 

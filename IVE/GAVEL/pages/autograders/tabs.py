@@ -1,9 +1,9 @@
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
-import os
-from dotenv import load_dotenv
 
+from dotenv import load_dotenv
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -24,12 +24,12 @@ from GAVEL.infra.autograders.autograder_metadata import (
     save_autograder_metadata,
 )
 from GAVEL.infra.autograders.parallel_autograder_client import (
-    Language,
     autograde_submissions_folder,
 )
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.log_handler import QtLogHandler
 from GAVEL.ui_components.section_card import SectionCard
+
 
 def get_assignment_subfolders(folder: Path) -> list[str]:
     if not folder.exists():
@@ -185,12 +185,8 @@ class RunAutogradersTab(ScrollableTab):
         if not course:
             return
         self.course_selected = course
-        self.assignment_folder = (
-            self.courses_path / course / "anonymized/submissions"
-        )
-        self.evaluations_folder = (
-            self.courses_path / course / "anonymized/evaluations"
-        )
+        self.assignment_folder = self.courses_path / course / "anonymized/submissions"
+        self.evaluations_folder = self.courses_path / course / "anonymized/evaluations"
         self.saved_evaluations_folder = self.evaluations_folder
 
         assignments = get_assignment_subfolders(self.assignment_folder)
@@ -211,15 +207,9 @@ class RunAutogradersTab(ScrollableTab):
         if not course or not assignment:
             return
 
-        autograder_folder = (
-                self.autograders_path
-                / course
-                / assignment
-        )
+        autograder_folder = self.autograders_path / course / assignment
         self.evaluations_folder = self.saved_evaluations_folder
-        self.evaluations_folder = (
-            self.evaluations_folder / assignment
-        )
+        self.evaluations_folder = self.evaluations_folder / assignment
         self.submissions_folder = (
             self.courses_path / self.course_selected / "anonymized/submissions" / assignment
         )
@@ -291,8 +281,7 @@ class RunAutogradersTab(ScrollableTab):
                 on_result,
                 on_error,
             )
-    def _reset_evaluation_output_folder(self) -> None:
-        self.eva
+
     def _update_run_button_state(self) -> None:
         self.run_btn.setEnabled(self._can_run())
 
