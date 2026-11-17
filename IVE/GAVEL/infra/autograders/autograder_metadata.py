@@ -38,13 +38,13 @@ def load_autograder(folder: Path) -> AutograderInfo:
     metadata_file = folder / "metadata.json"
 
     if not metadata_file.exists():
-        with open(metadata_file, "w") as f:
+        with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_METADATA, f, indent=4)
     try:
-        with open(metadata_file) as f:
+        with open(metadata_file, encoding="utf-8") as f:
             data = json.load(f)
     except JSONDecodeError:
-        with open(metadata_file, "w") as f:
+        with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_METADATA, f, indent=4)
 
     autograder = AutograderInfo(
@@ -72,7 +72,7 @@ def save_autograder_metadata(autograder: AutograderInfo) -> None:
         "last_run": (autograder.last_run.isoformat() if autograder.last_run else None),
     }
 
-    with open(metadata_file, "w") as f:
+    with open(metadata_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
 
@@ -82,7 +82,7 @@ def load_metadata(autograder: AutograderInfo) -> None:
     if not metadata_file.exists():
         return
 
-    with open(metadata_file) as f:
+    with open(metadata_file, encoding="utf-8") as f:
         data = json.load(f)
 
     autograder.has_run = data.get("has_run", False)
@@ -106,7 +106,7 @@ def save_metadata(autograder: AutograderInfo) -> None:
         "last_run": (autograder.last_run.isoformat() if autograder.last_run else None),
     }
 
-    with open(metadata_file, "w") as f:
+    with open(metadata_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
 

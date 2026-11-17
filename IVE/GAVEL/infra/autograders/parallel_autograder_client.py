@@ -100,7 +100,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
             )
 
             parsed = json.loads(result.stdout)
-            with open(output_path, "w") as out:
+            with open(output_path, "w", encoding="utf-8") as out:
                 json.dump(parsed, out, indent=4)
 
         else:  # C autograder
@@ -110,7 +110,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
             if os.path.exists(results_path):
                 os.remove(results_path)
 
-            with open(log_path, "w") as out:
+            with open(log_path, "w", encoding="utf-8") as out:
                 subprocess.run(
                     [sys.executable, "main.py"], cwd=worker_root, stdout=out, shell=False
                 )
@@ -155,7 +155,7 @@ def autograde_submissions_folder(
     lang = _detect_language(input_folder)
 
     config_file_location = os.path.join(autograder_folder_arg, "config.json")
-    with open(config_file_location) as file:
+    with open(config_file_location, encoding="utf-8") as file:
         config = json.load(file)
     # Determine autograder root
     autograder_root = autograder_folder_arg
@@ -203,13 +203,3 @@ def autograde_submissions_folder(
             f"Autograding failed!! ({Path(input_folder).name} using autograder {Path(autograder_folder_arg).name}.)"
         )
         return Exception
-
-
-# testing area
-if __name__ == "__main__":
-    autograde_submissions_folder(
-
-        Path("C:/Users\dcgul\Downloads\GAVEL\courses/trn226_26sc_12345/anonymized\submissions\m2"),
-        "C:/Users\dcgul\Downloads\GAVEL\courses/trn226_26sc_12345/anonymized\submissions\m2/output",
-        "C:/Users\dcgul\Downloads\GAVEL/autograders/trn226\m2\SER334Module2Autograder_SEP10b_hotfix1",
-    )
