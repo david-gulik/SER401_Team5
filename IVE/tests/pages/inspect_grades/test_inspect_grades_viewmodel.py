@@ -268,3 +268,23 @@ def test_missing_rubric_definition_does_not_block_grades(vm, monkeypatch):
 
     assert vm.rubric_definition is None
     assert vm.rubric_definition_error is None
+
+
+def test_stores_rubric_corrections():
+    vm = InspectGradesViewModel(dataset_readers=build_dataset_readers())
+
+    vm.set_correction(100002, "crit_2", 2.0)
+
+    assert vm.get_correction(100002, "crit_2") == 2.0
+    assert vm.get_correction(100001, "crit_2") is None
+    assert vm.get_correction(100002, "crit_1") is None
+
+
+def test_overwrites_existing_rubric_correction():
+    vm = InspectGradesViewModel(dataset_readers=build_dataset_readers())
+
+    vm.set_correction(100002, "crit_2", 2.0)
+    vm.set_correction(100002, "crit_2", 0.0)
+
+    assert vm.get_correction(100002, "crit_2") == 0.0
+    assert len(vm.corrections) == 1
