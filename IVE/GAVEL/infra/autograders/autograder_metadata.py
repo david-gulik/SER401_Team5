@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from json import JSONDecodeError
 from pathlib import Path
 
 from PyQt6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QWidget
@@ -35,14 +36,17 @@ DEFAULT_METADATA = {
 
 def load_autograder(folder: Path) -> AutograderInfo:
     metadata_file = folder / "metadata.json"
-    # print(metadata_file)
 
     if not metadata_file.exists():
         with open(metadata_file, "w") as f:
             json.dump(DEFAULT_METADATA, f, indent=4)
+    try:
 
-    with open(metadata_file) as f:
-        data = json.load(f)
+        with open(metadata_file) as f:
+            data = json.load(f)
+    except JSONDecodeError:
+        with open(metadata_file, "w") as f:
+            json.dump(DEFAULT_METADATA, f, indent=4)
 
     autograder = AutograderInfo(
         path=folder,
@@ -50,9 +54,7 @@ def load_autograder(folder: Path) -> AutograderInfo:
     )
 
     autograder.has_run = data.get("has_run")
-    # autograder.run_count = data.get("run_count", 0)
     autograder.duration_seconds = data.get("duration_seconds")
-    # print(autograder.last_run)
     autograder.last_status = data.get("last_status", "never_run")
 
     if data.get("last_run"):

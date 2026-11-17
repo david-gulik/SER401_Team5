@@ -120,8 +120,17 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     time_elapsed = time.perf_counter() - start
     return f"{filename}: done (elapsed time: {time_elapsed} seconds)"
 
+def _detect_language(input_folder) -> Language | None:
+    for file in input_folder.rglob("*"):
+        if not file.is_file():
+            continue
+        if file.suffix.lower() == ".java":
+            return Language.JAVA
+        elif file.suffix.lower() == ".c":
+            return Language.C
+    return None
 
-def autograde_submissions_folder(lang, input_folder, output_folder, autograder_folder_arg) -> float | type[Exception]:
+def autograde_submissions_folder(input_folder, output_folder, autograder_folder_arg) -> float | type[Exception]:
 
     """
     :param lang: programming language, "Language.JAVA" or "Language.C"
@@ -135,15 +144,13 @@ def autograde_submissions_folder(lang, input_folder, output_folder, autograder_f
     log.info(f"Autograding started on {Path(input_folder).name} using {Path(autograder_folder_arg).name}...")
 
     start = time.perf_counter()
+    lang = _detect_language(input_folder)
 
     config_file_location = os.path.join(autograder_folder_arg, "config.json")
-
     with open(config_file_location) as file:
         config = json.load(file)
-
     # Determine autograder root
     autograder_root = autograder_folder_arg
-
     # Ensure output folder exists
     os.makedirs(output_folder, exist_ok=True)
 

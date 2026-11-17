@@ -1,6 +1,8 @@
 import logging
 from datetime import datetime
 from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 from PyQt6.QtWidgets import (
     QApplication,
@@ -29,13 +31,6 @@ from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.log_handler import QtLogHandler
 from GAVEL.ui_components.section_card import SectionCard
 
-# TODO: clean this up once glocal course select is available
-
-TEMP_PATH = Path(r"C:/Users\dcgul\Downloads\GAVEL\courses\ser222_25sc_12345\original/submissions/")
-AUTOGRADERS_TEMP = Path("GAVEL/autograders/")
-COURSES_TEMP = Path(r"C:/Users\dcgul\Downloads\GAVEL\courses/")
-
-
 def get_assignment_subfolders(folder: Path) -> list[str]:
     if not folder.exists():
         return []
@@ -49,7 +44,10 @@ def get_assignment_subfolders(folder: Path) -> list[str]:
 class RunAutogradersTab(ScrollableTab):
     def __init__(self, theme: ThemeContext) -> None:
         super().__init__(theme)
-
+        load_dotenv()
+        self.root_path = Path(os.getenv("DEFAULT_OUTPUT_DIR")).expanduser()
+        self.courses_path = self.root_path / "courses"
+        self.autograders_path = self.root_path / "autograders"
         self._theme = theme
 
         self.course_combo: QComboBox | None = None
@@ -58,8 +56,8 @@ class RunAutogradersTab(ScrollableTab):
         self.autograders_card: SectionCard | None = None
         self.autograder_rows: list[AutograderRow] = []
 
-        self.add_section(self._build_course_select_dropdown(COURSES_TEMP))
-        self.add_section(self._build_assignments_dropdown(TEMP_PATH))
+        self.add_section(self._build_course_select_dropdown(self.courses_path))
+        self.add_section(self._build_assignments_dropdown(self.courses_path))
         self.add_section(self._build_available_autograders_dropdown())
 
         self.run_btn = QPushButton("Run")
@@ -186,10 +184,16 @@ class RunAutogradersTab(ScrollableTab):
     def _on_course_selected(self, course: str) -> None:
         if not course:
             return
+        self.course_selected = course
+        self.assignment_folder = (
+            self.courses_path / course / "anonymized/submissions"
+        )
+        self.evaluations_folder = (
+            self.courses_path / course / "anonymized/evaluations"
+        )
+        self.saved_evaluations_folder = self.evaluations_folder
 
-        assignment_folder = COURSES_TEMP / course / "original/submissions"
-
-        assignments = get_assignment_subfolders(assignment_folder)
+        assignments = get_assignment_subfolders(self.assignment_folder)
 
         self.assignment_combo.clear()
         self.assignment_combo.addItems(assignments)
@@ -203,13 +207,22 @@ class RunAutogradersTab(ScrollableTab):
     # this method extracts the course name and calls to populate the autograder checkboxes
 
     def _on_assignment_selected(self, assignment: str) -> None:
-        course = self.course_combo.currentText()
-        course_name = course.split("_")[0]
+        course = self.course_combo.currentText().split("_")[0]
         if not course or not assignment:
             return
 
-        autograder_folder = AUTOGRADERS_TEMP / course_name / assignment
-
+        autograder_folder = (
+                self.autograders_path
+                / course
+                / assignment
+        )
+        self.evaluations_folder = self.saved_evaluations_folder
+        self.evaluations_folder = (
+            self.evaluations_folder / assignment
+        )
+        self.submissions_folder = (
+            self.courses_path / self.course_selected / "anonymized/submissions" / assignment
+        )
         self._update_run_button_state()
 
         self._populate_autograders(autograder_folder)
@@ -248,9 +261,10 @@ class RunAutogradersTab(ScrollableTab):
 
             def work(row=row):
                 return autograde_submissions_folder(
-                    Language.JAVA,
-                    input_folder=r"C:/Users/dcgul/OneDrive/Desktop/SER401 Project/SER401_Team5/data_original/10_24_autograder_test",
-                    output_folder=r"C:/Users/dcgul/OneDrive/Desktop/SER401 Project/SER401_Team5/data_original/autograder_test_output",
+                    # input_folder=r"C:/Users/dcgul/OneDrive/Desktop/SER401 Project/SER401_Team5/data_original/10_24_autograder_test",
+                    # output_folder=r"C:/Users/dcgul/OneDrive/Desktop/SER401 Project/SER401_Team5/data_original/autograder_test_output",
+                    input_folder=self.submissions_folder,
+                    output_folder=self.evaluations_folder,
                     autograder_folder_arg=row.autograder.path.resolve(),
                 )
 
@@ -277,7 +291,8 @@ class RunAutogradersTab(ScrollableTab):
                 on_result,
                 on_error,
             )
-
+    def _reset_evaluation_output_folder(self) -> None:
+        self.eva
     def _update_run_button_state(self) -> None:
         self.run_btn.setEnabled(self._can_run())
 
