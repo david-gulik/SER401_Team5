@@ -2,8 +2,10 @@ import json
 import logging
 import os
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import zipfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -18,9 +20,25 @@ class Language(Enum):
     C = 2
 
 
-def grade_one_submission(filename, config, lang, autograder_root, input_folder, output_folder):
+class AutograderRunFailed(RuntimeError):
+    """The autograder process ended without usable results."""
+
+    def __init__(self, message, returncode, stdout, stderr):
+        super().__init__(message)
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def grade_one_submission(
+    filename, config, lang, autograder_root, input_folder, output_folder, timeout=None
+):
     """
     Runs the autograder for a single submission in a fully isolated worker directory.
+
+    ``timeout`` caps the autograder process in seconds; when it runs out the
+    ``subprocess.TimeoutExpired`` propagates. An autograder that exits with an
+    error or leaves no results raises ``AutograderRunFailed`` carrying its output.
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     log = logging.getLogger("autograder_client")
@@ -29,8 +47,8 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     log.info(f"Starting autograder for {Path(filename).name}...")
 
     # clone workspace
-    worker_root = os.path.join("/tmp", f"autograder_worker_{filename.split('.')[0]}_{os.getpid()}")
-    shutil.copytree(autograder_root, worker_root)
+    worker_root = tempfile.mkdtemp(prefix=f"autograder_worker_{filename.split('.')[0]}_")
+    shutil.copytree(autograder_root, worker_root, dirs_exist_ok=True)
 
     # TODO: better version of extracting worker src files
     config_proj_loc = config["project_location"][:-1].replace("/", os.sep)
@@ -86,7 +104,7 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
     output_path = os.path.join(output_folder, output_filename)
 
     if os.path.exists(output_path):
-        shutil.rmtree(worker_root, ignore_errors=True)
+        _remove_worker(worker_root)
         return f"{filename}: already exists"
 
     try:
@@ -97,9 +115,22 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
                 capture_output=True,
                 text=True,
                 shell=True,
+                timeout=timeout,
             )
+            if result.returncode != 0:
+                raise AutograderRunFailed(
+                    f"mvn exited with status {result.returncode}",
+                    result.returncode,
+                    result.stdout,
+                    result.stderr,
+                )
 
-            parsed = json.loads(result.stdout)
+            try:
+                parsed = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise AutograderRunFailed(
+                    "no results JSON on stdout", result.returncode, result.stdout, result.stderr
+                ) from exc
             with open(output_path, "w", encoding="utf-8") as out:
                 json.dump(parsed, out, indent=4)
 
@@ -110,18 +141,50 @@ def grade_one_submission(filename, config, lang, autograder_root, input_folder, 
             if os.path.exists(results_path):
                 os.remove(results_path)
 
+            result = subprocess.run(
+                [sys.executable, "main.py"],
+                cwd=worker_root,
+                capture_output=True,
+                text=True,
+                shell=False,
+                timeout=timeout,
+            )
             with open(log_path, "w", encoding="utf-8") as out:
-                subprocess.run(
-                    [sys.executable, "main.py"], cwd=worker_root, stdout=out, shell=False
+                out.write(result.stdout)
+            if result.returncode != 0 or not os.path.exists(results_path):
+                raise AutograderRunFailed(
+                    f"main.py exited with status {result.returncode}",
+                    result.returncode,
+                    result.stdout,
+                    result.stderr,
                 )
 
             shutil.copy(results_path, output_path)
 
     finally:
         # clean up directory
-        shutil.rmtree(worker_root, ignore_errors=True)
+        _remove_worker(worker_root)
     time_elapsed = time.perf_counter() - start
     return f"{filename}: done (elapsed time: {time_elapsed} seconds)"
+
+
+def _remove_worker(worker_root):
+    """
+    Deletes a worker copy. Folders synced by OneDrive carry a read-only attribute
+    that copytree preserves, and Windows refuses to delete a read-only folder.
+    """
+    for root, dirs, files in os.walk(worker_root):
+        for name in dirs + files:
+            path = os.path.join(root, name)
+            try:
+                os.chmod(path, os.stat(path).st_mode | stat.S_IWRITE)
+            except OSError:
+                pass
+    try:
+        os.chmod(worker_root, os.stat(worker_root).st_mode | stat.S_IWRITE)
+    except OSError:
+        pass
+    shutil.rmtree(worker_root, ignore_errors=True)
 
 
 def _detect_language(input_folder) -> Language | None:
@@ -136,13 +199,13 @@ def _detect_language(input_folder) -> Language | None:
 
 
 def autograde_submissions_folder(
-    input_folder, output_folder, autograder_folder_arg
+    input_folder, output_folder, autograder_folder_arg, timeout=None
 ) -> float | type[Exception]:
     """
-    :param lang: programming language, "Language.JAVA" or "Language.C"
     :param input_folder: submissions input folder
     :param output_folder: desired output folder
     :param autograder_folder_arg: autograder folder
+    :param timeout: seconds allowed per submission, None for no limit
     :return: time elapsed
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -186,6 +249,7 @@ def autograde_submissions_folder(
                     autograder_root,
                     input_folder,
                     course_specific_output_folder,
+                    timeout,
                 )
                 for filename in submissions
             ]
