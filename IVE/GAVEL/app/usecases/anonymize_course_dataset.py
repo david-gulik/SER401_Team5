@@ -50,6 +50,7 @@ from GAVEL.app.workspace.layout import (
     CourseFolder,
     CourseKey,
 )
+from GAVEL.app.workspace.manifest import load_consent_overrides
 from GAVEL.app.workspace.recording import hash_sources, note_anonymization
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
     CanvasConsentFormCSVReader,
@@ -222,6 +223,12 @@ class AnonymizeCourseDatasetUseCase:
         ]
         # Hashed before reading, so an input that changes mid-run reads as out of date.
         sources = hash_sources(course_folder, inputs) if course_folder is not None else ()
+        # Overrides live in the manifest, so only workspace course folders have any.
+        overrides = (
+            load_consent_overrides(course_folder.manifest_path)
+            if course_folder is not None
+            else frozenset()
+        )
 
         if request.replace_existing and output_dir.exists():
             shutil.rmtree(output_dir)
@@ -242,6 +249,7 @@ class AnonymizeCourseDatasetUseCase:
             DownselectConsentedStudentsRequest(
                 entries=consent_entries,
                 roster=roster_students or (),
+                overrides=overrides,
             )
         )
 
@@ -389,7 +397,7 @@ class AnonymizeCourseDatasetUseCase:
                 for source, path in zip(sources, inputs, strict=True)
                 if not failures.failed(path)
             )
-            note_anonymization(course_folder, written)
+            note_anonymization(course_folder, written, consent_overrides=overrides)
 
         return AnonymizeCourseDatasetResult(
             output_dir=output_dir,

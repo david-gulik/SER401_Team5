@@ -67,6 +67,7 @@ class ListWorkspaceCoursesUseCase:
             consent=consent,
             consent_unreadable=unreadable,
             canvas_course_name=manifest.canvas_course_name if manifest else None,
+            consent_overrides_changed=_consent_overrides_changed(manifest),
         )
 
     def _tally_consent(self, folder: CourseFolder) -> tuple[ConsentTally | None, bool]:
@@ -114,6 +115,12 @@ def _tracked_file(
         original_sha256=sha256_of(original) if compare else None,
         anonymized_from_sha256=recorded.sha256 if recorded else None,
     )
+
+
+def _consent_overrides_changed(manifest: CourseManifest | None) -> bool:
+    if manifest is None or manifest.anonymization is None:
+        return False
+    return frozenset(manifest.anonymization.consent_overrides) != manifest.overridden_sis_ids
 
 
 def _modified_at(path: Path) -> datetime | None:
