@@ -464,3 +464,93 @@ class TestNameMatching:
         result = use_case.execute(DownselectConsentedStudentsRequest(entries=(entry,)))
         assert result.consented_ids == ()
         assert result.excluded_count == 1
+
+
+class TestOverrides:
+    def entry(self, name_response: str, consented: bool = True) -> ConsentFormEntry:
+        return ConsentFormEntry(
+            canvas_id=200002,
+            sis_id=6789012345,
+            lms_name="Bailey Bourque",
+            attempt=1,
+            name_response=name_response,
+            consented=consented,
+        )
+
+    def run(self, use_case, entry: ConsentFormEntry, overrides=frozenset({6789012345})):
+        return use_case.execute(
+            DownselectConsentedStudentsRequest(entries=(entry,), overrides=overrides)
+        )
+
+    @pytest.mark.parametrize(
+        ("name_response", "without_override"),
+        [
+            ("Baily Bourqe", ConsentStatus.POSSIBLE_TYPO),
+            ("Totally Different Name", ConsentStatus.NAME_MISMATCH),
+        ],
+    )
+    def test_overridden_name_problem_is_included(self, use_case, name_response, without_override):
+        entry = self.entry(name_response)
+        assert only_decision(self.run(use_case, entry, frozenset())).status is without_override
+
+        result = self.run(use_case, entry)
+
+        decision = only_decision(result)
+        assert decision.status is ConsentStatus.OVERRIDDEN
+        assert decision.included
+        assert result.consented_ids == (200002,)
+        assert result.included_count == 1
+        assert result.excluded_count == 0
+
+    @pytest.mark.parametrize(
+        ("name_response", "consented", "expected"),
+        [
+            ("", True, ConsentStatus.NAME_BLANK),
+            ("Bailey Bourque", False, ConsentStatus.DECLINED),
+            ("Baily Bourqe", False, ConsentStatus.DECLINED),
+        ],
+    )
+    def test_override_does_not_apply_to_other_results(
+        self, use_case, name_response, consented, expected
+    ):
+        result = self.run(use_case, self.entry(name_response, consented))
+
+        assert only_decision(result).status is expected
+        assert result.consented_ids == ()
+
+    def test_override_on_a_matching_name_leaves_it_included(self, use_case):
+        result = self.run(use_case, self.entry("Bailey Bourque"))
+
+        assert only_decision(result).status is ConsentStatus.INCLUDED
+
+    def test_override_does_not_apply_to_no_response(self, use_case):
+        roster_student = only_decision(
+            use_case.execute(
+                DownselectConsentedStudentsRequest(
+                    entries=(),
+                    roster=(ROSTER_NO_RESPONSE,),
+                    overrides=frozenset({REAL_ID_NO_RESPONSE}),
+                )
+            )
+        )
+
+        assert roster_student.status is ConsentStatus.NO_RESPONSE
+
+    def test_override_follows_the_latest_attempt(self, use_case):
+        first = self.entry("Baily Bourqe")
+        declined_later = ConsentFormEntry(
+            canvas_id=first.canvas_id,
+            sis_id=first.sis_id,
+            lms_name=first.lms_name,
+            attempt=2,
+            name_response="Baily Bourqe",
+            consented=False,
+        )
+
+        result = use_case.execute(
+            DownselectConsentedStudentsRequest(
+                entries=(first, declined_later), overrides=frozenset({first.sis_id})
+            )
+        )
+
+        assert only_decision(result).status is ConsentStatus.DECLINED

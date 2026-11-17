@@ -16,6 +16,7 @@ from GAVEL.pages.download.viewmodel import (
 )
 from GAVEL.services.logger import AppLogger
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
+from tests.pages.download.test_viewmodel_roster import wait_for_workers
 
 SIS_COURSE = CanvasCourse(id=273116, name="SER 402", course_code="2026FallC-X-SER402-87275")
 TRAINING = CanvasCourse(id=213877, name="IVE Capstone", course_code="TRN-2026Spring-IVECapstone")
@@ -42,6 +43,7 @@ def vm(qapp, canvas: GradebookCanvasClient, tmp_path: Path) -> DownloadViewModel
         roster_configured=True,
     )
     vm.load_courses()
+    wait_for_workers(qapp)
     return vm
 
 
@@ -51,7 +53,7 @@ def events(vm: DownloadViewModel) -> list:
     return seen
 
 
-def test_training_course_cannot_be_named_automatically(vm, canvas):
+def test_training_course_cannot_be_named_automatically(qapp, vm, canvas):
     vm.set_course_id(str(TRAINING.id))
     state = vm.get_state()
     assert state.course_folder_name is None
@@ -60,11 +62,12 @@ def test_training_course_cannot_be_named_automatically(vm, canvas):
 
     seen = events(vm)
     vm.download_gradebook()
+    wait_for_workers(qapp)
     assert seen == [ShowError(state.course_folder_error), FocusCourseFolder()]
     assert canvas.download_calls == []
 
 
-def test_typed_folder_name_unblocks_the_download(vm, canvas, tmp_path):
+def test_typed_folder_name_unblocks_the_download(qapp, vm, canvas, tmp_path):
     vm.set_course_id(str(TRAINING.id))
     vm.set_manual_course_folder("ser401_26f_99999")
     state = vm.get_state()
@@ -72,6 +75,7 @@ def test_typed_folder_name_unblocks_the_download(vm, canvas, tmp_path):
     assert state.course_folder_error is None
 
     vm.download_gradebook()
+    wait_for_workers(qapp)
     state = vm.get_state()
     assert state.status is Status.NOMINAL
     expected = tmp_path / "courses" / "ser401_26f_99999" / "original" / "gradebook.csv"
@@ -95,7 +99,7 @@ def test_clearing_the_typed_name_goes_back_to_the_selections(vm):
     assert vm.get_state().course_folder_name == "courses/ser402_26fc_87275"
 
 
-def test_malformed_typed_name_is_explained_and_blocks(vm, canvas):
+def test_malformed_typed_name_is_explained_and_blocks(qapp, vm, canvas):
     vm.set_course_id(str(SIS_COURSE.id))
     vm.set_manual_course_folder("my course")
     state = vm.get_state()
@@ -104,13 +108,15 @@ def test_malformed_typed_name_is_explained_and_blocks(vm, canvas):
 
     seen = events(vm)
     vm.download_gradebook()
+    wait_for_workers(qapp)
     assert seen == [ShowError(state.course_folder_error), FocusCourseFolder()]
     assert canvas.download_calls == []
 
 
-def test_changing_the_typed_name_forgets_completed_downloads(vm):
+def test_changing_the_typed_name_forgets_completed_downloads(qapp, vm):
     vm.set_course_id(str(SIS_COURSE.id))
     vm.download_gradebook()
+    wait_for_workers(qapp)
     assert GRADEBOOK_DOWNLOAD in vm.get_state().completed
     vm.set_manual_course_folder("ser402_26fc_00001")
     assert vm.get_state().completed == frozenset()

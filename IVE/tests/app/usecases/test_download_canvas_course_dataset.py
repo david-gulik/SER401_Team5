@@ -108,7 +108,13 @@ class MockCanvasClient(CanvasClient):
 
     def __init__(self) -> None:
         self.course_data = CanvasCourseData(
-            course=CanvasCourse(id=COURSE_ID, name="IVE Capstone", course_code="TRN-2026Spring"),
+            course=CanvasCourse(
+                id=COURSE_ID,
+                name="IVE Capstone",
+                course_code="TRN-2026Spring",
+                time_zone="America/Phoenix",
+                start_at="2026-01-12T07:00:00+00:00",
+            ),
             modules=[CanvasModule(id=1, name="Module 0")],
         )
         self.gradebook_csv: bytes = GRADEBOOK_CSV_BYTES
@@ -263,6 +269,9 @@ class TestHappyPath:
         manifest = load_manifest(folder.manifest_path)
         assert manifest.canvas_course_id == COURSE_ID
         assert manifest.canvas_course_name == "IVE Capstone"
+        assert manifest.canvas_time_zone == "America/Phoenix"
+        assert manifest.canvas_start_at == "2026-01-12T07:00:00+00:00"
+        assert manifest.canvas_end_at is None
         assert [m.name for m in manifest.modules] == ["Module 0"]
         assert {a.kind for a in manifest.artifacts} == {
             "gradebook",

@@ -17,6 +17,7 @@ from GAVEL.pages.download.viewmodel import DownloadViewModel
 from GAVEL.services.logger import AppLogger
 from GAVEL.ui_components.input_mode_toggle import InputMode
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
+from tests.pages.download.test_viewmodel_roster import wait_for_workers
 
 COURSE = CanvasCourse(id=213877, name="Capstone I", course_code="SER401")
 QUIZZES = [CanvasQuiz(id=11, name="Research Consent")]
@@ -30,6 +31,8 @@ TYPED = "7216983, 7216990"
 def pump(qapp) -> None:
     for _ in range(5):
         qapp.processEvents()
+        # The tab's loads run on the thread pool; let them finish and report back.
+        wait_for_workers(qapp)
 
 
 def build(qapp, theme, tmp_path: Path) -> SimpleNamespace:
@@ -125,15 +128,17 @@ def test_switching_modes_swaps_the_resolved_ids(env):
     assert assignment_ids(env) == "7"
 
 
-def test_reload_button_fetches_assignments_for_the_current_course(env):
+def test_reload_button_fetches_assignments_for_the_current_course(qapp, env):
     env.picker.load_button.click()
+    pump(qapp)
     assert env.canvas.assignment_calls == [COURSE.id, COURSE.id]
 
 
-def test_reload_keeps_the_checked_assignments(env):
+def test_reload_keeps_the_checked_assignments(qapp, env):
     env.picker.boxes()[1].setChecked(True)
     env.canvas.assignments = [HOMEWORK, PROJECT, CanvasAssignment(id=12, name="Quiz 3")]
     env.picker.load_button.click()
+    pump(qapp)
     assert env.picker.count() == 3
     assert assignment_ids(env) == "9"
 
@@ -155,13 +160,14 @@ def test_missing_token_forces_manual_assignment_entry(qapp, theme, tmp_path, mon
     assert env.rubric.mode() is InputMode.MANUAL
 
 
-def test_assignments_without_a_rubric_are_flagged_in_the_list(env):
+def test_assignments_without_a_rubric_are_flagged_in_the_list(qapp, env):
     env.canvas.assignments = [
         HOMEWORK,
         PROJECT,
         CanvasAssignment(id=12, name="Quiz 3", has_rubric=False),
     ]
     env.picker.load_button.click()
+    pump(qapp)
     boxes = env.picker.boxes()
     assert [b.text() for b in boxes] == [
         "Homework 1  (7)",
@@ -172,7 +178,7 @@ def test_assignments_without_a_rubric_are_flagged_in_the_list(env):
     assert "No rubric attached" in boxes[2].toolTip()
 
 
-def test_select_all_with_rubric_checks_only_assignments_that_have_one(env):
+def test_select_all_with_rubric_checks_only_assignments_that_have_one(qapp, env):
     env.canvas.assignments = [
         CanvasAssignment(id=21, name="Exam Retake", has_rubric=False),
         HOMEWORK,
@@ -180,6 +186,7 @@ def test_select_all_with_rubric_checks_only_assignments_that_have_one(env):
         CanvasAssignment(id=12, name="Quiz 3", has_rubric=False),
     ]
     env.picker.load_button.click()
+    pump(qapp)
     env.picker.boxes()[3].setChecked(True)  # Quiz 3, no rubric
     assert env.picker.isAncestorOf(env.tab._select_with_rubric_btn)
 

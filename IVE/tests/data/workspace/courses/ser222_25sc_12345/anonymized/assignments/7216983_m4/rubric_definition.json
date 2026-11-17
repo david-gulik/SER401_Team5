@@ -1,0 +1,23 @@
+
+{
+  "rubric_id": "rubric_7216983",
+  "title": "Module 4: ADJ Problem Set",
+  "points_possible": 6.0,
+  "free_form_criterion_comments": false,
+  "criteria": [
+    {
+      "id": "crit_1",
+      "description": "Problem 1",
+      "long_description": "Synthetic rubric criterion for Problem 1.",
+      "points": 4.0,
+      "ratings": []
+    },
+    {
+      "id": "crit_2",
+      "description": "Problem 2",
+      "long_description": "Synthetic rubric criterion for Problem 2.",
+      "points": 2.0,
+      "ratings": []
+    }
+  ]
+}

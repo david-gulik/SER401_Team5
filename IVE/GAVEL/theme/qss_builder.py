@@ -48,12 +48,16 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_menu(t),
         _qss_splitter(t),
         _qss_nav_drawer(t),
+        _qss_course_selector(t),
         _qss_surface_card(t),
+        _qss_grade_criterion(t),
         _qss_status_pill(t),
         _qss_status_banner(t),
+        _qss_progress_panel(t),
         _qss_input_mode_toggle(t),
         _qss_tree_view(t),
         _qss_tile(t),
+        _qss_chart_toolbar(t),
     ]
     return "\n\n".join(sections)
 
@@ -91,8 +95,8 @@ def _qss_main(t: ThemeTokens) -> str:
     }}
     QMainWindow::separator {{
         background-color: {c["border"]};
-        width: 1px;
-        height: 1px;
+        width: 6px;
+        height: 6px;
     }}
     QStatusBar {{
         background-color: {c["global_status_bar"]};
@@ -248,6 +252,10 @@ def _qss_push_button(t: ThemeTokens) -> str:
         background-color: transparent;
         color: {c["text_disabled"]};
         border-color: transparent;
+    }}
+    QPushButton::menu-indicator {{
+        image: none;
+        width: 0;
     }}
     """
 
@@ -561,6 +569,10 @@ def _qss_menu(t: ThemeTokens) -> str:
     QMenu::item:disabled {{
         color: {c["input_placeholder"]};
     }}
+    QMenu::indicator {{
+        width: 0;
+        image: none;
+    }}
     """
 
 
@@ -590,11 +602,23 @@ def _qss_splitter(t: ThemeTokens) -> str:
 def _qss_nav_drawer(t: ThemeTokens) -> str:
     c = t.color
     r_sm = int(t.shape["radius_sm"])
+    sp_xs = t.sp(4)
     sp_sm = t.sp(8)
+    small = _pt(int(t.typography["font_size_small"]))
     return f"""
     QFrame[role="nav_drawer"] {{
         background-color: {c["global_status_bar"]};
         border-right: 1px solid {c["border"]};
+    }}
+    QLabel[role="nav_section"] {{
+        background: transparent;
+        color: {c["text_secondary"]};
+        font-size: {small};
+        padding: {_px(sp_xs)} 0 0 {_px(sp_sm + sp_xs)};
+    }}
+    QFrame[role="nav_divider"] {{
+        background-color: {c["border"]};
+        border: none;
     }}
     QToolButton[role="nav_toggle"] {{
         background: transparent;
@@ -622,6 +646,59 @@ def _qss_nav_drawer(t: ThemeTokens) -> str:
         background-color: {c["panel_bg"]};
         border-left: 3px solid {c["interactive"]};
         color: {c["text"]};
+    }}
+    """
+
+
+def _qss_course_selector(t: ThemeTokens) -> str:
+    """The status-bar course chip and the picker that opens above it."""
+    c = t.color
+    r_sm = int(t.shape["radius_sm"])
+    r_md = int(t.shape["radius_md"])
+    sp_xs = t.sp(4)
+    return f"""
+    QStatusBar QLabel {{
+        background: transparent;
+    }}
+    QFrame[role="course_chip"] {{
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: {_px(r_sm)};
+        padding: {_px(sp_xs)} 0;
+    }}
+    QFrame[role="course_chip"]:hover {{
+        background-color: {c["panel_bg"]};
+    }}
+    QFrame[role="course_chip"] QLabel {{
+        background: transparent;
+    }}
+    QLabel[role="course_chip_caret"] {{
+        color: {c["text_secondary"]};
+    }}
+    QFrame[role="course_picker"] {{
+        background-color: {c["surface"]};
+        border: 1px solid {c["border_focus"]};
+        border-radius: {_px(r_md)};
+    }}
+    QFrame[role="course_picker"] QListWidget {{
+        background: transparent;
+        border: none;
+        outline: 0;
+    }}
+    QFrame[role="course_picker"] QListWidget::item {{
+        border-left: 3px solid transparent;
+        border-radius: {_px(r_sm)};
+    }}
+    QFrame[role="course_picker"] QListWidget::item:hover {{
+        background-color: {c["panel_bg"]};
+    }}
+    QFrame[role="course_picker"] QListWidget::item:selected {{
+        background-color: {c["selection_bg"]};
+        border-left: 3px solid {c["interactive"]};
+    }}
+    QWidget[role="course_row"],
+    QWidget[role="course_row"] QLabel {{
+        background: transparent;
     }}
     """
 
@@ -760,6 +837,34 @@ def _qss_surface_card(t: ThemeTokens) -> str:
     """
 
 
+def _qss_grade_criterion(t: ThemeTokens) -> str:
+    c = t.color
+    r_md = int(t.shape["radius_md"])
+
+    return f"""
+    QFrame[role="grade_criterion"] {{
+        background-color: {c["app_bg"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_md)};
+    }}
+
+    QFrame[role="grade_criterion"][selected="true"] {{
+        background-color: {c["selection_bg"]};
+        border: 1px solid {c["interactive"]};
+        border-radius: {_px(r_md)};
+    }}
+
+    QFrame[role="grade_criterion"] QLabel {{
+        background-color: transparent;
+        border: none;
+    }}
+
+    QFrame[role="grade_criterion"][selected="true"] QLabel {{
+        color: {c["selection_text"]};
+    }}
+    """
+
+
 def _qss_status_pill(t: ThemeTokens) -> str:
     c = t.color
     ty = t.typography
@@ -797,6 +902,54 @@ def _qss_status_banner(t: ThemeTokens) -> str:
         border: 1px solid {c["status_caution"]};
         border-radius: {_px(r_sm)};
         padding: {_px(sp_sm)} {_px(sp_md)};
+    }}
+    """
+
+
+def _qss_progress_panel(t: ThemeTokens) -> str:
+    """The pinned panel shown while a batch download runs."""
+    c = t.color
+    ty = t.typography
+    r_md = int(t.shape["radius_md"])
+    r_lg = int(t.shape["radius_lg"])
+    return f"""
+    QFrame[role="progress_panel"] {{
+        background-color: {c["panel_bg"]};
+        border: 1px solid {c["interactive"]};
+        border-radius: {_px(r_lg)};
+    }}
+    QFrame[role="progress_panel"] QLabel {{
+        background: transparent;
+        border: none;
+    }}
+    QLabel[role="progress_title"] {{
+        color: {c["text"]};
+        font-size: {_pt(int(ty["font_size_base"]))};
+        font-weight: {ty["weight_medium"]};
+    }}
+    QLabel[role="progress_count"] {{
+        color: {c["interactive"]};
+        font-size: {_pt(int(ty["font_size_h3"]))};
+        font-weight: {ty["weight_bold"]};
+    }}
+    QLabel[role="progress_percent"] {{
+        color: {c["text"]};
+        font-size: {_pt(int(ty["font_size_small"]))};
+    }}
+    QLabel[role="progress_detail"] {{
+        color: {c["text_secondary"]};
+        font-size: {_pt(int(ty["font_size_small"]))};
+    }}
+    QProgressBar[role="progress_bar"] {{
+        background-color: {c["input_bg"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_md)};
+        min-height: {_px(t.sp(8))};
+        max-height: {_px(t.sp(8))};
+    }}
+    QProgressBar[role="progress_bar"]::chunk {{
+        background-color: {c["interactive"]};
+        border-radius: {_px(r_md)};
     }}
     """
 
@@ -968,5 +1121,38 @@ def _qss_tile(t: ThemeTokens) -> str:
     {tile(":checked")} {{
         background-color: {c["surface"]};
         border-color: {c["interactive"]};
+    }}
+    """
+
+
+def _qss_chart_toolbar(t: ThemeTokens) -> str:
+    """NavigationToolbar2QT that is embedded in each analytics tile"""
+    c = t.color
+    r_sm = int(t.shape["radius_sm"])
+    sp_xs = t.sp(4)
+    return f"""
+    QToolBar {{
+        background-color: {c["surface"]};
+        border: none;
+        border-bottom: 1px solid {c["border"]};
+        spacing: {_px(sp_xs)};
+        padding: {_px(sp_xs)};
+    }}
+    QToolBar QToolButton {{
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: {_px(r_sm)};
+        padding: {_px(sp_xs)};
+    }}
+    QToolBar QToolButton:hover {{
+        background-color: {c["interactive_ghost"]};
+        border-color: {c["border_focus"]};
+    }}
+    QToolBar QToolButton:checked {{
+        background-color: {c["interactive_ghost"]};
+        border-color: {c["interactive"]};
+    }}
+    QToolBar QLabel {{
+        color: {c["text_secondary"]};
     }}
     """

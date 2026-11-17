@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 import requests
@@ -24,7 +26,45 @@ from GAVEL.app.ports.canvas_client import (
     CanvasClient,
     QuizReportUnavailableError,
 )
+from GAVEL.infra.http_logging import log_http_calls
 from GAVEL.services.logger import AppLogger
+
+log = logging.getLogger(__name__)
+
+
+def _utc_timestamp(value: Any) -> str | None:
+    """Canvas's ``...Z`` timestamp in the ``+00:00`` form the manifest uses."""
+    if not value:
+        return None
+    parsed = datetime.fromisoformat(str(value))
+    return parsed.astimezone(UTC).isoformat(timespec="seconds")
+
+
+def _optional_float(value: Any) -> float | None:
+    return None if value is None else float(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    return None if value is None else int(value)
+
+
+def _optional_bool(value: Any) -> bool | None:
+    return None if value is None else bool(value)
+
+
+def _optional_str(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def _course_from_json(c: dict[str, Any]) -> CanvasCourse:
+    return CanvasCourse(
+        id=int(c["id"]),
+        name=str(c.get("name") or c.get("course_code") or ""),
+        course_code=c.get("course_code"),
+        time_zone=_optional_str(c.get("time_zone")),
+        start_at=_utc_timestamp(c.get("start_at")),
+        end_at=_utc_timestamp(c.get("end_at")),
+    )
 
 
 @dataclass(frozen=True)
@@ -47,36 +87,31 @@ class HttpCanvasClient(CanvasClient):
         self._config = config
         self._session = session or requests.Session()
         self._logger = logger
+        log_http_calls(self._session)
 
     def list_courses(self) -> list[CanvasCourse]:
         pages = self._get_all_pages(
             "/api/v1/courses",
             params={"enrollment_type": "teacher", "per_page": 100},
         )
-        return [
-            CanvasCourse(
-                id=int(c["id"]),
-                name=str(c.get("name") or c.get("course_code") or ""),
-                course_code=c.get("course_code"),
-            )
-            for c in pages
-            if c.get("id")
-        ]
+        return [_course_from_json(c) for c in pages if c.get("id")]
 
     def fetch_course_data(self, course_id: int) -> CanvasCourseData:
         course_json = self._get_json(f"/api/v1/courses/{course_id}")
-        modules_json = self._get_json(f"/api/v1/courses/{course_id}/modules")
-
-        course = CanvasCourse(
-            id=int(course_json["id"]),
-            name=str(course_json.get("name") or course_json.get("course_code") or ""),
-            course_code=course_json.get("course_code"),
+        # Paged: Canvas returns only 10 modules per page by default.
+        modules_json = self._get_all_pages(
+            f"/api/v1/courses/{course_id}/modules",
+            params={"per_page": 100},
         )
+
+        course = _course_from_json(course_json)
 
         modules = [
             CanvasModule(
                 id=int(module["id"]),
                 name=str(module.get("name") or f"Module {module['id']}"),
+                position=_optional_int(module.get("position")),
+                unlock_at=_utc_timestamp(module.get("unlock_at")),
             )
             for module in modules_json
         ]
@@ -348,6 +383,7 @@ class HttpCanvasClient(CanvasClient):
                 sleep_seconds = (
                     float(retry_after) if retry_after else self._config.poll_interval_seconds
                 )
+                log.warning("Canvas rate limit hit; retrying in %.1f s", sleep_seconds)
                 time.sleep(sleep_seconds)
                 continue
 
@@ -467,11 +503,18 @@ class HttpCanvasClient(CanvasClient):
 
     def _poll_progress(self, progress_url: str, interval: int = 2, max_attempts: int = 30) -> None:
         """Poll a Canvas progress URL until completion."""
-        for _attempt in range(max_attempts):
+        for attempt in range(1, max_attempts + 1):
             data = self._get(progress_url)
             state = data.get("workflow_state")
             if state == "completed":
                 return
+            log.info(
+                "Waiting for Canvas to build the report (%s, %s%%, check %d of %d)",
+                state,
+                data.get("completion") or 0,
+                attempt,
+                max_attempts,
+            )
             if state == "failed":
                 raise RuntimeError("Canvas report generation failed.")
             time.sleep(interval)
@@ -490,6 +533,7 @@ class HttpCanvasClient(CanvasClient):
 
     def fetch_quiz_student_analysis(self, course_id: int, quiz_id: int) -> bytes:
         """Retrieve the student analysis CSV for a Canvas quiz."""
+        log.info("Requesting student analysis report for quiz %s", quiz_id)
         report = self._post(
             f"/api/v1/courses/{course_id}/quizzes/{quiz_id}/reports",
             json={
@@ -545,6 +589,12 @@ class HttpCanvasClient(CanvasClient):
                 sleep_seconds = (
                     float(retry_after) if retry_after else self._config.poll_interval_seconds
                 )
+                log.warning(
+                    "Canvas rate limit hit; retry %d of %d in %.1f s",
+                    attempt + 1,
+                    self._config.max_retries,
+                    sleep_seconds,
+                )
                 time.sleep(sleep_seconds)
                 continue
 
@@ -559,7 +609,20 @@ class HttpCanvasClient(CanvasClient):
             params={"per_page": 100},
         )
         return [
-            CanvasQuiz(id=int(q["id"]), name=str(q.get("title") or ""))
+            CanvasQuiz(
+                id=int(q["id"]),
+                name=str(q.get("title") or ""),
+                due_at=_utc_timestamp(q.get("due_at")),
+                points_possible=_optional_float(q.get("points_possible")),
+                unlock_at=_utc_timestamp(q.get("unlock_at")),
+                lock_at=_utc_timestamp(q.get("lock_at")),
+                quiz_type=_optional_str(q.get("quiz_type")),
+                assignment_id=_optional_int(q.get("assignment_id")),
+                allowed_attempts=_optional_int(q.get("allowed_attempts")),
+                time_limit=_optional_int(q.get("time_limit")),
+                question_count=_optional_int(q.get("question_count")),
+                published=_optional_bool(q.get("published")),
+            )
             for q in pages
             if q.get("id")
         ]
@@ -574,6 +637,20 @@ class HttpCanvasClient(CanvasClient):
                 id=int(a["id"]),
                 name=str(a.get("name") or ""),
                 has_rubric=bool(a.get("rubric")),
+                due_at=_utc_timestamp(a.get("due_at")),
+                points_possible=_optional_float(a.get("points_possible")),
+                unlock_at=_utc_timestamp(a.get("unlock_at")),
+                lock_at=_utc_timestamp(a.get("lock_at")),
+                has_overrides=_optional_bool(a.get("has_overrides")),
+                submission_types=(
+                    None
+                    if a.get("submission_types") is None
+                    else tuple(str(t) for t in a["submission_types"])
+                ),
+                assignment_group_id=_optional_int(a.get("assignment_group_id")),
+                published=_optional_bool(a.get("published")),
+                omit_from_final_grade=_optional_bool(a.get("omit_from_final_grade")),
+                grading_type=_optional_str(a.get("grading_type")),
             )
             for a in pages
             if a.get("id")

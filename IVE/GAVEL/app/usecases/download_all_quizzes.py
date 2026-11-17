@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7,13 +8,20 @@ from GAVEL.app.ports.canvas_client import (
     CanvasClient,
     QuizReportUnavailableError,
 )
+from GAVEL.app.progress import ProgressCallback, report
 from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.manifest import quiz_entry
 from GAVEL.app.workspace.recording import (
     ArtifactExistsError,
     guard_not_downloaded,
     note_course,
+    note_quizzes,
     record,
 )
+
+log = logging.getLogger(__name__)
+
+PROGRESS_LABEL = "Downloading quizzes"
 
 
 @dataclass(frozen=True)
@@ -21,6 +29,8 @@ class DownloadAllQuizzesRequest:
     course_id: int
     folder: CourseFolder
     overwrite: bool = False
+    # Only these quizzes, when given; used to retry the ones refused as already downloaded.
+    quiz_ids: frozenset[int] | None = None
 
 
 @dataclass(frozen=True)
@@ -68,7 +78,10 @@ class DownloadAllQuizzesUseCase:
     """Saves every quiz's student analysis export as ``original/quizzes/<quiz id>.csv``.
 
     The quiz title goes on the manifest entry's ``label`` so the folder stays
-    keyed by id. A quiz already in the folder is skipped, not overwritten.
+    keyed by id. A quiz already in the folder is skipped unless the request
+    asks to overwrite.
+    ``on_progress`` hears once the quiz list is known and again as each quiz
+    finishes, whether it was saved, skipped, or failed.
     """
 
     def __init__(self, canvas_client: CanvasClient) -> None:
@@ -77,16 +90,24 @@ class DownloadAllQuizzesUseCase:
     def execute(
         self,
         request: DownloadAllQuizzesRequest,
+        on_progress: ProgressCallback | None = None,
     ) -> DownloadAllQuizzesResult:
         if request.course_id <= 0:
             raise ValueError("course_id must be greater than zero")
 
         tree = request.folder.original
+        log.info("Listing quizzes for course %s", request.course_id)
         quizzes = self._canvas_client.list_quizzes(request.course_id)
+        if request.quiz_ids is not None:
+            quizzes = [q for q in quizzes if q.id in request.quiz_ids]
+        total = len(quizzes)
+        log.info("Found %d quiz(zes) for course %s", total, request.course_id)
+        report(on_progress, PROGRESS_LABEL, 0, total)
 
         outcomes = []
-        for quiz in quizzes:
+        for index, quiz in enumerate(quizzes, start=1):
             path = tree.quiz_csv(quiz.id)
+            log.info("Quiz %d of %d: '%s' (id %s)", index, total, quiz.name, quiz.id)
             try:
                 guard_not_downloaded(request.folder, path, request.overwrite)
                 csv_bytes = self._canvas_client.fetch_quiz_student_analysis(
@@ -141,7 +162,39 @@ class DownloadAllQuizzesUseCase:
                     )
                 )
 
+            _log_outcome(outcomes[-1], index, total)
+            report(on_progress, PROGRESS_LABEL, index, total, quiz.name)
+
         if any(o.status == "succeeded" for o in outcomes):
             note_course(request.folder, canvas_course_id=request.course_id)
+        # Already-downloaded quizzes count too, so a re-run fills in due dates.
+        on_disk = {o.quiz_id for o in outcomes if o.status == "succeeded" or o.already_downloaded}
+        if on_disk:
+            note_quizzes(
+                request.folder,
+                [quiz_entry(q) for q in quizzes if q.id in on_disk],
+            )
 
-        return DownloadAllQuizzesResult(outcomes=tuple(outcomes))
+        result = DownloadAllQuizzesResult(outcomes=tuple(outcomes))
+        log.info(
+            "Quiz reports for course %s done: %d saved, %d already downloaded, "
+            "%d skipped, %d failed",
+            request.course_id,
+            len(result.succeeded),
+            len(result.already_downloaded),
+            len(result.skipped) - len(result.already_downloaded),
+            len(result.failed),
+        )
+        return result
+
+
+def _log_outcome(outcome: QuizDownloadOutcome, index: int, total: int) -> None:
+    prefix = f"Quiz {index} of {total} '{outcome.quiz_name}'"
+    if outcome.status == "succeeded":
+        log.info("%s: saved to %s", prefix, outcome.saved_path)
+    elif outcome.already_downloaded:
+        log.info("%s: already downloaded at %s", prefix, outcome.saved_path)
+    elif outcome.status == "skipped":
+        log.warning("%s: skipped, %s", prefix, outcome.skipped_reason)
+    else:
+        log.error("%s: failed, %s", prefix, outcome.error)

@@ -22,19 +22,22 @@ This layout was agreed with Dr. Acuña on 2026-09-10.
 │       │   │   └── <assignment id>_m<module>/     # e.g. 7216983_m4
 │       │   │       ├── rubric_definition.json     # criteria, ratings, points
 │       │   │       └── rubric_assessments.json    # one entry per graded submission
-│       │   └── submissions/
+│       │   └── gradescope_submissions/
 │       │       ├── m<module>/                     # Gradescope exports, grouped by module
 │       │       │   ├── submissions.zip            # the bulk export as downloaded
 │       │       │   └── extracted/                 # the same, unzipped
 │       │       └── _unmatched/<name>.zip          # exports whose module could not be told
 │       └── anonymized/                # same shape as original/, consented students only, Anon ids
 ├── autograders/
-│   └── <subject><catalog>/m<module>/<course folder>/autograder.zip   # Gradescope autograder snapshots
+│   └── <subject><catalog>/<uploaded filename>.zip   # Gradescope autograders, shared by every section
 └── runs/                              # reserved: autograder executions and comparisons
 ```
 
 `original/` and `anonymized/` have exactly the same shape. Sharing a course
 means zipping the course folder and deleting `original/` first.
+
+Gradescope data is in `gradescope_submissions/`, not `submissions/`, so it is not
+mistaken for the Canvas data in `assignments/` (agreed with Dr. Acuña on 2026-10-29).
 
 ## 2. Course folder name
 
@@ -65,24 +68,44 @@ Written by GAVEL, updated after every download.
 | Field | Meaning |
 | --- | --- |
 | `schema_version` | `1`. Bump when the shape changes. |
-| `course` | The folder name parts plus `term_code`, `canvas_course_id`, `canvas_course_name`, `canvas_course_code`. |
+| `course` | The folder name parts plus `term_code`, `canvas_course_id`, `canvas_course_name`, `canvas_course_code`, `canvas_time_zone` (IANA name, the course's local time for reading due dates), `canvas_start_at`, `canvas_end_at`. |
 | `created_at`, `updated_at` | ISO 8601 UTC. |
 | `gavel_version` | The GAVEL build that last wrote the file. |
-| `modules` | Canvas modules (`id`, `name`) for the course. |
-| `assignments` | One entry per Canvas assignment seen: `canvas_id`, `name`, `module_number`, `has_rubric`, and `due_at`, `points_possible`, `gradescope_name` when known. |
+| `modules` | Canvas modules (`id`, `name`, `position`, `unlock_at`) for the course. |
+| `assignments` | One entry per Canvas assignment seen: `canvas_id`, `name`, `module_number`, `has_rubric`, and when known `gradescope_name` plus the Canvas fields `due_at`, `points_possible`, `unlock_at`, `lock_at`, `has_overrides`, `submission_types`, `assignment_group_id`, `published`, `omit_from_final_grade`, `grading_type`. `has_overrides` true means some sections or students have their own dates, which `due_at` does not show. |
+| `quizzes` | One entry per downloaded Canvas quiz: `canvas_id`, `name`, and when known `due_at`, `points_possible`, `unlock_at`, `lock_at`, `quiz_type` (`assignment`, `practice_quiz`, `graded_survey`, `survey`), `assignment_id` (the quiz's assignment and gradebook column), `allowed_attempts` (`-1` is unlimited), `time_limit` (minutes, `null` is none), `question_count`, `published`. |
+
+All Canvas timestamps (`due_at`, `unlock_at`, `lock_at`, `canvas_start_at`, ...) are stored with a UTC offset (`+00:00`), like the manifest's own; use `canvas_time_zone` to show them in course-local time.
 | `artifacts` | One entry per downloaded file: `kind`, `path` (relative to the course folder, `/` separators), `downloaded_at`, `sha256`, `size_bytes`, `source_id` (quiz or assignment id), `label` (quiz title or Gradescope assignment name when the path alone does not say). |
-| `anonymization` | The last run that wrote `anonymized/`: `anonymized_at`, and `sources`, the `path` and `sha256` of each `original/` file it read. The Sanitize page marks a course Out of date when an original no longer matches its recorded hash, or when it has no recorded hash. `null` until the course is anonymized. |
+| `anonymization` | The last run that wrote `anonymized/`: `anonymized_at`; `sources`, the `path` and `sha256` of each `original/` file it read; and `consent_overrides`, the SIS IDs overridden when it ran. The Sanitize page marks a course Out of date when an original no longer matches its recorded hash, when it has no recorded hash, or when the overrides changed. `null` until the course is anonymized. |
+| `consent_overrides` | Students included by hand on the Sanitize page although their typed name was a possible typo or did not match, keyed by SIS ID: `{"1220440005": {"override": true, "overridden_at": "..."}}`. Applied on every review and anonymization of the course, but only while the student's latest attempt still says yes with a typo or mismatched name. Never copied into `anonymized/`. |
 
 Artifact kinds: `roster`, `gradebook`, `consent_form`, `quiz`,
 `rubric_definition`, `rubric_assessments`, `submissions`, `autograder`.
 
 ## 5. Re-downloading
 
-A course is downloaded once. If a file is already present on disk or listed in
-the manifest, the download stops with:
+A file that is already on disk is never replaced without asking. The CLI stops with:
 
 > `original/gradebook.csv` was already downloaded for SER 222 (ser222_25sc_12345).
-> To refresh it, delete the course folder … and download again.
+> Download it again with overwrite to replace it.
+
+and `--overwrite` replaces it. On the Download page, the same situation opens a prompt
+listing the files that are already there, with three answers:
+
+- **Overwrite** replaces those files this time only.
+- **Overwrite for this session** replaces them and every later one without asking until
+  GAVEL closes. The Status card shows that it is on and has a button to turn it off.
+- **Skip** keeps them and shows the usual download summary.
+
+A batch download (Download All, all quiz reports, several rubrics) asks once for the
+whole batch, and an overwrite re-runs only the files that were refused. Each replaced
+file is logged as a warning, and its manifest entry gets the new timestamp, checksum
+and size.
+
+A file the manifest lists but that was deleted from disk is downloaded again without
+asking. Gradescope sends every export at once, so its download files only the modules
+that are missing (no zip, or no extracted copy) and keeps the ones still on disk.
 
 ## 6. Reading a course folder from code
 
@@ -137,9 +160,16 @@ derive the course folder from `--course-id` when `--course-folder` is omitted;
 `--course-folder` in `--class-number` mode.
 
 Gradescope exports are grouped by the module number in the Gradescope assignment name
-(`Module 2: Programming` goes to `submissions/m2/`), because the assignment that carries
+(`Module 2: Programming` goes to `gradescope_submissions/m2/`), because the assignment that carries
 the rubric and the one Gradescope grades are usually different Canvas assignments in
 the same module. The zip is kept and also extracted next to itself. An export whose
-module cannot be told is kept in `original/submissions/_unmatched/` and still recorded
-in the manifest. Autograder zips go to the workspace-level `autograders/` area; their
-manifest paths are relative to the workspace root and start with `autograders/`.
+module cannot be told is kept in `original/gradescope_submissions/_unmatched/` and still recorded
+in the manifest. Autograder zips go to the workspace-level `autograders/` area under
+their course (`autograders/ser334/`), not their section, because any section can run
+any of the course's autograders. They keep the filename the instructor uploaded
+(`SER334Module2Autograder_SEP10b_hotfix1.zip`), which changes with each version, so
+versions accumulate side by side. A download that brings an autograder already there
+with the same bytes leaves it alone; one with the same name and different bytes is kept
+beside it with a short hash suffix. Each course's manifest records the autograders its
+download brought, with the Gradescope assignment name as the label; their manifest
+paths are relative to the workspace root and start with `autograders/`.

@@ -54,15 +54,28 @@ class GenerateReportViewModel:
             if module.exists()
         )
 
-    def mapping_names(self) -> tuple[str, ...]:
-        return tuple(sorted(MAPPINGS))
+    def resolve_mapping_name(self, course: CourseFolder, module_number: int) -> str | None:
+        """The one proxy-grade mapping for this course and module, or None if there isn't one.
+
+        Mapping names follow ``<subject><catalog>_m<module>`` (e.g. ``ser334_m2``),
+        built from the course rather than typed or picked, so the internal mapping
+        name is never something a user has to know about or choose.
+        """
+        key = course.key
+        name = f"{key.subject.lower()}{key.catalog_number}_m{module_number}"
+        return name if name in MAPPINGS else None
 
     def list_gradebook_columns(self, course: CourseFolder, module_number: int) -> tuple[str, ...]:
-        """Real gradebook column headers, with the selected module's own listed first.
+        """Real gradebook column headers belonging to the given module.
 
         Matches a column to the module by Canvas assignment id: the manifest
         records which module each assignment belongs to, and the gradebook
-        reader keys each column by that same id.
+        reader keys each column by that same id. A module often has more than
+        one matching column (e.g. a Gradescope-synced one with no posted
+        scores alongside a manually-graded one), so this narrows rather than
+        picks one. Falls back to every column when none match, rather than
+        hiding all of them, since that usually means the manifest has nothing
+        to match against yet.
         """
         dataset = CourseDataset.anonymized(course, self._dataset_readers)
         gradebook = dataset.gradebook()
@@ -76,9 +89,8 @@ class GenerateReportViewModel:
         except MissingArtifactError:
             matched_ids = set()
 
-        matched = [c.raw_header for c in gradebook.columns if c.canvas_id in matched_ids]
-        rest = [c.raw_header for c in gradebook.columns if c.canvas_id not in matched_ids]
-        return tuple(matched + rest)
+        matched = tuple(c.raw_header for c in gradebook.columns if c.canvas_id in matched_ids)
+        return matched or tuple(c.raw_header for c in gradebook.columns)
 
     def list_rubric_assignments(
         self, course: CourseFolder, module_number: int
@@ -139,7 +151,9 @@ class GenerateReportViewModel:
         rubric_definition = dataset.rubric_definition(rubric_assignment.canvas_id)
         if rubric_definition is None:
             raise MissingArtifactError(
-                dataset.tree, f"rubric definition for {rubric_assignment.name}", dataset.tree.root
+                dataset.tree,
+                f"rubric definition for {rubric_assignment.name}",
+                dataset.assignment_folder(rubric_assignment.canvas_id).rubric_definition_json,
             )
         rubric_assessments = dataset.rubric_assessments(rubric_assignment.canvas_id)
 
@@ -149,8 +163,8 @@ class GenerateReportViewModel:
 
         workspace = Workspace(workspace_root)
         output_path = (
-            workspace.runs_dir
-            / f"{course.key.folder_name}_m{module_number}_{mapping_name}_heatmap.json"
+            workspace.runs_dir / f"{course.key.folder_name}_m{module_number}_{mapping_name}"
+            f"_{rubric_assignment.canvas_id}_heatmap.json"
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         write_heat_map_report(result, output_path)

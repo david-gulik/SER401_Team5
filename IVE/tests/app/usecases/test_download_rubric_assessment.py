@@ -462,6 +462,33 @@ class TestWorkspaceLayout:
         assert manifest.assignment(ASSIGNMENT_ID).has_rubric is False
         assert manifest.artifacts_of_kind("rubric_definition") == ()
 
+    def test_manifest_records_assignment_due_date_and_points(self, use_case, folder):
+        use_case.execute(
+            DownloadRubricAssessmentRequest(
+                course_id=COURSE_ID,
+                assignment=CanvasAssignment(
+                    id=ASSIGNMENT_ID,
+                    name=ASSIGNMENT.name,
+                    due_at="2026-09-15T06:59:59+00:00",
+                    points_possible=30.0,
+                    has_overrides=True,
+                    submission_types=("online_upload",),
+                ),
+                folder=folder,
+            )
+        )
+        entry = load_manifest(folder.manifest_path).assignment(ASSIGNMENT_ID)
+        assert entry.due_at == "2026-09-15T06:59:59+00:00"
+        assert entry.points_possible == 30.0
+        assert entry.has_overrides is True
+        assert entry.submission_types == ("online_upload",)
+
+    def test_assignment_without_due_date_records_none(self, use_case, request_, folder):
+        use_case.execute(request_)
+        entry = load_manifest(folder.manifest_path).assignment(ASSIGNMENT_ID)
+        assert entry.due_at is None
+        assert entry.points_possible is None
+
     def test_second_download_is_refused(self, use_case, request_, client):
         use_case.execute(request_)
         with pytest.raises(ArtifactExistsError, match="already downloaded"):

@@ -6,9 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PyQt6.QtWidgets import QMessageBox
 
 from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasQuiz
+from GAVEL.pages.download import tabs
 from GAVEL.pages.download.tabs import DONE_MARK, DownloadTab
 from GAVEL.pages.download.viewmodel import (
     GRADEBOOK_DOWNLOAD,
@@ -38,6 +38,8 @@ class GradebookCanvasClient(FakeCanvasClient):
 def pump(qapp) -> None:
     for _ in range(5):
         qapp.processEvents()
+        # The tab's loads run on the thread pool; let them finish and report back.
+        wait_for_workers(qapp)
 
 
 @pytest.fixture
@@ -63,8 +65,7 @@ def env(qapp, theme, tmp_path: Path, monkeypatch) -> SimpleNamespace:
         return answers.pop(0)
 
     monkeypatch.setattr(tab, "_confirm_course_switch", fake_confirm)
-    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
-    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: None)
+    monkeypatch.setattr(tabs, "show_message", lambda *a, **k: None)
     return SimpleNamespace(
         tab=tab,
         vm=vm,
@@ -84,13 +85,15 @@ def test_buttons_start_without_a_mark(env):
         assert DONE_MARK not in env.tab.download_button(name).text()
 
 
-def test_gradebook_button_earns_a_mark_after_success(env):
+def test_gradebook_button_earns_a_mark_after_success(qapp, env):
     env.tab.download_button(GRADEBOOK_DOWNLOAD).click()
+    wait_for_workers(qapp)
     assert env.tab.download_button(GRADEBOOK_DOWNLOAD).text() == f"Download Gradebook {DONE_MARK}"
 
 
-def test_quiz_reports_button_earns_a_mark_after_success(env):
+def test_quiz_reports_button_earns_a_mark_after_success(qapp, env):
     env.tab.download_button(QUIZ_REPORTS_DOWNLOAD).click()
+    wait_for_workers(qapp)
     assert (
         env.tab.download_button(QUIZ_REPORTS_DOWNLOAD).text()
         == f"Download All Quiz Reports {DONE_MARK}"
@@ -114,8 +117,9 @@ def test_no_prompt_when_nothing_was_downloaded(env):
     assert selected(env) == str(SECOND.id)
 
 
-def test_declining_the_prompt_keeps_the_course_and_its_marks(env):
+def test_declining_the_prompt_keeps_the_course_and_its_marks(qapp, env):
     env.tab.download_button(GRADEBOOK_DOWNLOAD).click()
+    wait_for_workers(qapp)
     fetched = len(env.canvas.quiz_calls)
     env.answers.append(False)
 
@@ -129,11 +133,13 @@ def test_declining_the_prompt_keeps_the_course_and_its_marks(env):
     assert len(env.canvas.quiz_calls) == fetched  # nothing reloaded
 
 
-def test_accepting_the_prompt_switches_and_clears_the_marks(env):
+def test_accepting_the_prompt_switches_and_clears_the_marks(qapp, env):
     env.tab.download_button(GRADEBOOK_DOWNLOAD).click()
+    wait_for_workers(qapp)
     env.answers.append(True)
 
     env.combo.setCurrentIndex(1)
+    pump(qapp)
 
     assert env.prompts == [str(FIRST.id)]
     assert selected(env) == str(SECOND.id)
@@ -141,8 +147,9 @@ def test_accepting_the_prompt_switches_and_clears_the_marks(env):
     assert DONE_MARK not in env.tab.download_button(GRADEBOOK_DOWNLOAD).text()
 
 
-def test_declining_once_does_not_stop_a_later_switch(env):
+def test_declining_once_does_not_stop_a_later_switch(qapp, env):
     env.tab.download_button(GRADEBOOK_DOWNLOAD).click()
+    wait_for_workers(qapp)
     env.answers.extend([False, True])
     env.combo.setCurrentIndex(1)
     assert selected(env) == str(FIRST.id)
@@ -151,16 +158,18 @@ def test_declining_once_does_not_stop_a_later_switch(env):
     assert env.prompts == [str(FIRST.id), str(FIRST.id)]
 
 
-def test_manual_mode_never_prompts(env):
+def test_manual_mode_never_prompts(qapp, env):
     env.tab.download_button(GRADEBOOK_DOWNLOAD).click()
+    wait_for_workers(qapp)
     env.tab.course_input.set_mode(InputMode.MANUAL)
     env.tab.course_input.manual_field().setText("999999")
     assert env.prompts == []
     assert selected(env) == "999999"
 
 
-def test_reloading_courses_does_not_prompt(env):
+def test_reloading_courses_does_not_prompt(qapp, env):
     env.tab.download_button(GRADEBOOK_DOWNLOAD).click()
+    wait_for_workers(qapp)
     env.tab.course_input.picker().load_button.click()
     assert env.prompts == []
     assert selected(env) == str(FIRST.id)

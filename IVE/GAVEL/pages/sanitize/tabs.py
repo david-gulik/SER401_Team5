@@ -33,6 +33,7 @@ from GAVEL.app.dtos.course_summary import (
 )
 from GAVEL.app.workspace.layout import ANONYMIZED_DIR, ORIGINAL_DIR
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.core.status import ANONYMIZATION_STATUS_COLOR_TOKEN, ANONYMIZATION_STATUS_TEXT
 from GAVEL.pages.sanitize.anonymize_card import AnonymizeCard, ask_to_replace
 from GAVEL.pages.sanitize.consent_review import ConsentReviewCard
 from GAVEL.pages.sanitize.file_manager import show_in_file_manager
@@ -63,18 +64,6 @@ _PATH_ROLE = Qt.ItemDataRole.UserRole + 2
 OPEN_LOCATION_TEXT = "Open folder location"
 
 
-_STATUS_TEXT = {
-    AnonymizationStatus.NO_CONSENT_FORM: "No consent form",
-    AnonymizationStatus.NOT_ANONYMIZED: "Not anonymized",
-    AnonymizationStatus.OUT_OF_DATE: "Out of date",
-    AnonymizationStatus.UP_TO_DATE: "Up to date",
-}
-_STATUS_COLOR_TOKEN = {
-    AnonymizationStatus.NO_CONSENT_FORM: "status_critical",
-    AnonymizationStatus.NOT_ANONYMIZED: "interactive",
-    AnonymizationStatus.OUT_OF_DATE: "status_caution",
-    AnonymizationStatus.UP_TO_DATE: "status_nominal",
-}
 _FILE_STATE_TEXT = {
     FileState.CURRENT: "●  Up to date",
     FileState.OUT_OF_DATE: "●  Out of date",
@@ -106,9 +95,14 @@ def banner_text(course: CourseSummary) -> str:
             "Download it on the Download page, then choose Reload."
         )
     if status is AnonymizationStatus.OUT_OF_DATE:
+        changed = (
+            "files in original/ changed or were added"
+            if course.files_changed
+            else "consent overrides changed"
+        )
         return (
-            "Out of date: files in original/ changed or were added after the last "
-            f"anonymization on {_when(course.anonymized_at)}. {_REANONYMIZE_NOTE}"
+            f"Out of date: {changed} after the last anonymization on "
+            f"{_when(course.anonymized_at)}. {_REANONYMIZE_NOTE}"
         )
     if status is AnonymizationStatus.UP_TO_DATE:
         return f"Already anonymized on {_when(course.anonymized_at)}. {_REANONYMIZE_NOTE}"
@@ -449,7 +443,7 @@ class SanitizeTab(ScrollableTab):
                 f"  ·  {selected.folder_name}"
             )
             self._selected_dot.setStyleSheet(
-                f"color: {colors[_STATUS_COLOR_TOKEN[selected.status]]};"
+                f"color: {colors[ANONYMIZATION_STATUS_COLOR_TOKEN[selected.status]]};"
             )
             _set_role(self._selected_value, "readout_value")
 
@@ -492,7 +486,7 @@ class SanitizeTab(ScrollableTab):
                         term_label(course.key),
                         consent_text(course),
                         _when(course.anonymized_at),
-                        f"●  {_STATUS_TEXT[course.status]}",
+                        f"●  {ANONYMIZATION_STATUS_TEXT[course.status]}",
                     ]
                 )
                 item.setData(0, _FOLDER_ROLE, course.folder_name)
@@ -500,7 +494,7 @@ class SanitizeTab(ScrollableTab):
                 item.setData(0, _PATH_ROLE, str(course.path))
                 item.setForeground(
                     _STATUS_COLUMN,
-                    QBrush(QColor(colors[_STATUS_COLOR_TOKEN[course.status]])),
+                    QBrush(QColor(colors[ANONYMIZATION_STATUS_COLOR_TOKEN[course.status]])),
                 )
                 if course.consent is None:
                     token = "text_secondary" if course.consent_unreadable else "status_critical"

@@ -17,6 +17,7 @@ from GAVEL.pages.download.viewmodel import DownloadViewModel
 from GAVEL.services.logger import AppLogger
 from GAVEL.ui_components.input_mode_toggle import InputMode
 from tests.pages.download.fakes import FakeCanvasClient, FakeRosterClient
+from tests.pages.download.test_viewmodel_roster import wait_for_workers
 
 COURSE = CanvasCourse(id=213877, name="Capstone I", course_code="SER401")
 # Sorted by name the attendance quiz comes first; the consent quiz must still win.
@@ -29,6 +30,8 @@ TYPED = "7777777"
 def pump(qapp) -> None:
     for _ in range(5):
         qapp.processEvents()
+        # The tab's loads run on the thread pool; let them finish and report back.
+        wait_for_workers(qapp)
 
 
 def build(qapp, theme, tmp_path: Path, quizzes=(ATTENDANCE, CONSENT)) -> SimpleNamespace:
@@ -114,8 +117,9 @@ def test_switching_modes_swaps_the_resolved_quiz_id(env):
     assert quiz_id(env) == str(CONSENT.id)
 
 
-def test_reload_button_fetches_quizzes_for_the_current_course(env):
+def test_reload_button_fetches_quizzes_for_the_current_course(qapp, env):
     env.quiz.picker().load_button.click()
+    pump(qapp)
     assert env.canvas.quiz_calls == [COURSE.id, COURSE.id]
 
 

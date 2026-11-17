@@ -30,7 +30,7 @@ from GAVEL.cli.commands.rubric_assessment import (
 )
 from GAVEL.cli.commands.workspace_args import add_workspace_arguments
 from GAVEL.services.config_service import ConfigService
-from GAVEL.services.logger import AppLogger
+from GAVEL.services.logger import AppLogger, configure_logging
 from GAVEL.theme.context import ThemeContext
 from GAVEL.theme.tokens import load_tokens
 
@@ -39,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
+    configure_logging()
     ctx = _build_app_context()
 
     handler: Callable[[AppContext, argparse.Namespace], int] = args.handler

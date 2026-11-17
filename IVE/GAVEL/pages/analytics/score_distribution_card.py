@@ -17,6 +17,7 @@ from GAVEL.ui_components.section_card import SectionCard
 _HUMAN_COLOR = "C0"
 _PROXY_COLOR = "C1"
 _GROUP_WIDTH = 3  # positions per group: human, proxy, one gap
+_NO_REPORT = "No report chosen yet."
 
 
 class ScoreDistributionCard(QWidget):
@@ -45,7 +46,7 @@ class ScoreDistributionCard(QWidget):
         choose_button.clicked.connect(self._choose_report)
         self._card.add_action(choose_button)
 
-        self._status = QLabel("No report chosen yet.")
+        self._status = QLabel(_NO_REPORT)
         self._status.setProperty("role", "text_muted")
         self._card.add_row(self._status)
 
@@ -75,8 +76,20 @@ class ScoreDistributionCard(QWidget):
             self._canvas.clear()
             return
 
-        self._status.setText(f"Showing {report_path.name}")
+        if data.groups:
+            self._status.setText(f"Showing {report_path.name}")
+        else:
+            self._status.setText(f"{report_path.name} has no scored submissions to chart.")
         self.display(data)
+
+    def clear(self) -> None:
+        """Back to the empty state, as before any report was chosen."""
+        self._status.setText(_NO_REPORT)
+        self._canvas.clear()
+
+    def clear_title(self) -> None:
+        """Empties this card's own title text, for a caller that already shows it."""
+        self._card.clear_title()
 
     def display(self, data: ScoreDistributionData) -> None:
         self._canvas.clear()
@@ -94,6 +107,19 @@ class ScoreDistributionCard(QWidget):
         boxes = axes.boxplot(box_data, positions=positions, patch_artist=True, widths=0.6)
         for i, box in enumerate(boxes["boxes"]):
             box.set_facecolor(_HUMAN_COLOR if i % 2 == 0 else _PROXY_COLOR)
+
+        for i, (group, result) in enumerate(zip(data.groups, data.significance, strict=True)):
+            group_max = max(*group.human_points, *group.proxy_points)
+            axes.text(
+                i * _GROUP_WIDTH + 1.5,
+                group_max,
+                f"U={result.u_statistic:g}\np={result.p_value:.3f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+
+        axes.margins(y=0.15)  # headroom so the significance text isn't clipped
 
         group_centers = [i * _GROUP_WIDTH + 1.5 for i in range(len(data.groups))]
         axes.set_xticks(group_centers)

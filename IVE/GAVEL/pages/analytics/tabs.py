@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QShowEvent
+from PyQt6.QtCore import QByteArray, QPointF, QRectF, QSettings, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QIcon, QMouseEvent, QPainter, QPen, QPixmap, QShowEvent
 from PyQt6.QtWidgets import (
+    QApplication,
     QComboBox,
+    QDockWidget,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
+    QMainWindow,
+    QMenu,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -16,7 +21,6 @@ from PyQt6.QtWidgets import (
 from GAVEL.app.workspace.dataset import DatasetReaders
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.app.workspace.manifest import AssignmentEntry
-from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.analytics.generate_report_viewmodel import GenerateReportViewModel
 from GAVEL.pages.analytics.heat_map_card import HeatMapCard
 from GAVEL.pages.analytics.score_distribution_card import ScoreDistributionCard
@@ -31,32 +35,177 @@ _PLACEHOLDER_VISUALIZATIONS = (
     "R² Chart",
 )
 
+# Dock position, size, and visibility, saved under the same per-app settings
+# as the last course pick.
+_DOCK_LAYOUT_SETTINGS_KEY = "analytics/dock_layout"
 
-class OverviewTab(ScrollableTab):
+
+class _PersistentCheckMenu(QMenu):
+    """A QMenu that stays open after toggling a checkable action.
+
+    Qt closes a menu on any item click by default.
+    Clicking elsewhere still closes it as usual.
+    """
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        action = self.activeAction()
+        if action is not None and action.isCheckable():
+            action.trigger()
+            return
+        super().mouseReleaseEvent(event)
+
+
+def _checkbox_icon(theme: ThemeContext) -> QIcon:
+    """A small checkbox: an empty outline when off and a filled check when on.
+
+    Drawn at runtime with the theme.
+    Replaces Qt's native checkmark indicator.
+    """
+    size = 14
+    border = QColor(theme.tokens.color["border"])
+    accent = QColor(theme.tokens.color["interactive"])
+    rect = QRectF(1, 1, size - 2, size - 2)
+
+    off = QPixmap(size, size)
+    off.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(off)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QPen(border, 1))
+    painter.drawRoundedRect(rect, 2, 2)
+    painter.end()
+
+    on = QPixmap(size, size)
+    on.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(on)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(QPen(accent, 1))
+    painter.drawRoundedRect(rect, 2, 2)
+    check_pen = QPen(accent, 2)
+    check_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    check_pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(check_pen)
+    painter.drawLine(QPointF(3, 7), QPointF(6, 10))
+    painter.drawLine(QPointF(6, 10), QPointF(11, 4))
+    painter.end()
+
+    icon = QIcon()
+    icon.addPixmap(off, QIcon.Mode.Normal, QIcon.State.Off)
+    icon.addPixmap(on, QIcon.Mode.Normal, QIcon.State.On)
+    return icon
+
+
+class OverviewTab(QWidget):
     def __init__(
         self,
         theme: ThemeContext,
         dataset_readers: DatasetReaders,
-        workspace_root: Path,
+        settings: QSettings,
     ) -> None:
-        super().__init__(theme)
+        super().__init__()
         self._theme = theme
+        self._settings = settings
 
-        generate_card = GenerateReportCard(theme, dataset_readers, workspace_root)
+        self._generate_card = GenerateReportCard(theme, dataset_readers)
         histogram_card = SignedErrorHistogramCard(theme)
         heat_map_card = HeatMapCard(theme)
         score_distribution_card = ScoreDistributionCard(theme)
-        generate_card.signed_error_report_generated.connect(histogram_card.load_report)
-        generate_card.heat_map_report_generated.connect(heat_map_card.load_report)
-        generate_card.heat_map_report_generated.connect(score_distribution_card.load_report)
+        self._generate_card.signed_error_report_generated.connect(histogram_card.load_report)
+        self._generate_card.heat_map_report_generated.connect(heat_map_card.load_report)
+        self._generate_card.heat_map_report_generated.connect(score_distribution_card.load_report)
+        # Each chart shows one course's report, so a change of course empties them.
+        self._report_cards = (histogram_card, heat_map_card, score_distribution_card)
 
-        self.add_section(generate_card)
-        self.add_section(histogram_card)
-        self.add_section(heat_map_card)
-        self.add_section(score_distribution_card)
-        for title in _PLACEHOLDER_VISUALIZATIONS:
-            self.add_section(_PlaceholderCard(theme, title))
-        self.add_stretch()
+        self._dock_host = QMainWindow()
+        self._dock_host.setDockNestingEnabled(True)
+        # A plain child QMainWindow (not shown as its own window) hosts the
+        # docks, giving every card drag-to-rearrange and resize for free.
+        self._dock_host.setWindowFlags(Qt.WindowType.Widget)
+
+        # Default layout is three full-width rows: Generate Report alone on
+        # top, the three real charts side by side below it, and the three
+        # not-yet-built visualizations side by side at the bottom. Dragging
+        # afterward is unrestricted; this only sets the first look.
+        generate_dock = self._make_dock("Generate Report", self._generate_card)
+        histogram_dock = self._make_dock("Signed Error Histogram", histogram_card)
+        heat_map_dock = self._make_dock("Heat Map", heat_map_card)
+        score_dock = self._make_dock("Score Distribution Boxplot", score_distribution_card)
+        placeholder_docks = [
+            self._make_dock(title, _PlaceholderCard(theme, title))
+            for title in _PLACEHOLDER_VISUALIZATIONS
+        ]
+
+        # The three rows are split first, each spanning the full width, so
+        # every row boundary is a real splitter all the way across. Splitting
+        # a row into its columns afterward only divides within that row,
+        # instead of a column split accidentally confining a later row's
+        # split (and its resize handle) to one side of the window.
+        self._dock_host.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, generate_dock)
+        self._dock_host.splitDockWidget(generate_dock, histogram_dock, Qt.Orientation.Vertical)
+        self._dock_host.splitDockWidget(
+            histogram_dock, placeholder_docks[0], Qt.Orientation.Vertical
+        )
+
+        self._dock_host.splitDockWidget(histogram_dock, heat_map_dock, Qt.Orientation.Horizontal)
+        self._dock_host.splitDockWidget(heat_map_dock, score_dock, Qt.Orientation.Horizontal)
+        for left, right in zip(placeholder_docks, placeholder_docks[1:], strict=False):
+            self._dock_host.splitDockWidget(left, right, Qt.Orientation.Horizontal)
+
+        # Builds a Manage Analytics dropdown so that analytics visuals can be displayed or hidden.
+        # It is a QPushButton with a menu.
+        # _PersistentCheckMenu keeps the menu open across several toggles.
+        # A plain QMenu closes after every single one.
+        checkbox_icon = _checkbox_icon(theme)
+        view_menu = _PersistentCheckMenu(self._dock_host)
+        for dock in (generate_dock, histogram_dock, heat_map_dock, score_dock, *placeholder_docks):
+            action = dock.toggleViewAction()
+            action.setIcon(checkbox_icon)
+            view_menu.addAction(action)
+        view_button = QPushButton("Manage Analytics")
+        view_button.setProperty("role", "secondary")
+        view_button.setMenu(view_menu)
+
+        view_bar = QWidget()
+        view_bar_layout = QHBoxLayout(view_bar)
+        view_bar_layout.setContentsMargins(8, 4, 8, 4)
+        view_bar_layout.addWidget(view_button)
+        view_bar_layout.addStretch(1)
+        self._dock_host.setMenuWidget(view_bar)
+
+        # Restores a layout saved from a previous run if there is one.
+        saved_layout = settings.value(_DOCK_LAYOUT_SETTINGS_KEY, QByteArray(), type=QByteArray)
+        if saved_layout:
+            self._dock_host.restoreState(saved_layout)
+
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._save_dock_layout)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.addWidget(self._dock_host)
+
+    def _save_dock_layout(self) -> None:
+        self._settings.setValue(_DOCK_LAYOUT_SETTINGS_KEY, self._dock_host.saveState())
+        self._settings.sync()
+
+    def _make_dock(self, title: str, widget: QWidget) -> QDockWidget:
+        # A custom title bar (e.g. via setTitleBarWidget) breaks Qt's own
+        # drag-to-redock drop indicator, so the dock keeps its native title
+        # bar; the card's own duplicate title text is cleared instead.
+        widget.clear_title()
+        dock = QDockWidget(title, self._dock_host)
+        # restoreState matches a saved dock by its object name. Every dock
+        # defaults to the same empty name, so saved layouts cannot be
+        # restored without setting a distinct one here.
+        dock.setObjectName(title)
+        dock.setWidget(widget)
+        return dock
+
+    def set_course(self, course: CourseFolder | None) -> None:
+        """The active course, from the page: when the tab is built and on every change."""
+        self._generate_card.set_course(course)
+        for card in self._report_cards:
+            card.clear()
 
 
 class _PlaceholderCard(QWidget):
@@ -64,24 +213,29 @@ class _PlaceholderCard(QWidget):
 
     def __init__(self, theme: ThemeContext, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        card = SectionCard(theme, title)
+        self._card = SectionCard(theme, title)
 
         label = QLabel("Not yet implemented.")
         label.setProperty("role", "text_muted")
-        card.add_row(label)
+        self._card.add_row(label)
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.addWidget(card)
+        root.addWidget(self._card)
+
+    def clear_title(self) -> None:
+        """Empties this card's own title text, for a caller that already shows it."""
+        self._card.clear_title()
 
 
 class GenerateReportCard(QWidget):
-    """Builds a report from a course already in the workspace.
+    """Builds a report from the active course.
 
     The report type picked determines which extra fields appear: a signed-
     error report needs a gradebook column, a heat map report needs a rubric
     assignment. Always reads the anonymized side of the course folder,
-    through GenerateReportViewModel.
+    through GenerateReportViewModel. The course comes in through set_course;
+    the report lands in the runs/ folder of the workspace that course sits in.
     """
 
     signed_error_report_generated = pyqtSignal(Path)
@@ -90,27 +244,26 @@ class GenerateReportCard(QWidget):
     _CHOOSE_TYPE = "Choose a report type…"
     _SIGNED_ERROR = "Signed Error Report"
     _HEAT_MAP = "Heat Map Report"
+    _NO_COURSE = "No course selected."
 
     def __init__(
         self,
         theme: ThemeContext,
         dataset_readers: DatasetReaders,
-        workspace_root: Path,
         view_model: GenerateReportViewModel | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._theme = theme
-        self._workspace_root = workspace_root
         self._view_model = view_model or GenerateReportViewModel(dataset_readers)
-        self._courses: tuple[CourseFolder, ...] = ()
+        self._course: CourseFolder | None = None
         self._rubric_assignments: tuple[AssignmentEntry, ...] = ()
 
         self._card = SectionCard(self._theme, "Generate Report")
         self._card.add_title_suffix(
             hint_icon(
-                "Pick a report type, then fill in what it needs. Both types require a course "
-                "that has been downloaded and anonymized in the workspace."
+                "Pick a report type, then fill in what it needs. Both types read the active "
+                "course, which must be downloaded and anonymized in the workspace."
             )
         )
 
@@ -123,17 +276,11 @@ class GenerateReportCard(QWidget):
         type_widget.setLayout(type_form)
         self._card.add_row(type_widget)
 
-        self._course_box = QComboBox()
-        self._course_box.currentIndexChanged.connect(self._refresh_modules)
         self._module_box = QComboBox()
         self._module_box.currentIndexChanged.connect(self._refresh_module_dependents)
-        self._mapping_box = QComboBox()
-        self._mapping_box.addItems(self._view_model.mapping_names())
 
         common_form = QFormLayout()
-        common_form.addRow("Course", self._course_box)
         common_form.addRow("Module", self._module_box)
-        common_form.addRow("Proxy Mapping", self._mapping_box)
         self._common_fields = QWidget()
         self._common_fields.setLayout(common_form)
         self._card.add_row(self._common_fields)
@@ -156,7 +303,7 @@ class GenerateReportCard(QWidget):
         self._generate_button.clicked.connect(self._generate)
         self._card.add_row(self._generate_button)
 
-        self._status = QLabel("No courses found in the workspace.")
+        self._status = QLabel(self._NO_COURSE)
         self._status.setProperty("role", "text_muted")
         self._card.add_row(self._status)
 
@@ -169,17 +316,25 @@ class GenerateReportCard(QWidget):
         self._heat_map_fields.setVisible(False)
         self._generate_button.setVisible(False)
 
-        self._refresh_courses()
+    def clear_title(self) -> None:
+        """Empties this card's own title text, for a caller that already shows it."""
+        self._card.clear_title()
+
+    def set_course(self, course: CourseFolder | None) -> None:
+        """The active course, from the page: when the card is built and on every change."""
+        self._course = course
+        self._status.setText("Ready." if course is not None else self._NO_COURSE)
+        # Refilling the module box refreshes the columns and rubric assignments too.
+        self._refresh_modules()
 
     def showEvent(self, event: QShowEvent) -> None:
-        """Rereads the workspace from disk each time this page is shown.
+        """Rereads the course folder from disk each time this page is shown.
 
         Downloading and anonymizing both happen outside this widget's
-        lifetime, so its cached course/module/column lists can go stale
-        without this.
+        lifetime, so its cached module/column lists can go stale without
+        this.
         """
         super().showEvent(event)
-        self._refresh_courses()
         self._refresh_modules()
         self._refresh_module_dependents()
 
@@ -190,23 +345,6 @@ class GenerateReportCard(QWidget):
         self._generate_button.setVisible(chosen)
         self._signed_error_fields.setVisible(report_type == self._SIGNED_ERROR)
         self._heat_map_fields.setVisible(report_type == self._HEAT_MAP)
-
-    def _refresh_courses(self) -> None:
-        previous = self._course_box.currentText()
-        try:
-            self._courses = self._view_model.list_courses(self._workspace_root)
-        except Exception as exc:
-            self._status.setText(f"Could not read the workspace: {exc}")
-            return
-        self._course_box.clear()
-        self._course_box.addItems([c.key.folder_name for c in self._courses])
-        if self._courses:
-            self._status.setText("Ready.")
-        else:
-            self._status.setText("No courses found in the workspace.")
-        index = self._course_box.findText(previous)
-        if index >= 0:
-            self._course_box.setCurrentIndex(index)
 
     def _refresh_modules(self) -> None:
         previous = self._module_box.currentText()
@@ -266,10 +404,7 @@ class GenerateReportCard(QWidget):
             self._rubric_box.setCurrentIndex(index)
 
     def _selected_course(self) -> CourseFolder | None:
-        index = self._course_box.currentIndex()
-        if index < 0 or index >= len(self._courses):
-            return None
-        return self._courses[index]
+        return self._course
 
     def _selected_rubric_assignment(self) -> AssignmentEntry | None:
         index = self._rubric_box.currentIndex()
@@ -281,16 +416,23 @@ class GenerateReportCard(QWidget):
         report_type = self._report_type_box.currentText()
         course = self._selected_course()
         module_text = self._module_box.currentText()
-        mapping_name = self._mapping_box.currentText()
 
-        if course is None or not module_text or not mapping_name:
-            self._status.setText("Choose a course, module, and proxy mapping.")
+        if course is None or not module_text:
+            self._status.setText("Choose a course and module.")
+            return
+
+        module_number = int(module_text)
+        mapping_name = self._view_model.resolve_mapping_name(course, module_number)
+        if mapping_name is None:
+            self._status.setText(
+                f"No proxy mapping is defined for {course.key.folder_name} module {module_number}."
+            )
             return
 
         if report_type == self._SIGNED_ERROR:
-            self._generate_signed_error_report(course, int(module_text), mapping_name)
+            self._generate_signed_error_report(course, module_number, mapping_name)
         elif report_type == self._HEAT_MAP:
-            self._generate_heat_map_report(course, int(module_text), mapping_name)
+            self._generate_heat_map_report(course, module_number, mapping_name)
         else:
             self._status.setText("Choose a report type.")
 
@@ -304,7 +446,7 @@ class GenerateReportCard(QWidget):
 
         try:
             outcome = self._view_model.generate(
-                self._workspace_root, course, module_number, mapping_name, gradebook_column
+                course.workspace_root, course, module_number, mapping_name, gradebook_column
             )
         except Exception as exc:
             self._status.setText(f"Could not generate the report: {exc}")
@@ -326,7 +468,7 @@ class GenerateReportCard(QWidget):
 
         try:
             outcome = self._view_model.generate_heat_map(
-                self._workspace_root, course, module_number, mapping_name, rubric_assignment
+                course.workspace_root, course, module_number, mapping_name, rubric_assignment
             )
         except Exception as exc:
             self._status.setText(f"Could not generate the report: {exc}")
