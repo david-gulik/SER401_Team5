@@ -1,5 +1,4 @@
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from GAVEL.app.workspace.layout import default_workspace_root
 from GAVEL.core.background import run_in_background
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.infra.autograders.autograder_metadata import (
@@ -45,7 +45,7 @@ class RunAutogradersTab(ScrollableTab):
     def __init__(self, theme: ThemeContext) -> None:
         super().__init__(theme)
         load_dotenv()
-        self.root_path = Path(os.getenv("DEFAULT_OUTPUT_DIR")).expanduser()
+        self.root_path = default_workspace_root()
         self.courses_path = self.root_path / "courses"
         self.autograders_path = self.root_path / "autograders"
         self._theme = theme
