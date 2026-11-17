@@ -50,6 +50,7 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_nav_drawer(t),
         _qss_course_selector(t),
         _qss_surface_card(t),
+        _qss_grade_criterion(t),
         _qss_status_pill(t),
         _qss_status_banner(t),
         _qss_progress_panel(t),
@@ -832,6 +833,34 @@ def _qss_surface_card(t: ThemeTokens) -> str:
     QFrame[role="surface"] QPushButton[role="borderless"]:disabled,
     QFrame[role="card_header"] QPushButton[role="borderless"]:disabled {{
         background-color: transparent;
+    }}
+    """
+
+
+def _qss_grade_criterion(t: ThemeTokens) -> str:
+    c = t.color
+    r_md = int(t.shape["radius_md"])
+
+    return f"""
+    QFrame[role="grade_criterion"] {{
+        background-color: {c["app_bg"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_md)};
+    }}
+
+    QFrame[role="grade_criterion"][selected="true"] {{
+        background-color: {c["selection_bg"]};
+        border: 1px solid {c["interactive"]};
+        border-radius: {_px(r_md)};
+    }}
+
+    QFrame[role="grade_criterion"] QLabel {{
+        background-color: transparent;
+        border: none;
+    }}
+
+    QFrame[role="grade_criterion"][selected="true"] QLabel {{
+        color: {c["selection_text"]};
     }}
     """
 

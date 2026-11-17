@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer
@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 
 from GAVEL.app.dtos.canvas_course import CanvasAssignment, CanvasCourse, CanvasQuiz
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.download.overwrite_prompt import ask_overwrite
 from GAVEL.pages.download.section_match import course_for_class
 from GAVEL.pages.download.section_picker import SectionSearchPicker
 from GAVEL.pages.download.viewmodel import (
@@ -29,9 +30,11 @@ from GAVEL.pages.download.viewmodel import (
     QUIZ_REPORTS_DOWNLOAD,
     ROSTER_DOWNLOAD,
     RUBRIC_DOWNLOAD,
+    AskOverwrite,
     DownloadUiState,
     DownloadViewModel,
     FocusCourseFolder,
+    OverwriteChoice,
     ShowError,
     ShowInfo,
     assignment_ids_error,
@@ -101,12 +104,23 @@ _CANVAS_DOWNLOAD_ORDER = (
 # About five lines of status text before it scrolls.
 STATUS_MESSAGE_MAX_HEIGHT = 88
 
+OVERWRITE_SESSION_TEXT = (
+    "Overwrite is on: files already downloaded are replaced without asking until GAVEL closes."
+)
+
 
 class DownloadTab(ScrollableTab):
-    def __init__(self, theme: ThemeContext, vm: DownloadViewModel) -> None:
+    def __init__(
+        self,
+        theme: ThemeContext,
+        vm: DownloadViewModel,
+        ask_overwrite: Callable[[QWidget, Sequence[str]], OverwriteChoice] = ask_overwrite,
+    ) -> None:
+        """``ask_overwrite`` shows the prompt for files already on disk; tests replace it."""
         super().__init__(theme)
         self._theme = theme
         self._vm = vm
+        self._ask_overwrite = ask_overwrite
         self._rendering = False
         self._render_pending = False
         self._reverting_course = False
@@ -543,6 +557,22 @@ class DownloadTab(ScrollableTab):
     def _build_status_card(self) -> QWidget:
         card = SectionCard(self._theme, "Status")
 
+        # Shown only while overwrite is on for the session, so it can be turned off.
+        self._overwrite_session_row = QWidget()
+        overwrite_layout = QHBoxLayout(self._overwrite_session_row)
+        overwrite_layout.setContentsMargins(0, 0, 0, 0)
+        set_spacing(overwrite_layout, self._theme, 8)
+        overwrite_label = QLabel(OVERWRITE_SESSION_TEXT)
+        overwrite_label.setProperty("role", "warning")
+        overwrite_label.setWordWrap(True)
+        overwrite_layout.addWidget(overwrite_label, 1)
+        self._overwrite_off_btn = QPushButton("Turn off")
+        self._overwrite_off_btn.setProperty("role", "secondary")
+        self._overwrite_off_btn.clicked.connect(lambda: self._vm.set_overwrite_session(False))
+        overwrite_layout.addWidget(self._overwrite_off_btn)
+        self._overwrite_session_row.hide()
+        card.add_row(self._overwrite_session_row)
+
         host = QWidget()
         form = QFormLayout(host)
         form.setContentsMargins(0, 0, 0, 0)
@@ -788,6 +818,7 @@ class DownloadTab(ScrollableTab):
         self._gradescope_credentials_recheck_btn.setVisible(credentials_missing)
         self._status_pill.set_status(state.status)
         self._message_label.setText(state.message)
+        self._overwrite_session_row.setVisible(state.overwrite_session)
 
         section_warning = state.section_warning
         self._section_mismatch_warning.setText(section_warning or "")
@@ -890,6 +921,8 @@ class DownloadTab(ScrollableTab):
             show_message(self, "Download failed", event.message, critical=True)
         elif isinstance(event, ShowInfo):
             show_message(self, "Download", event.message)
+        elif isinstance(event, AskOverwrite):
+            self._vm.answer_overwrite(self._ask_overwrite(self, event.paths))
         elif isinstance(event, FocusCourseFolder):
             self._scroll.ensureWidgetVisible(self._course_folder_input)
             self._course_folder_input.setFocus(Qt.FocusReason.OtherFocusReason)

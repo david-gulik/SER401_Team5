@@ -25,6 +25,8 @@ class DownloadAllRubricAssessmentsRequest:
     course_id: int
     folder: CourseFolder
     overwrite: bool = False
+    # Only these assignments, when given; used to retry the ones refused as already downloaded.
+    assignment_ids: frozenset[int] | None = None
 
 
 @dataclass(frozen=True)
@@ -89,8 +91,8 @@ class DownloadAllRubricAssessmentsUseCase:
     in case rubric presence changed between the list call and this one).
 
     An assignment whose files are already in the course folder is reported
-    as "already_downloaded" and left alone; delete the course folder to
-    refresh it.
+    as "already_downloaded" and left alone unless the request asks to
+    overwrite.
 
     ``on_progress`` hears once the assignment list is known and again as each
     assignment finishes, whatever its outcome.
@@ -109,6 +111,8 @@ class DownloadAllRubricAssessmentsUseCase:
 
         log.info("Listing assignments for course %s", request.course_id)
         assignments = self._canvas_client.list_assignments(request.course_id)
+        if request.assignment_ids is not None:
+            assignments = [a for a in assignments if a.id in request.assignment_ids]
         total = len(assignments)
         with_rubric = sum(1 for a in assignments if a.has_rubric)
         log.info(

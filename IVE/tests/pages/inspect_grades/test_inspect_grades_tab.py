@@ -1,5 +1,8 @@
 from pathlib import Path
 
+from PyQt6.QtCore import Qt
+from PyQt6.QtTest import QTest
+
 from GAVEL.app.dtos.rubric_definition import (
     RubricCriterionDefinition,
     RubricDefinition,
@@ -141,4 +144,196 @@ def test_selecting_assignment_populates_student_matrix(qapp, theme, monkeypatch)
     assert tab.student_grade_matrix.table.rowCount() == 0
     assert tab.student_grade_matrix.table.columnCount() == 0
 
+    tab.deleteLater()
+
+
+def test_selecting_student_updates_grade_comparison(qapp, theme):
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    tab.student_grade_matrix.table.selectRow(0)
+
+    assert tab.selected_student_label.text() == "Selected student: 100001"
+    assert tab.human_panel.total_label.text() == "Total: 6 / 6"
+
+    first_row = tab.human_panel.criteria_layout.itemAt(0).widget()
+    second_row = tab.human_panel.criteria_layout.itemAt(1).widget()
+
+    assert first_row.layout().itemAt(1).widget().text() == "4 / 4"
+    assert second_row.layout().itemAt(1).widget().text() == "2 / 2"
+
+    tab.student_grade_matrix.table.selectRow(1)
+
+    assert tab.selected_student_label.text() == "Selected student: 100002"
+    assert tab.human_panel.total_label.text() == "Total: 4 / 6"
+
+    first_row = tab.human_panel.criteria_layout.itemAt(0).widget()
+    second_row = tab.human_panel.criteria_layout.itemAt(1).widget()
+
+    assert first_row.layout().itemAt(1).widget().text() == "3 / 4"
+    assert second_row.layout().itemAt(1).widget().text() == "1 / 2"
+
+    proxy_first = tab.proxy_panel.criteria_layout.itemAt(0).widget()
+    proxy_second = tab.proxy_panel.criteria_layout.itemAt(1).widget()
+
+    assert proxy_first.layout().itemAt(1).widget().text() == "—"
+    assert proxy_second.layout().itemAt(1).widget().text() == "—"
+
+    tab.deleteLater()
+
+
+def test_clearing_student_selection_resets_comparison_panels(qapp, theme):
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    tab.student_grade_matrix.table.selectRow(0)
+
+    assert tab.human_panel.criteria_layout.count() == 2
+    assert tab.proxy_panel.criteria_layout.count() == 2
+
+    tab.student_grade_matrix.table.clearSelection()
+
+    assert tab.human_panel.criteria_layout.count() == 0
+    assert tab.proxy_panel.criteria_layout.count() == 0
+
+    assert tab.human_panel.total_label.text() == "Total: —"
+    assert tab.proxy_panel.total_label.text() == "Total: —"
+
+    assert (
+        tab.selected_student_label.text()
+        == "Select a student from the matrix to view grading details."
+    )
+
+    tab.deleteLater()
+
+
+def test_grade_comparison_panels_scroll_together(qapp, theme):
+    tab, vm = _tab(theme)
+
+    criteria = tuple(
+        RubricCriterionDefinition(
+            id=f"criterion_{i}",
+            description=f"Criterion {i}",
+            long_description="",
+            points=4.0,
+            ratings=(),
+        )
+        for i in range(20)
+    )
+
+    rubric = RubricDefinition(
+        rubric_id="scroll_test",
+        title="Scrolling Test",
+        points_possible=80.0,
+        free_form_criterion_comments=False,
+        criteria=criteria,
+    )
+
+    tab.resize(1100, 700)
+    tab.show()
+
+    scores = {criterion.id: 4.0 for criterion in criteria}
+
+    tab.human_panel.display_criteria(rubric, scores)
+    tab.proxy_panel.display_criteria(rubric, None)
+
+    qapp.processEvents()
+
+    human_scrollbar = tab.human_panel.scroll_area.verticalScrollBar()
+    proxy_scrollbar = tab.proxy_panel.scroll_area.verticalScrollBar()
+
+    assert tab.human_panel.criteria_layout.count() == 20
+    assert tab.proxy_panel.criteria_layout.count() == 20
+
+    assert human_scrollbar.maximum() > 0
+    assert proxy_scrollbar.maximum() > 0
+
+    human_scrollbar.setValue(200)
+    assert proxy_scrollbar.value() == human_scrollbar.value()
+
+    proxy_scrollbar.setValue(400)
+    assert human_scrollbar.value() == proxy_scrollbar.value()
+
+    human_scrollbar.setValue(0)
+    assert proxy_scrollbar.value() == 0
+
+    human_scrollbar.setValue(200)
+    assert human_scrollbar.value() > 0
+    assert proxy_scrollbar.value() == human_scrollbar.value()
+
+    tab.human_panel.display_criteria(rubric, scores)
+    tab.proxy_panel.display_criteria(rubric, None)
+
+    qapp.processEvents()
+
+    assert human_scrollbar.value() == 0
+    assert proxy_scrollbar.value() == 0
+
+    tab.close()
+    tab.deleteLater()
+
+
+def test_switching_students_resets_comparison_scroll(qapp, theme):
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    tab.student_grade_matrix.table.selectRow(0)
+
+    human_scrollbar = tab.human_panel.scroll_area.verticalScrollBar()
+    proxy_scrollbar = tab.proxy_panel.scroll_area.verticalScrollBar()
+
+    human_scrollbar.setValue(100)
+
+    tab.student_grade_matrix.table.selectRow(1)
+
+    assert human_scrollbar.value() == 0
+    assert proxy_scrollbar.value() == 0
+
+    assert tab.selected_student_label.text() == "Selected student: 100002"
+    assert tab.human_panel.total_label.text() == "Total: 4 / 6"
+
+    tab.deleteLater()
+
+
+def test_criterion_selection_is_synchronized(qapp, theme):
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+
+    tab.resize(1100, 900)
+    tab.show()
+    qapp.processEvents()
+
+    human_c1 = tab.human_panel.criteria_layout.itemAt(0).widget()
+    human_c2 = tab.human_panel.criteria_layout.itemAt(1).widget()
+
+    proxy_c1 = tab.proxy_panel.criteria_layout.itemAt(0).widget()
+    proxy_c2 = tab.proxy_panel.criteria_layout.itemAt(1).widget()
+
+    QTest.mouseClick(human_c1, Qt.MouseButton.LeftButton)
+
+    assert human_c1.property("selected") == "true"
+    assert proxy_c1.property("selected") == "true"
+    assert human_c2.property("selected") == "false"
+    assert proxy_c2.property("selected") == "false"
+
+    QTest.mouseClick(proxy_c2, Qt.MouseButton.LeftButton)
+
+    assert human_c1.property("selected") == "false"
+    assert proxy_c1.property("selected") == "false"
+    assert human_c2.property("selected") == "true"
+    assert proxy_c2.property("selected") == "true"
+
+    tab.student_grade_matrix.table.selectRow(0)
+
+    for panel in (tab.human_panel, tab.proxy_panel):
+        for index in range(panel.criteria_layout.count()):
+            card = panel.criteria_layout.itemAt(index).widget()
+            assert card.property("selected") == "false"
+
+    tab.close()
     tab.deleteLater()

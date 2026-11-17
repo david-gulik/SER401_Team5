@@ -136,7 +136,12 @@ def write_rubric(snapshot_dir: Path) -> Path:
 
 def write_gradescope_submissions(snapshot_dir: Path) -> None:
     extracted_dir = (
-        snapshot_dir / "original" / "submissions" / "m1" / "extracted" / "assignment_123_export"
+        snapshot_dir
+        / "original"
+        / "gradescope_submissions"
+        / "m1"
+        / "extracted"
+        / "assignment_123_export"
     )
     extracted_dir.mkdir(parents=True, exist_ok=True)
 
@@ -363,7 +368,7 @@ class TestFullPipeline:
 
         use_case.execute(request)
 
-        output_dir = tmp_path / "anonymized" / "submissions" / "m1"
+        output_dir = tmp_path / "anonymized" / "gradescope_submissions" / "m1"
 
         included_file = output_dir / "submission_1" / "Main.java"
         excluded_file = output_dir / "submission_2" / "Main.java"
@@ -684,7 +689,9 @@ def write_broken_rubric(snapshot_dir: Path) -> Path:
 
 
 def gradescope_metadata(course_dir: Path) -> Path:
-    return next((course_dir / "original" / "submissions").rglob("submission_metadata.yml"))
+    return next(
+        (course_dir / "original" / "gradescope_submissions").rglob("submission_metadata.yml")
+    )
 
 
 class TestPartialFailures:
@@ -716,7 +723,7 @@ class TestPartialFailures:
         assert not (anonymized / "assignments" / "7216984_m2" / "rubric_assessments.json").exists()
         assert result.rubric_assessment.processed_count == 1
         # Steps after the rubrics still run.
-        assert (anonymized / "submissions" / "m1" / "submission_1").is_dir()
+        assert (anonymized / "gradescope_submissions" / "m1" / "submission_1").is_dir()
 
     def test_a_failed_rubric_leaves_no_copied_definition(self, use_case, course_dir: Path):
         write_broken_rubric(course_dir)
@@ -749,7 +756,7 @@ class TestPartialFailures:
         result = use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
 
         assert [f.path for f in result.failures] == [
-            "submissions/m1/extracted/assignment_123_export/submission_metadata.yml"
+            "gradescope_submissions/m1/extracted/assignment_123_export/submission_metadata.yml"
         ]
         assert (course_dir / "anonymized" / "gradebook.csv").is_file()
 
@@ -759,9 +766,11 @@ class TestPartialFailures:
         result = use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
 
         assert [(f.path, f.error) for f in result.failures] == [
-            ("submissions/m1/extracted/assignment_123_export/submission_1", "OSError")
+            ("gradescope_submissions/m1/extracted/assignment_123_export/submission_1", "OSError")
         ]
-        assert not (course_dir / "anonymized" / "submissions" / "m1" / "submission_1").exists()
+        assert not (
+            course_dir / "anonymized" / "gradescope_submissions" / "m1" / "submission_1"
+        ).exists()
 
     def test_failure_names_the_error_type_but_not_its_message(self, use_case, course_dir: Path):
         # Parser messages can quote the offending line, student names and all.
