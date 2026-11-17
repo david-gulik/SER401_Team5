@@ -204,7 +204,41 @@ def test_switching_criterion_resets_previous_values(qapp, theme):
     buttons = panel.grade_buttons.buttons()
     assert len(buttons) == 1
     assert buttons[0].text() == "Partial Credit: 1 / 2"
-    assert not buttons[0].isChecked()
+    assert buttons[0].isChecked()
     assert panel.notes_input.toPlainText() == ""
+
+    panel.deleteLater()
+
+
+def test_original_grade_selected_without_emitting_correction(qapp, theme):
+    panel = RubricCorrectionPanel(theme)
+
+    criterion = RubricCriterionDefinition(
+        id="criterion_1",
+        description="Code Correctness",
+        long_description="",
+        points=4.0,
+        ratings=(
+            RubricRating("full", "Full Credit", "", 4.0),
+            RubricRating("partial", "Partial Credit", "", 2.0),
+            RubricRating("none", "No Credit", "", 0.0),
+        ),
+    )
+
+    corrections = []
+    panel.correction_changed.connect(corrections.append)
+
+    panel.set_criterion(100002, criterion, 2.0)
+
+    buttons = panel.grade_buttons.buttons()
+
+    assert buttons[1].isChecked()
+    assert not buttons[0].isChecked()
+    assert not buttons[2].isChecked()
+    assert corrections == []
+
+    buttons[0].click()
+
+    assert corrections == [4.0]
 
     panel.deleteLater()

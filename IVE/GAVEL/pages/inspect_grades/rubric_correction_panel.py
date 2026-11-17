@@ -103,6 +103,10 @@ class RubricCorrectionPanel(QWidget):
                         self.correction_changed.emit(points) if checked else None
                     )
                 )
+                if original_score is not None and rating.points == original_score:
+                    button.blockSignals(True)
+                    button.setChecked(True)
+                    button.blockSignals(False)
 
         self.notes_input.setEnabled(True)
 
