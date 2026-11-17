@@ -146,6 +146,7 @@ def test_selecting_assignment_populates_student_matrix(qapp, theme, monkeypatch)
 
     tab.deleteLater()
 
+
 def test_autograder_zip_dropdown_selection(qapp, theme, tmp_path, monkeypatch):
     autograder_dir = tmp_path / "autograders" / "ser222"
     autograder_dir.mkdir(parents=True)
@@ -252,6 +253,7 @@ def test_refresh_resets_autograder_zip_selection(qapp, theme, tmp_path, monkeypa
     assert tab.autograder_zip_combo.isEnabled()
 
     tab.deleteLater()
+
 
 def test_selecting_student_updates_grade_comparison(qapp, theme):
     tab, vm = _tab(theme)
