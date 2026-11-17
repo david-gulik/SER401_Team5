@@ -58,3 +58,9 @@ def test_progress_panel_roles_are_styled(qss: str):
     assert 'QProgressBar[role="progress_bar"]::chunk' in qss
     assert 'QLabel[role="progress_count"]' in qss
     assert 'QLabel[role="progress_detail"]' in qss
+
+
+def test_chart_toolbar_is_styled(qss: str):
+    assert "QToolBar {" in qss
+    assert "QToolBar QToolButton:hover" in qss
+    assert "QToolBar QToolButton:checked" in qss

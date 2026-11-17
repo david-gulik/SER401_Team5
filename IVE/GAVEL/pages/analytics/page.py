@@ -16,7 +16,7 @@ class AnalyticsPage(BasePage):
         super().__init__()
         self._theme = ctx.theme
 
-        tab = OverviewTab(self._theme, ctx.services.dataset_readers)
+        tab = OverviewTab(self._theme, ctx.services.dataset_readers, ctx.settings)
         # Pages are built the first time they open, so read the current pick as well.
         ctx.active_course.changed.connect(tab.set_course)
         tab.set_course(ctx.active_course.course)

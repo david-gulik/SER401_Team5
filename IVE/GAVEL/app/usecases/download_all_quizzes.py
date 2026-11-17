@@ -10,10 +10,12 @@ from GAVEL.app.ports.canvas_client import (
 )
 from GAVEL.app.progress import ProgressCallback, report
 from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.manifest import quiz_entry
 from GAVEL.app.workspace.recording import (
     ArtifactExistsError,
     guard_not_downloaded,
     note_course,
+    note_quizzes,
     record,
 )
 
@@ -160,6 +162,13 @@ class DownloadAllQuizzesUseCase:
 
         if any(o.status == "succeeded" for o in outcomes):
             note_course(request.folder, canvas_course_id=request.course_id)
+        # Already-downloaded quizzes count too, so a re-run fills in due dates.
+        on_disk = {o.quiz_id for o in outcomes if o.status == "succeeded" or o.already_downloaded}
+        if on_disk:
+            note_quizzes(
+                request.folder,
+                [quiz_entry(q) for q in quizzes if q.id in on_disk],
+            )
 
         result = DownloadAllQuizzesResult(outcomes=tuple(outcomes))
         log.info(

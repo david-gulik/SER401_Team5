@@ -23,6 +23,7 @@ from GAVEL.app.workspace.manifest import (
     AssignmentEntry,
     CourseManifest,
     ManifestError,
+    QuizEntry,
     load_manifest,
     save_manifest,
 )
@@ -31,6 +32,7 @@ from GAVEL.app.workspace.recording import (
     guard_not_downloaded,
     note_assignment,
     note_course,
+    note_quizzes,
     record,
 )
 from GAVEL.app.workspace.resolve import course_key_from_selections, roster_key_from_selections
@@ -49,6 +51,7 @@ __all__ = [
     "ManifestError",
     "MissingArtifactError",
     "ModuleSubmissions",
+    "QuizEntry",
     "Workspace",
     "course_key_from_selections",
     "guard_not_downloaded",
@@ -56,6 +59,7 @@ __all__ = [
     "module_number_from_name",
     "note_assignment",
     "note_course",
+    "note_quizzes",
     "record",
     "roster_key_from_selections",
     "save_manifest",

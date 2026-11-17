@@ -176,4 +176,4 @@ def write_report(result: GenerateSignedErrorReportResult, output_path: Path) -> 
             for f in result.failed_submissions
         ],
     }
-    output_path.write_text(json.dumps(payload, indent=2))
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

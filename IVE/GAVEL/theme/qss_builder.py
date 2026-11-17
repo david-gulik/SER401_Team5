@@ -56,6 +56,7 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_input_mode_toggle(t),
         _qss_tree_view(t),
         _qss_tile(t),
+        _qss_chart_toolbar(t),
     ]
     return "\n\n".join(sections)
 
@@ -93,8 +94,8 @@ def _qss_main(t: ThemeTokens) -> str:
     }}
     QMainWindow::separator {{
         background-color: {c["border"]};
-        width: 1px;
-        height: 1px;
+        width: 6px;
+        height: 6px;
     }}
     QStatusBar {{
         background-color: {c["global_status_bar"]};
@@ -250,6 +251,10 @@ def _qss_push_button(t: ThemeTokens) -> str:
         background-color: transparent;
         color: {c["text_disabled"]};
         border-color: transparent;
+    }}
+    QPushButton::menu-indicator {{
+        image: none;
+        width: 0;
     }}
     """
 
@@ -562,6 +567,10 @@ def _qss_menu(t: ThemeTokens) -> str:
     }}
     QMenu::item:disabled {{
         color: {c["input_placeholder"]};
+    }}
+    QMenu::indicator {{
+        width: 0;
+        image: none;
     }}
     """
 
@@ -1083,5 +1092,38 @@ def _qss_tile(t: ThemeTokens) -> str:
     {tile(":checked")} {{
         background-color: {c["surface"]};
         border-color: {c["interactive"]};
+    }}
+    """
+
+
+def _qss_chart_toolbar(t: ThemeTokens) -> str:
+    """NavigationToolbar2QT that is embedded in each analytics tile"""
+    c = t.color
+    r_sm = int(t.shape["radius_sm"])
+    sp_xs = t.sp(4)
+    return f"""
+    QToolBar {{
+        background-color: {c["surface"]};
+        border: none;
+        border-bottom: 1px solid {c["border"]};
+        spacing: {_px(sp_xs)};
+        padding: {_px(sp_xs)};
+    }}
+    QToolBar QToolButton {{
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: {_px(r_sm)};
+        padding: {_px(sp_xs)};
+    }}
+    QToolBar QToolButton:hover {{
+        background-color: {c["interactive_ghost"]};
+        border-color: {c["border_focus"]};
+    }}
+    QToolBar QToolButton:checked {{
+        background-color: {c["interactive_ghost"]};
+        border-color: {c["interactive"]};
+    }}
+    QToolBar QLabel {{
+        color: {c["text_secondary"]};
     }}
     """
