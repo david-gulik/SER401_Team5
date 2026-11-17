@@ -50,12 +50,14 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_nav_drawer(t),
         _qss_course_selector(t),
         _qss_surface_card(t),
+        _qss_grade_criterion(t),
         _qss_status_pill(t),
         _qss_status_banner(t),
         _qss_progress_panel(t),
         _qss_input_mode_toggle(t),
         _qss_tree_view(t),
         _qss_tile(t),
+        _qss_chart_toolbar(t),
     ]
     return "\n\n".join(sections)
 
@@ -835,6 +837,34 @@ def _qss_surface_card(t: ThemeTokens) -> str:
     """
 
 
+def _qss_grade_criterion(t: ThemeTokens) -> str:
+    c = t.color
+    r_md = int(t.shape["radius_md"])
+
+    return f"""
+    QFrame[role="grade_criterion"] {{
+        background-color: {c["app_bg"]};
+        border: 1px solid {c["border"]};
+        border-radius: {_px(r_md)};
+    }}
+
+    QFrame[role="grade_criterion"][selected="true"] {{
+        background-color: {c["selection_bg"]};
+        border: 1px solid {c["interactive"]};
+        border-radius: {_px(r_md)};
+    }}
+
+    QFrame[role="grade_criterion"] QLabel {{
+        background-color: transparent;
+        border: none;
+    }}
+
+    QFrame[role="grade_criterion"][selected="true"] QLabel {{
+        color: {c["selection_text"]};
+    }}
+    """
+
+
 def _qss_status_pill(t: ThemeTokens) -> str:
     c = t.color
     ty = t.typography
@@ -1091,5 +1121,38 @@ def _qss_tile(t: ThemeTokens) -> str:
     {tile(":checked")} {{
         background-color: {c["surface"]};
         border-color: {c["interactive"]};
+    }}
+    """
+
+
+def _qss_chart_toolbar(t: ThemeTokens) -> str:
+    """NavigationToolbar2QT that is embedded in each analytics tile"""
+    c = t.color
+    r_sm = int(t.shape["radius_sm"])
+    sp_xs = t.sp(4)
+    return f"""
+    QToolBar {{
+        background-color: {c["surface"]};
+        border: none;
+        border-bottom: 1px solid {c["border"]};
+        spacing: {_px(sp_xs)};
+        padding: {_px(sp_xs)};
+    }}
+    QToolBar QToolButton {{
+        background-color: transparent;
+        border: 1px solid transparent;
+        border-radius: {_px(r_sm)};
+        padding: {_px(sp_xs)};
+    }}
+    QToolBar QToolButton:hover {{
+        background-color: {c["interactive_ghost"]};
+        border-color: {c["border_focus"]};
+    }}
+    QToolBar QToolButton:checked {{
+        background-color: {c["interactive_ghost"]};
+        border-color: {c["interactive"]};
+    }}
+    QToolBar QLabel {{
+        color: {c["text_secondary"]};
     }}
     """

@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
+from enum import Enum
+from functools import partial
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
@@ -48,7 +50,7 @@ from GAVEL.app.usecases.download_rubric_assessment import (
     DownloadRubricAssessmentUseCase,
 )
 from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
-from GAVEL.app.workspace.recording import ArtifactExistsError
+from GAVEL.app.workspace.recording import ArtifactExistsError, relative_posix
 from GAVEL.app.workspace.resolve import (
     NOTHING_TO_NAME_FROM,
     course_key_from_selections,
@@ -173,6 +175,8 @@ class DownloadUiState:
     roster_configured: bool = True
     # Downloads that succeeded for the current selections; see *_DOWNLOAD above.
     completed: frozenset[str] = frozenset()
+    # Replace files already on disk without asking, until the app closes or it is turned off.
+    overwrite_session: bool = False
 
     @property
     def selected_course(self) -> CanvasCourse | None:
@@ -303,6 +307,47 @@ class FocusCourseFolder:
 
 
 @dataclass(frozen=True)
+class AskOverwrite:
+    """A download left files alone because they were already on disk.
+
+    The tab asks whether to replace them and answers with
+    ``DownloadViewModel.answer_overwrite``. ``paths`` are relative to the
+    course folder.
+    """
+
+    paths: tuple[str, ...]
+
+
+class OverwriteChoice(Enum):
+    SKIP = "skip"  # keep the files; show the download summary
+    ONCE = "once"  # replace these files only
+    SESSION = "session"  # replace these, and stop asking until the app closes
+
+
+@dataclass(frozen=True)
+class _DownloadAllInputs:
+    """What Download All resolved from the selections, kept so a retry downloads the same course."""
+
+    term: str
+    class_number: str
+    course_id: int
+    consent_quiz_id: int
+    folder: CourseFolder
+    roster_folder: CourseFolder
+
+
+@dataclass(frozen=True)
+class _DownloadAllPlan:
+    """Which Download All steps to run, and how; a retry runs only what was refused."""
+
+    steps: frozenset[str]
+    overwrite: bool
+    # None runs every quiz or assignment; a set limits the step to those ids.
+    quiz_ids: frozenset[int] | None = None
+    assignment_ids: frozenset[int] | None = None
+
+
+@dataclass(frozen=True)
 class _DownloadAllResult:
     successes: tuple[str, ...]
     failures: tuple[str, ...]
@@ -310,6 +355,9 @@ class _DownloadAllResult:
     completed: frozenset[str] = frozenset()
     # Steps left alone because their files were already in the course folder.
     skipped: tuple[str, ...] = ()
+    # The files behind ``skipped``, and the plan that would replace only them.
+    refused_paths: tuple[str, ...] = ()
+    retry_plan: _DownloadAllPlan | None = None
 
 
 @dataclass(frozen=True)
@@ -318,6 +366,9 @@ class _RubricBatchResult:
     skipped: tuple[str, ...]
     existing: tuple[str, ...]
     failed: tuple[str, ...]
+    # The assignments behind ``existing`` and their assessment files.
+    existing_ids: tuple[int, ...] = ()
+    existing_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -329,12 +380,20 @@ class _CourseLists:
 
 
 RUBRIC_PROGRESS_LABEL = "Downloading rubric assessments"
-DOWNLOAD_ALL_STEPS = 6
+DOWNLOAD_ALL_ORDER = (
+    ROSTER_DOWNLOAD,
+    GRADEBOOK_DOWNLOAD,
+    GRADESCOPE_DOWNLOAD,
+    CONSENT_DOWNLOAD,
+    QUIZ_REPORTS_DOWNLOAD,
+    RUBRIC_DOWNLOAD,
+)
+DOWNLOAD_ALL_STEPS = len(DOWNLOAD_ALL_ORDER)
 
 
 class DownloadViewModel(QObject):
     state_changed = pyqtSignal(object)  # DownloadUiState
-    event_raised = pyqtSignal(object)  # ShowError | ShowInfo
+    event_raised = pyqtSignal(object)  # ShowError | ShowInfo | FocusCourseFolder | AskOverwrite
     # Use cases report progress on the worker thread; this carries it to the GUI thread.
     _progress_reported = pyqtSignal(object)  # DownloadProgress
 
@@ -370,9 +429,52 @@ class DownloadViewModel(QObject):
             roster_configured=roster_configured,
         )
         self._progress_reported.connect(self._on_progress)
+        # Set while an AskOverwrite waits for its answer: what Overwrite runs,
+        # and the summary Skip shows instead.
+        self._pending_retry: Callable[[], None] | None = None
+        self._pending_summary: ShowInfo | ShowError | None = None
 
     def get_state(self) -> DownloadUiState:
         return self._state
+
+    def set_overwrite_session(self, on: bool) -> None:
+        if on == self._state.overwrite_session:
+            return
+        self._state = replace(self._state, overwrite_session=on)
+        self.state_changed.emit(self._state)
+        self._logger.info(
+            "Overwriting downloaded files for the rest of this session"
+            if on
+            else "No longer overwriting downloaded files"
+        )
+
+    def answer_overwrite(self, choice: OverwriteChoice) -> None:
+        """The answer to the last AskOverwrite: re-run only the refused files, or show the summary."""
+        retry, summary = self._pending_retry, self._pending_summary
+        self._pending_retry = self._pending_summary = None
+        if retry is None:
+            return
+        if choice is OverwriteChoice.SKIP:
+            if summary is not None:
+                self.event_raised.emit(summary)
+            return
+        if choice is OverwriteChoice.SESSION:
+            self.set_overwrite_session(True)
+        retry()
+
+    def _finish(
+        self,
+        summary: ShowInfo | ShowError,
+        refused: Sequence[str] = (),
+        retry: Callable[[], None] | None = None,
+    ) -> None:
+        """Show a download's ``summary``, asking first about ``refused`` files when there are any."""
+        if refused and retry is not None:
+            self._pending_retry = retry
+            self._pending_summary = summary
+            self.event_raised.emit(AskOverwrite(tuple(refused)))
+        else:
+            self.event_raised.emit(summary)
 
     # Field setters
 
@@ -600,14 +702,24 @@ class DownloadViewModel(QObject):
         folder = self._resolved_roster_folder()
         if folder is None:
             return
+        self._run_roster(term, class_number, folder, self._state.overwrite_session)
 
+    def _run_roster(
+        self, term: str, class_number: str, folder: CourseFolder, overwrite: bool
+    ) -> None:
         self._set_busy("Authenticating and downloading roster...")
         use_case = DownloadRosterUseCase(self._client)
-        request = DownloadRosterRequest(term=term, class_number=class_number, folder=folder)
+        request = DownloadRosterRequest(
+            term=term, class_number=class_number, folder=folder, overwrite=overwrite
+        )
         self._run_async(
             lambda: use_case.execute(request),
             self._on_roster_downloaded,
-            self._on_roster_error,
+            lambda exc: self._report_download_failure(
+                "Roster download failed",
+                exc,
+                retry=lambda: self._run_roster(term, class_number, folder, True),
+            ),
         )
 
     def _on_roster_downloaded(self, result: object) -> None:
@@ -622,9 +734,6 @@ class DownloadViewModel(QObject):
         )
         self.state_changed.emit(self._state)
         self.event_raised.emit(ShowInfo(res.message))
-
-    def _on_roster_error(self, exc: object) -> None:
-        self._report_download_failure("Roster download failed", exc)
 
     def load_quizzes(self, course_id: str) -> None:
         self._load_course_lists(course_id, quizzes=True, assignments=False)
@@ -728,15 +837,21 @@ class DownloadViewModel(QObject):
         folder = self._resolved_course_folder()
         if folder is None:
             return
+        self._run_gradebook(course_id, folder, self._state.overwrite_session)
 
+    def _run_gradebook(self, course_id: int, folder: CourseFolder, overwrite: bool) -> None:
         label = f"Downloading gradebook for course {course_id}"
         self._set_busy(f"{label}...", DownloadProgress(label, 0, 0))
         use_case = DownloadGradebookUseCase(self._canvas_client)
-        request = DownloadGradebookRequest(course_id=course_id, folder=folder)
+        request = DownloadGradebookRequest(course_id=course_id, folder=folder, overwrite=overwrite)
         self._run_async(
             lambda: use_case.execute(request),
             lambda result: self._on_single_download(GRADEBOOK_DOWNLOAD, result),
-            lambda exc: self._report_download_failure("Gradebook download failed", exc),
+            lambda exc: self._report_download_failure(
+                "Gradebook download failed",
+                exc,
+                retry=lambda: self._run_gradebook(course_id, folder, True),
+            ),
         )
 
     def _on_single_download(self, name: str, result: object) -> None:
@@ -763,22 +878,32 @@ class DownloadViewModel(QObject):
         folder = self._resolved_course_folder()
         if folder is None:
             return
+        self._run_gradescope(course_id, folder, self._state.overwrite_session)
 
+    def _run_gradescope(self, course_id: int, folder: CourseFolder, overwrite: bool) -> None:
         label = f"Signing in to Gradescope for course {course_id}"
         self._set_busy(f"{label}...", DownloadProgress(label, 0, 0))
         use_case = DownloadGradescopeSubmissionsUseCase(
             self._canvas_client, browser=self._asu_browser
         )
-        request = DownloadGradescopeSubmissionsRequest(course_id=course_id, folder=folder)
+        request = DownloadGradescopeSubmissionsRequest(
+            course_id=course_id, folder=folder, overwrite=overwrite
+        )
+
+        def retry() -> None:
+            self._run_gradescope(course_id, folder, True)
+
         self._run_async(
             lambda: use_case.execute(request, on_progress=self._report_progress),
-            self._on_gradescope_downloaded,
+            lambda value: self._on_gradescope_downloaded(folder, value, retry),
             lambda exc: self._report_download_failure(
-                "Gradescope submissions download failed", exc
+                "Gradescope submissions download failed", exc, retry=retry
             ),
         )
 
-    def _on_gradescope_downloaded(self, value: object) -> None:
+    def _on_gradescope_downloaded(
+        self, folder: CourseFolder, value: object, retry: Callable[[], None]
+    ) -> None:
         result: DownloadGradescopeSubmissionsResult = value  # type: ignore[assignment]
         self._state = replace(
             self._state,
@@ -790,7 +915,9 @@ class DownloadViewModel(QObject):
             completed=self._state.completed | {GRADESCOPE_DOWNLOAD},
         )
         self.state_changed.emit(self._state)
-        self.event_raised.emit(ShowInfo(result.message))
+        # Gradescope sends every export at once; the ones already on disk were kept.
+        kept = [relative_posix(folder, path) for path in result.kept]
+        self._finish(ShowInfo(result.message), kept, retry)
 
     def download_consent(self) -> None:
         if self._state.is_busy:
@@ -804,15 +931,25 @@ class DownloadViewModel(QObject):
         folder = self._resolved_course_folder()
         if folder is None:
             return
+        self._run_consent(course_id, quiz_id, folder, self._state.overwrite_session)
 
+    def _run_consent(
+        self, course_id: int, quiz_id: int, folder: CourseFolder, overwrite: bool
+    ) -> None:
         label = f"Downloading consent form for course {course_id}"
         self._set_busy(f"{label}...", DownloadProgress(label, 0, 0))
         use_case = DownloadConsentFormUseCase(self._canvas_client)
-        request = DownloadConsentFormRequest(course_id=course_id, quiz_id=quiz_id, folder=folder)
+        request = DownloadConsentFormRequest(
+            course_id=course_id, quiz_id=quiz_id, folder=folder, overwrite=overwrite
+        )
         self._run_async(
             lambda: use_case.execute(request),
             lambda result: self._on_single_download(CONSENT_DOWNLOAD, result),
-            lambda exc: self._report_download_failure("Consent form download failed", exc),
+            lambda exc: self._report_download_failure(
+                "Consent form download failed",
+                exc,
+                retry=lambda: self._run_consent(course_id, quiz_id, folder, True),
+            ),
         )
 
     def download_rubric_assessment(self) -> None:
@@ -827,7 +964,11 @@ class DownloadViewModel(QObject):
         folder = self._resolved_course_folder()
         if folder is None:
             return
+        self._run_rubrics(course_id, assignment_ids, folder, self._state.overwrite_session)
 
+    def _run_rubrics(
+        self, course_id: int, assignment_ids: list[int], folder: CourseFolder, overwrite: bool
+    ) -> None:
         ids_text = ", ".join(str(a) for a in assignment_ids)
         self._set_busy(
             f"Downloading rubric assessment(s) for course {course_id}, assignment(s) {ids_text}...",
@@ -847,6 +988,8 @@ class DownloadViewModel(QObject):
             saved: list[DownloadRubricAssessmentResult] = []
             skipped: list[str] = []
             existing: list[str] = []
+            existing_ids: list[int] = []
+            existing_paths: list[str] = []
             failed: list[str] = []
             for index, assignment_id in enumerate(assignment_ids, start=1):
                 assignment = known.get(assignment_id)
@@ -867,7 +1010,10 @@ class DownloadViewModel(QObject):
                     try:
                         result = use_case.execute(
                             DownloadRubricAssessmentRequest(
-                                course_id=course_id, assignment=assignment, folder=folder
+                                course_id=course_id,
+                                assignment=assignment,
+                                folder=folder,
+                                overwrite=overwrite,
                             )
                         )
                     except ArtifactExistsError as exc:
@@ -875,6 +1021,8 @@ class DownloadViewModel(QObject):
                             f"Rubric assessment {assignment_id} already downloaded: {exc}"
                         )
                         existing.append(str(exc))
+                        existing_ids.append(assignment_id)
+                        existing_paths.append(exc.relative_path)
                     except Exception as exc:  # noqa: BLE001
                         logger.error(
                             f"Rubric assessment download failed for assignment "
@@ -894,17 +1042,23 @@ class DownloadViewModel(QObject):
                 skipped=tuple(skipped),
                 existing=tuple(existing),
                 failed=tuple(failed),
+                existing_ids=tuple(existing_ids),
+                existing_paths=tuple(existing_paths),
             )
 
         self._run_async(
             work,
-            lambda value: self._on_rubric_downloaded(course_id, value),
+            lambda value: self._on_rubric_downloaded(course_id, folder, value),
             lambda exc: self._report_download_failure("Rubric assessment download failed", exc),
         )
 
-    def _on_rubric_downloaded(self, course_id: int, value: object) -> None:
+    def _on_rubric_downloaded(self, course_id: int, folder: CourseFolder, value: object) -> None:
         res: _RubricBatchResult = value  # type: ignore[assignment]
         saved, skipped, existing, failed = res.saved, res.skipped, res.existing, res.failed
+        refused = res.existing_paths
+
+        def retry() -> None:
+            self._run_rubrics(course_id, list(res.existing_ids), folder, True)
 
         if not saved and failed:
             message = "; ".join(failed)
@@ -913,7 +1067,7 @@ class DownloadViewModel(QObject):
             if existing:
                 message += ". Already downloaded: " + "; ".join(existing)
             self._set_idle(Status.CRITICAL, message)
-            self.event_raised.emit(ShowError(message))
+            self._finish(ShowError(message), refused, retry)
             return
 
         if not saved:
@@ -931,7 +1085,7 @@ class DownloadViewModel(QObject):
                 self._state, is_busy=False, progress=None, status=Status.WARNING, message=message
             )
             self.state_changed.emit(self._state)
-            self.event_raised.emit(ShowInfo(message))
+            self._finish(ShowInfo(message), refused, retry)
             return
 
         if len(saved) == 1 and not failed and not skipped and not existing:
@@ -961,10 +1115,7 @@ class DownloadViewModel(QObject):
             completed=self._state.completed | {RUBRIC_DOWNLOAD},
         )
         self.state_changed.emit(self._state)
-        if failed:
-            self.event_raised.emit(ShowError(message))
-        else:
-            self.event_raised.emit(ShowInfo(message))
+        self._finish(ShowError(message) if failed else ShowInfo(message), refused, retry)
 
     def download_all_quizzes(self) -> None:
         if self._state.is_busy:
@@ -975,11 +1126,21 @@ class DownloadViewModel(QObject):
         folder = self._resolved_course_folder()
         if folder is None:
             return
+        self._run_quizzes(course_id, folder, self._state.overwrite_session)
 
+    def _run_quizzes(
+        self,
+        course_id: int,
+        folder: CourseFolder,
+        overwrite: bool,
+        quiz_ids: frozenset[int] | None = None,
+    ) -> None:
         label = f"Listing quizzes for course {course_id}"
         self._set_busy(f"{label}...", DownloadProgress(label, 0, 0))
         use_case = DownloadAllQuizzesUseCase(self._canvas_client)
-        request = DownloadAllQuizzesRequest(course_id=course_id, folder=folder)
+        request = DownloadAllQuizzesRequest(
+            course_id=course_id, folder=folder, overwrite=overwrite, quiz_ids=quiz_ids
+        )
         self._run_async(
             lambda: use_case.execute(request, on_progress=self._report_progress),
             lambda value: self._on_quizzes_downloaded(course_id, folder, value),
@@ -990,6 +1151,12 @@ class DownloadViewModel(QObject):
         result: DownloadAllQuizzesResult = value  # type: ignore[assignment]
         succeeded, skipped, failed = result.succeeded, result.skipped, result.failed
         existing = result.already_downloaded
+        refused = [relative_posix(folder, o.saved_path) for o in existing if o.saved_path]
+        refused_ids = frozenset(o.quiz_id for o in existing)
+
+        def retry() -> None:
+            self._run_quizzes(course_id, folder, True, refused_ids)
+
         for outcome in skipped:
             self._logger.warning(
                 f"Skipped quiz report for '{outcome.quiz_name}' "
@@ -1025,10 +1192,7 @@ class DownloadViewModel(QObject):
             completed=completed,
         )
         self.state_changed.emit(self._state)
-        if failed:
-            self.event_raised.emit(ShowError(message))
-        else:
-            self.event_raised.emit(ShowInfo(message))
+        self._finish(ShowError(message) if failed else ShowInfo(message), refused, retry)
 
     def download_all(self) -> None:
         if self._state.is_busy:
@@ -1056,18 +1220,40 @@ class DownloadViewModel(QObject):
         if roster_folder is None:
             return
 
+        self._run_download_all(
+            _DownloadAllInputs(
+                term=term,
+                class_number=class_number,
+                course_id=course_id,
+                consent_quiz_id=consent_quiz_id,
+                folder=folder,
+                roster_folder=roster_folder,
+            ),
+            _DownloadAllPlan(
+                steps=frozenset(DOWNLOAD_ALL_ORDER), overwrite=self._state.overwrite_session
+            ),
+        )
+
+    def _run_download_all(self, inputs: _DownloadAllInputs, plan: _DownloadAllPlan) -> None:
         self._set_busy("Downloading all data...", DownloadProgress("Starting Download All", 0, 0))
         roster_client = self._client
         canvas_client = self._canvas_client
         asu_browser = self._asu_browser
         report_progress = self._report_progress
         logger = self._logger
+        folder = inputs.folder
+        overwrite = plan.overwrite
+        total_steps = len(plan.steps)
 
         def work() -> _DownloadAllResult:
             successes: list[str] = []
             skipped: list[str] = []
             failures: list[str] = []
             completed: set[str] = set()
+            refused_steps: set[str] = set()
+            refused_paths: list[str] = []
+            refused_quiz_ids: set[int] = set()
+            refused_assignment_ids: set[int] = set()
             last_path: Path | None = None
             step_number = 0
 
@@ -1075,24 +1261,47 @@ class DownloadViewModel(QObject):
                 """Announce the next step; returns a callback that tags its item counts."""
                 nonlocal step_number
                 step_number += 1
-                stage = f"Step {step_number} of {DOWNLOAD_ALL_STEPS}"
+                stage = f"Step {step_number} of {total_steps}"
                 logger.info(f"Download All {stage}: {name}")
                 report_progress(DownloadProgress(f"{stage}: {name}", 0, 0))
                 return lambda p: report_progress(replace(p, label=f"{stage}: {p.label}"))
 
+            def refuse(name: str, paths: Sequence[str]) -> None:
+                refused_steps.add(name)
+                refused_paths.extend(paths)
+
             def step(name: str, action: Callable[[ProgressCallback], Path]) -> None:
                 nonlocal last_path
+                if name not in plan.steps:
+                    return
                 on_progress = begin(name)
                 try:
                     last_path = action(on_progress)
                 except ArtifactExistsError as exc:
                     skipped.append(f"{name}: {exc}")
                     completed.add(name)
+                    refuse(name, [exc.relative_path])
                 except Exception as exc:  # noqa: BLE001
                     failures.append(f"{name}: {exc}")
                 else:
                     successes.append(name)
                     completed.add(name)
+
+            def gradescope(on_progress: ProgressCallback) -> Path:
+                result = DownloadGradescopeSubmissionsUseCase(
+                    canvas_client, browser=asu_browser
+                ).execute(
+                    DownloadGradescopeSubmissionsRequest(
+                        course_id=inputs.course_id, folder=folder, overwrite=overwrite
+                    ),
+                    on_progress=on_progress,
+                )
+                if result.kept:
+                    skipped.append(
+                        f"{GRADESCOPE_DOWNLOAD}: {len(result.kept)} export(s) already on disk"
+                    )
+                    refuse(GRADESCOPE_DOWNLOAD, [relative_posix(folder, p) for p in result.kept])
+                return result.saved_path
 
             step(
                 ROSTER_DOWNLOAD,
@@ -1100,7 +1309,10 @@ class DownloadViewModel(QObject):
                     DownloadRosterUseCase(roster_client)
                     .execute(
                         DownloadRosterRequest(
-                            term=term, class_number=class_number, folder=roster_folder
+                            term=inputs.term,
+                            class_number=inputs.class_number,
+                            folder=inputs.roster_folder,
+                            overwrite=overwrite,
                         )
                     )
                     .saved_path
@@ -1110,94 +1322,131 @@ class DownloadViewModel(QObject):
                 GRADEBOOK_DOWNLOAD,
                 lambda _: (
                     DownloadGradebookUseCase(canvas_client)
-                    .execute(DownloadGradebookRequest(course_id=course_id, folder=folder))
-                    .saved_path
-                ),
-            )
-            step(
-                GRADESCOPE_DOWNLOAD,
-                lambda on_progress: (
-                    DownloadGradescopeSubmissionsUseCase(canvas_client, browser=asu_browser)
                     .execute(
-                        DownloadGradescopeSubmissionsRequest(course_id=course_id, folder=folder),
-                        on_progress=on_progress,
+                        DownloadGradebookRequest(
+                            course_id=inputs.course_id, folder=folder, overwrite=overwrite
+                        )
                     )
                     .saved_path
                 ),
             )
+            step(GRADESCOPE_DOWNLOAD, gradescope)
             step(
                 CONSENT_DOWNLOAD,
                 lambda _: (
                     DownloadConsentFormUseCase(canvas_client)
                     .execute(
                         DownloadConsentFormRequest(
-                            course_id=course_id, quiz_id=consent_quiz_id, folder=folder
+                            course_id=inputs.course_id,
+                            quiz_id=inputs.consent_quiz_id,
+                            folder=folder,
+                            overwrite=overwrite,
                         )
                     )
                     .saved_path
                 ),
             )
 
-            on_progress = begin(QUIZ_REPORTS_DOWNLOAD)
-            try:
-                quiz_result = DownloadAllQuizzesUseCase(canvas_client).execute(
-                    DownloadAllQuizzesRequest(course_id=course_id, folder=folder),
-                    on_progress=on_progress,
-                )
-                for outcome in quiz_result.succeeded:
-                    successes.append(f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name})")
-                    completed.add(QUIZ_REPORTS_DOWNLOAD)
-                    last_path = outcome.saved_path
-                for outcome in quiz_result.skipped:
-                    if outcome.already_downloaded:
-                        skipped.append(f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name})")
+            if QUIZ_REPORTS_DOWNLOAD in plan.steps:
+                on_progress = begin(QUIZ_REPORTS_DOWNLOAD)
+                try:
+                    quiz_result = DownloadAllQuizzesUseCase(canvas_client).execute(
+                        DownloadAllQuizzesRequest(
+                            course_id=inputs.course_id,
+                            folder=folder,
+                            overwrite=overwrite,
+                            quiz_ids=plan.quiz_ids,
+                        ),
+                        on_progress=on_progress,
+                    )
+                    for outcome in quiz_result.succeeded:
+                        successes.append(f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name})")
                         completed.add(QUIZ_REPORTS_DOWNLOAD)
-                    else:
-                        successes.append(
-                            f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name}) [skipped: no report]"
+                        last_path = outcome.saved_path
+                    for outcome in quiz_result.skipped:
+                        if outcome.already_downloaded:
+                            skipped.append(f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name})")
+                            completed.add(QUIZ_REPORTS_DOWNLOAD)
+                            refused_quiz_ids.add(outcome.quiz_id)
+                            if outcome.saved_path is not None:
+                                refuse(
+                                    QUIZ_REPORTS_DOWNLOAD,
+                                    [relative_posix(folder, outcome.saved_path)],
+                                )
+                        else:
+                            successes.append(
+                                f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name}) "
+                                "[skipped: no report]"
+                            )
+                    for outcome in quiz_result.failed:
+                        failures.append(
+                            f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name}): {outcome.error}"
                         )
-                for outcome in quiz_result.failed:
-                    failures.append(
-                        f"{QUIZ_REPORTS_DOWNLOAD} ({outcome.quiz_name}): {outcome.error}"
-                    )
-            except Exception as exc:  # noqa: BLE001
-                failures.append(f"{QUIZ_REPORTS_DOWNLOAD}: {exc}")
+                except Exception as exc:  # noqa: BLE001
+                    failures.append(f"{QUIZ_REPORTS_DOWNLOAD}: {exc}")
 
-            on_progress = begin(RUBRIC_DOWNLOAD)
-            try:
-                rubric_result = DownloadAllRubricAssessmentsUseCase(canvas_client).execute(
-                    DownloadAllRubricAssessmentsRequest(course_id=course_id, folder=folder),
-                    on_progress=on_progress,
+            if RUBRIC_DOWNLOAD in plan.steps:
+                on_progress = begin(RUBRIC_DOWNLOAD)
+                try:
+                    rubric_result = DownloadAllRubricAssessmentsUseCase(canvas_client).execute(
+                        DownloadAllRubricAssessmentsRequest(
+                            course_id=inputs.course_id,
+                            folder=folder,
+                            overwrite=overwrite,
+                            assignment_ids=plan.assignment_ids,
+                        ),
+                        on_progress=on_progress,
+                    )
+                    for outcome in rubric_result.succeeded:
+                        successes.append(f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name})")
+                        completed.add(RUBRIC_DOWNLOAD)
+                        last_path = outcome.saved_path
+                    for outcome in rubric_result.skipped:
+                        successes.append(
+                            f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name}) [skipped: no rubric]"
+                        )
+                    for outcome in rubric_result.already_downloaded:
+                        skipped.append(f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name})")
+                        completed.add(RUBRIC_DOWNLOAD)
+                        refused_assignment_ids.add(outcome.assignment_id)
+                        if outcome.saved_path is not None:
+                            refuse(RUBRIC_DOWNLOAD, [relative_posix(folder, outcome.saved_path)])
+                    for outcome in rubric_result.failed:
+                        failures.append(
+                            f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name}): {outcome.error}"
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    failures.append(f"{RUBRIC_DOWNLOAD}: {exc}")
+
+            retry_plan = None
+            if refused_steps:
+                retry_plan = _DownloadAllPlan(
+                    steps=frozenset(refused_steps),
+                    overwrite=True,
+                    quiz_ids=frozenset(refused_quiz_ids)
+                    if QUIZ_REPORTS_DOWNLOAD in refused_steps
+                    else None,
+                    assignment_ids=frozenset(refused_assignment_ids)
+                    if RUBRIC_DOWNLOAD in refused_steps
+                    else None,
                 )
-                for outcome in rubric_result.succeeded:
-                    successes.append(f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name})")
-                    completed.add(RUBRIC_DOWNLOAD)
-                    last_path = outcome.saved_path
-                for outcome in rubric_result.skipped:
-                    successes.append(
-                        f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name}) [skipped: no rubric]"
-                    )
-                for outcome in rubric_result.already_downloaded:
-                    skipped.append(f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name})")
-                    completed.add(RUBRIC_DOWNLOAD)
-                for outcome in rubric_result.failed:
-                    failures.append(
-                        f"{RUBRIC_DOWNLOAD} ({outcome.assignment_name}): {outcome.error}"
-                    )
-            except Exception as exc:  # noqa: BLE001
-                failures.append(f"{RUBRIC_DOWNLOAD}: {exc}")
-
             return _DownloadAllResult(
                 successes=tuple(successes),
                 failures=tuple(failures),
                 last_saved_path=last_path,
                 completed=frozenset(completed),
                 skipped=tuple(skipped),
+                refused_paths=tuple(refused_paths),
+                retry_plan=retry_plan,
             )
 
-        self._run_async(work, self._on_download_all_complete, self._on_download_all_error)
+        self._run_async(
+            work,
+            lambda result: self._on_download_all_complete(inputs, result),
+            self._on_download_all_error,
+        )
 
-    def _on_download_all_complete(self, result: object) -> None:
+    def _on_download_all_complete(self, inputs: _DownloadAllInputs, result: object) -> None:
         res: _DownloadAllResult = result  # type: ignore[assignment]
 
         if res.failures and not res.successes:
@@ -1235,10 +1484,11 @@ class DownloadViewModel(QObject):
         )
         self.state_changed.emit(self._state)
 
-        if res.failures:
-            self.event_raised.emit(ShowError(message))
-        else:
-            self.event_raised.emit(ShowInfo(message))
+        retry = None
+        if res.retry_plan is not None:
+            retry = partial(self._run_download_all, inputs, res.retry_plan)
+        summary = ShowError(message) if res.failures else ShowInfo(message)
+        self._finish(summary, res.refused_paths, retry)
 
     def _on_download_all_error(self, exc: object) -> None:
         self._logger.error(f"Download all failed: {exc}")
@@ -1301,12 +1551,18 @@ class DownloadViewModel(QObject):
             return None
         return Workspace(self._resolve_output_dir()).course(key)
 
-    def _report_download_failure(self, prefix: str, exc: object) -> None:
-        """Already-downloaded is a warning the user asked for; anything else is an error."""
+    def _report_download_failure(
+        self, prefix: str, exc: object, retry: Callable[[], None] | None = None
+    ) -> None:
+        """Already-downloaded is a warning, with an offer to overwrite; anything else is an error.
+
+        ``retry`` runs the same download with overwrite on; without it the
+        warning is only shown.
+        """
         if isinstance(exc, ArtifactExistsError):
             self._logger.warning(f"{prefix}: {exc}")
             self._set_idle(Status.WARNING, str(exc))
-            self.event_raised.emit(ShowInfo(str(exc)))
+            self._finish(ShowInfo(str(exc)), [exc.relative_path], retry)
             return
         self._logger.error(f"{prefix}: {exc}")
         self._set_idle(Status.CRITICAL, str(exc))

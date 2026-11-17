@@ -23,6 +23,10 @@ from GAVEL.app.usecases.anonymize_gradescope_submissions import (
     AnonymizeGradescopeSubmissionsRequest,
     AnonymizeGradescopeSubmissionsUseCase,
 )
+from GAVEL.app.usecases.anonymize_gradescope_yml import (
+    AnonymizeGradescopeYMLRequest,
+    AnonymizeGradescopeYMLUseCase,
+)
 from GAVEL.app.usecases.anonymize_roster import (
     AnonymizeRosterRequest,
     AnonymizeRosterUseCase,
@@ -40,7 +44,13 @@ from GAVEL.app.usecases.generate_anonymous_id_map import (
     GenerateAnonymousIdMapRequest,
     GenerateAnonymousIdMapUseCase,
 )
-from GAVEL.app.workspace.layout import RUBRIC_DEFINITION_FILE, CourseFolder, CourseKey
+from GAVEL.app.workspace.layout import (
+    RUBRIC_DEFINITION_FILE,
+    SUBMISSIONS_DIR,
+    CourseFolder,
+    CourseKey,
+)
+from GAVEL.app.workspace.manifest import load_consent_overrides
 from GAVEL.app.workspace.recording import hash_sources, note_anonymization
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import (
     CanvasConsentFormCSVReader,
@@ -158,6 +168,7 @@ class AnonymizeCourseDatasetUseCase:
         anonymize_rubric_use_case: AnonymizeRubricAssessmentUseCase,
         gradescope_reader: YamlGradescopeReader,
         anonymize_gradescope_use_case: AnonymizeGradescopeSubmissionsUseCase,
+        anonymize_gradescope_yml_use_case: AnonymizeGradescopeYMLUseCase,
     ) -> None:
         self._consent_form_reader = consent_form_reader
         self._downselect_use_case = downselect_use_case
@@ -171,6 +182,7 @@ class AnonymizeCourseDatasetUseCase:
         self._anonymize_rubric_use_case = anonymize_rubric_use_case
         self._gradescope_reader = gradescope_reader
         self._anonymize_gradescope_use_case = anonymize_gradescope_use_case
+        self._anonymize_gradescope_yml_use_case = anonymize_gradescope_yml_use_case
 
     def execute(
         self,
@@ -188,7 +200,7 @@ class AnonymizeCourseDatasetUseCase:
         roster_path = original_dir / "roster.csv"
         gradebook_path = original_dir / "gradebook.csv"
         assignments_dir = original_dir / "assignments"
-        submissions_dir = original_dir / "submissions"
+        submissions_dir = original_dir / SUBMISSIONS_DIR
 
         if not consent_form_path.exists():
             raise ValueError("Consent form is missing from the dataset")
@@ -211,6 +223,12 @@ class AnonymizeCourseDatasetUseCase:
         ]
         # Hashed before reading, so an input that changes mid-run reads as out of date.
         sources = hash_sources(course_folder, inputs) if course_folder is not None else ()
+        # Overrides live in the manifest, so only workspace course folders have any.
+        overrides = (
+            load_consent_overrides(course_folder.manifest_path)
+            if course_folder is not None
+            else frozenset()
+        )
 
         if request.replace_existing and output_dir.exists():
             shutil.rmtree(output_dir)
@@ -231,6 +249,7 @@ class AnonymizeCourseDatasetUseCase:
             DownselectConsentedStudentsRequest(
                 entries=consent_entries,
                 roster=roster_students or (),
+                overrides=overrides,
             )
         )
 
@@ -360,9 +379,14 @@ class AnonymizeCourseDatasetUseCase:
         if submissions_dir.exists():
             self._anonymize_submissions(
                 submissions_dir,
-                output_dir / "submissions",
+                output_dir / SUBMISSIONS_DIR,
                 set(roster_consented_ids),
                 failures,
+            )
+            self._anonymize_ymls(
+                submissions_dir,
+                consented_ids=roster_consented_ids,
+                id_map=roster_id_map,
             )
 
         if course_folder is not None:
@@ -373,7 +397,7 @@ class AnonymizeCourseDatasetUseCase:
                 for source, path in zip(sources, inputs, strict=True)
                 if not failures.failed(path)
             )
-            note_anonymization(course_folder, written)
+            note_anonymization(course_folder, written, consent_overrides=overrides)
 
         return AnonymizeCourseDatasetResult(
             output_dir=output_dir,
@@ -620,6 +644,36 @@ class AnonymizeCourseDatasetUseCase:
                     outputs=(submission_output,),
                 )
 
+    def _anonymize_ymls(
+        self,
+        course_folder: Path,
+        consented_ids: tuple[int, ...],
+        id_map: tuple[tuple[int, int], ...],
+    ):
+        original_root = course_folder.parent
+        anonymized_root = original_root.parent / "anonymized"
+
+        for yml_path in original_root.rglob("submission_metadata.yml"):
+            # Path relative to original/
+            relative_path = yml_path.relative_to(original_root)
+
+            # Equivalent destination under anonymized/
+            output_path = anonymized_root / relative_path
+            output_path = output_path.parents[2]
+            output_path = output_path / "submission_metadata.yml"
+
+            # Ensure parent directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            self._anonymize_gradescope_yml_use_case.execute(
+                AnonymizeGradescopeYMLRequest(
+                    input_YML=yml_path,
+                    consented_ids=consented_ids,
+                    id_map=id_map,
+                    output_YML=output_path,
+                )
+            )
+
 
 def _course_folder(snapshot_dir: Path) -> CourseFolder | None:
     """The course folder being anonymized, or None for a folder not named like one.
@@ -649,4 +703,5 @@ def build_anonymize_course_dataset_use_case() -> AnonymizeCourseDatasetUseCase:
         anonymize_rubric_use_case=AnonymizeRubricAssessmentUseCase(),
         gradescope_reader=YamlGradescopeReader(),
         anonymize_gradescope_use_case=AnonymizeGradescopeSubmissionsUseCase(),
+        anonymize_gradescope_yml_use_case=AnonymizeGradescopeYMLUseCase(),
     )

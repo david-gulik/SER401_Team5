@@ -10,10 +10,12 @@ from GAVEL.app.ports.canvas_client import (
 )
 from GAVEL.app.progress import ProgressCallback, report
 from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.manifest import quiz_entry
 from GAVEL.app.workspace.recording import (
     ArtifactExistsError,
     guard_not_downloaded,
     note_course,
+    note_quizzes,
     record,
 )
 
@@ -27,6 +29,8 @@ class DownloadAllQuizzesRequest:
     course_id: int
     folder: CourseFolder
     overwrite: bool = False
+    # Only these quizzes, when given; used to retry the ones refused as already downloaded.
+    quiz_ids: frozenset[int] | None = None
 
 
 @dataclass(frozen=True)
@@ -74,7 +78,8 @@ class DownloadAllQuizzesUseCase:
     """Saves every quiz's student analysis export as ``original/quizzes/<quiz id>.csv``.
 
     The quiz title goes on the manifest entry's ``label`` so the folder stays
-    keyed by id. A quiz already in the folder is skipped, not overwritten.
+    keyed by id. A quiz already in the folder is skipped unless the request
+    asks to overwrite.
     ``on_progress`` hears once the quiz list is known and again as each quiz
     finishes, whether it was saved, skipped, or failed.
     """
@@ -93,6 +98,8 @@ class DownloadAllQuizzesUseCase:
         tree = request.folder.original
         log.info("Listing quizzes for course %s", request.course_id)
         quizzes = self._canvas_client.list_quizzes(request.course_id)
+        if request.quiz_ids is not None:
+            quizzes = [q for q in quizzes if q.id in request.quiz_ids]
         total = len(quizzes)
         log.info("Found %d quiz(zes) for course %s", total, request.course_id)
         report(on_progress, PROGRESS_LABEL, 0, total)
@@ -160,6 +167,13 @@ class DownloadAllQuizzesUseCase:
 
         if any(o.status == "succeeded" for o in outcomes):
             note_course(request.folder, canvas_course_id=request.course_id)
+        # Already-downloaded quizzes count too, so a re-run fills in due dates.
+        on_disk = {o.quiz_id for o in outcomes if o.status == "succeeded" or o.already_downloaded}
+        if on_disk:
+            note_quizzes(
+                request.folder,
+                [quiz_entry(q) for q in quizzes if q.id in on_disk],
+            )
 
         result = DownloadAllQuizzesResult(outcomes=tuple(outcomes))
         log.info(
