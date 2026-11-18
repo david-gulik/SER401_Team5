@@ -45,7 +45,10 @@ class RunAutogradersTab(ScrollableTab):
     def __init__(self, theme: ThemeContext) -> None:
         super().__init__(theme)
         load_dotenv()
-        self.root_path = Path(os.getenv("DEFAULT_OUTPUT_DIR")).expanduser()
+        env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
+        self.root_path = (
+            Path(env_dir).expanduser() if env_dir else Path.home() / "Downloads" / "GAVEL"
+        )
         self.courses_path = self.root_path / "courses"
         self.autograders_path = self.root_path / "autograders"
         self._theme = theme

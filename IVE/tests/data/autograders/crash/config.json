@@ -1,0 +1,7 @@
+{
+    "filepath_results": "/autograder/results/results.json",
+    "submission_location": "/autograder/submission/",
+    "project_location": "source/",
+    "files_required": ["answer.txt"],
+    "files_optional": []
+}

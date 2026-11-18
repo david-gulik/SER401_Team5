@@ -18,6 +18,8 @@ fail_under = 21
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+# Autograders under GAVEL/autograders are the sponsor's code, kept exactly as received.
+extend-exclude = ["GAVEL/autograders"]
 
 [tool.ruff.lint]
 # Preview is on only so PLW1514 can be selected. explicit-preview-rules keeps
