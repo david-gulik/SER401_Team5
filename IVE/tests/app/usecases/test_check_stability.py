@@ -74,7 +74,7 @@ def test_a_deterministic_autograder_passes_every_test(tmp_path):
     assert [t.name for t in report.tests] == ["Adds two numbers", "Prints the total"]
     for test in report.tests:
         assert test.state is StabilityState.PASS
-        assert (test.runs_agreed, test.runs_total) == (12, 12)
+        assert (test.runs_agreed, test.runs_total, test.runs_broke) == (12, 12, 0)
         assert test.agreement == 1.0
         assert test.affected == ()
         assert test.submissions_total == 3
@@ -82,6 +82,7 @@ def test_a_deterministic_autograder_passes_every_test(tmp_path):
     assert not report.cancelled
     assert report.executions_total == 12
     assert report.submissions_affected == 0
+    assert report.broken_submissions == ()
     assert report.started_at == "2026-11-16T14:00:00"
     assert report.finished_at == "2026-11-16T14:23:36"
     assert len(runner.calls) == 12
@@ -98,7 +99,7 @@ def test_a_flaky_test_is_changed_with_its_real_rate(tmp_path):
 
     adds = _test(report, "Adds two numbers")
     assert adds.state is StabilityState.CHANGED
-    assert (adds.runs_agreed, adds.runs_total) == (10, 12)
+    assert (adds.runs_agreed, adds.runs_total, adds.runs_changed) == (10, 12, 2)
     assert adds.submissions_affected == 1
     [entry] = adds.affected
     assert entry.submission == "anon_2"
@@ -127,7 +128,7 @@ def test_the_usual_result_is_the_one_most_runs_gave(tmp_path):
     assert (entry.runs_agreed, entry.runs_total) == (3, 4)
 
 
-def test_a_timed_out_run_breaks_every_test_and_outranks_changed(tmp_path):
+def test_a_timed_out_run_breaks_the_submission_not_the_tests(tmp_path):
     def script(name, index):
         if name == "anon_3" and index == 0:
             return timed_out(300.0)
@@ -138,26 +139,27 @@ def test_a_timed_out_run_breaks_every_test_and_outranks_changed(tmp_path):
     report = CheckStabilityUseCase(FakeAutograderRunner(script)).execute(_request(tmp_path))
 
     adds = _test(report, "Adds two numbers")
-    assert adds.state is StabilityState.BROKE
-    assert (adds.runs_agreed, adds.runs_total) == (10, 12)
-    assert [e.submission for e in adds.affected] == ["anon_3", "anon_2"]
-    broke = adds.affected[0]
-    assert broke.state is StabilityState.BROKE
-    assert (broke.runs_agreed, broke.runs_total) == (3, 4)
-    assert broke.results[-1] == ResultSeen(score=None, max_score=None, runs=(1,))
-    assert _test(report, "Prints the total").state is StabilityState.BROKE
-    assert report.verdict is StabilityState.BROKE
+    assert adds.state is StabilityState.CHANGED
+    assert (adds.runs_agreed, adds.runs_total, adds.runs_broke, adds.runs_changed) == (10, 12, 1, 1)
+    assert [e.submission for e in adds.affected] == ["anon_2"]
+    prints = _test(report, "Prints the total")
+    assert prints.state is StabilityState.PASS
+    assert (prints.runs_agreed, prints.runs_total, prints.runs_broke) == (11, 12, 1)
+    assert prints.affected == ()
 
+    assert report.verdict is StabilityState.BROKE
+    assert [s.name for s in report.broken_submissions] == ["anon_3"]
+    assert report.submissions_affected == 2
     [anon_3] = [s for s in report.submissions if s.name == "anon_3"]
     assert (anon_3.runs_completed, anon_3.runs_timed_out, anon_3.runs_crashed) == (3, 1, 0)
     assert anon_3.errors == ("Stopped after 300.0 seconds",)
-    assert anon_3.runs_broke == 1
+    assert (anon_3.runs_broke, anon_3.runs_total) == (1, 4)
     [record] = [e for e in report.executions if e.submission == "anon_3" and e.run == 1]
     assert record.status is AutograderRunStatus.TIMED_OUT
     assert record.scores == ()
 
 
-def test_a_crashed_run_counts_the_same_way(tmp_path):
+def test_a_submission_that_always_crashes_leaves_the_tests_stable(tmp_path):
     def script(name, index):
         return crashed("Exited with status 3: boom") if name == "anon_1" else completed(FULL)
 
@@ -167,11 +169,11 @@ def test_a_crashed_run_counts_the_same_way(tmp_path):
     assert anon_1.runs_crashed == 4
     assert anon_1.errors == ("Exited with status 3: boom",)
     adds = _test(report, "Adds two numbers")
-    assert adds.state is StabilityState.BROKE
-    assert (adds.runs_agreed, adds.runs_total) == (8, 12)
-    [entry] = adds.affected
-    assert entry.runs_agreed == 0
-    assert entry.usual is None
+    assert adds.state is StabilityState.PASS
+    assert (adds.runs_agreed, adds.runs_total, adds.runs_broke) == (8, 12, 4)
+    assert adds.affected == ()
+    assert report.verdict is StabilityState.BROKE
+    assert report.submissions_affected == 1
 
 
 def test_progress_reports_the_run_and_the_submission(tmp_path):
@@ -276,7 +278,8 @@ def test_a_mapping_the_autograder_does_not_cover_gives_no_points(tmp_path):
     adding, printing = report.criteria
     assert adding.state is StabilityState.BROKE
     assert printing.state is StabilityState.BROKE
-    assert adding.runs_agreed == 0
+    assert (adding.runs_agreed, adding.runs_broke, adding.runs_total) == (0, 6, 6)
+    assert adding.affected == ()
     assert _test(report, "Adds two numbers").state is StabilityState.PASS
 
 

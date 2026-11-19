@@ -45,7 +45,6 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_scroll_area(t),
         _qss_scrollbar(t),
         _qss_tooltip(t),
-        _qss_menu(t),
         _qss_splitter(t),
         _qss_nav_drawer(t),
         _qss_course_selector(t),
@@ -57,6 +56,7 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_input_mode_toggle(t),
         _qss_tree_view(t),
         _qss_picker_list(t),
+        _qss_menu(t),
         _qss_tile(t),
         _qss_chart_toolbar(t),
     ]
@@ -545,30 +545,51 @@ def _qss_tooltip(t: ThemeTokens) -> str:
 
 
 def _qss_menu(t: ThemeTokens) -> str:
-    """Popup menus (right-click menus)."""
+    """Popup menus (right-click menus).
+
+    A menu's parent is the widget it pops up from, so a menu opened on a view
+    inside a card matches the frames' transparency rule in ``_qss_surface_card``
+    and would paint no background. Repeated under each surface frame, after
+    that section, so every menu gets the same solid panel.
+    """
     c = t.color
     r_sm = int(t.shape["radius_sm"])
     sp_xs = t.sp(4)
     sp_sm = t.sp(8)
     sp_md = t.sp(16)
+    frames = (
+        'QFrame[role="app_bg"]',
+        'QFrame[role="panel_bg"]',
+        'QFrame[role="surface"]',
+    )
+
+    def under_frames(selector: str) -> str:
+        return ",\n    ".join([selector, *(f"{frame} {selector}" for frame in frames)])
+
     return f"""
-    QMenu {{
-        background-color: {c["panel_bg"]};
+    {under_frames("QMenu")} {{
+        background-color: {c["surface"]};
         color: {c["text"]};
-        border: 1px solid {c["border"]};
+        border: 1px solid {c["border_focus"]};
         border-radius: {_px(r_sm)};
         padding: {_px(sp_xs)} 0;
     }}
-    QMenu::item {{
+    {under_frames("QMenu::item")} {{
         background-color: transparent;
+        color: {c["text"]};
         padding: {_px(sp_sm)} {_px(sp_md)};
     }}
-    QMenu::item:selected {{
-        background-color: {c["selection_bg"]};
-        color: {c["selection_text"]};
+    {under_frames("QMenu::item:selected")} {{
+        background-color: {c["interactive"]};
+        color: {c["interactive_text"]};
     }}
-    QMenu::item:disabled {{
+    {under_frames("QMenu::item:disabled")} {{
         color: {c["input_placeholder"]};
+    }}
+    {under_frames("QMenu::separator")} {{
+        height: 1px;
+        background-color: {c["border"]};
+        margin: {_px(sp_xs)} 0;
     }}
     QMenu::indicator {{
         width: 0;

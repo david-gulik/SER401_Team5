@@ -37,7 +37,7 @@ class ReportSummary:
     cancelled: bool
     verdict: StabilityState
     tests_changed: int
-    tests_broke: int
+    submissions_broke: int
     # Seconds one execution took on average, for estimating the next check; None if none ran.
     mean_execution_seconds: float | None
 
@@ -86,7 +86,7 @@ class StabilityReportStore:
                     cancelled=report.cancelled,
                     verdict=report.verdict,
                     tests_changed=len(report.tests_in(StabilityState.CHANGED)),
-                    tests_broke=len(report.tests_in(StabilityState.BROKE)),
+                    submissions_broke=len(report.broken_submissions),
                     mean_execution_seconds=_mean_execution_seconds(report),
                 )
             )
@@ -210,6 +210,7 @@ def _item_to_dict(item: ItemStability) -> dict:
         "state": item.state.value,
         "runs_agreed": item.runs_agreed,
         "runs_total": item.runs_total,
+        "runs_broke": item.runs_broke,
         "submissions_total": item.submissions_total,
         "built_from": list(item.built_from),
         "affected": [
@@ -239,6 +240,7 @@ def _item_from_dict(data: dict) -> ItemStability:
         state=StabilityState(data["state"]),
         runs_agreed=int(data["runs_agreed"]),
         runs_total=int(data["runs_total"]),
+        runs_broke=int(data["runs_broke"]),
         submissions_total=int(data["submissions_total"]),
         built_from=tuple(data["built_from"]),
         affected=tuple(

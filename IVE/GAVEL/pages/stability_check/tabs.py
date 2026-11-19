@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from GAVEL.app.dtos.stability import StabilityState
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.stability_check.results_view import ResultsView
 from GAVEL.pages.stability_check.viewmodel import (
     MAX_RUNS,
     MAX_TIMEOUT_MINUTES,
@@ -31,12 +32,6 @@ from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.layout import set_spacing
 from GAVEL.ui_components.progress_panel import ProgressPanel
 from GAVEL.ui_components.section_card import SectionCard
-
-_VERDICT_TEXT = {
-    StabilityState.PASS: "Stable: every test gave the same result on every run.",
-    StabilityState.CHANGED: "Unstable: some tests changed their result between runs.",
-    StabilityState.BROKE: "Broken: the autograder timed out or crashed on some runs.",
-}
 
 # The autograder list grows with its rows up to this many, then scrolls. A course
 # keeps every autograder version it downloaded, so the list can run long.
@@ -110,6 +105,7 @@ class StabilityCheckTab(ScrollableTab):
         self.timeout_spin.valueChanged.connect(self._on_timeout_changed)
 
         form_widget = QWidget()
+        self._form_widget = form_widget
         form = QFormLayout(form_widget)
         form.addRow("Assignment", self.assignment_combo)
         form.addRow("Autograder", picker)
@@ -124,6 +120,7 @@ class StabilityCheckTab(ScrollableTab):
         card.add_row(self.estimate_label)
 
         actions = QWidget()
+        self._actions_widget = actions
         actions_layout = QHBoxLayout(actions)
         actions_layout.setContentsMargins(0, 0, 0, 0)
         set_spacing(actions_layout, self._theme, 12)
@@ -136,6 +133,13 @@ class StabilityCheckTab(ScrollableTab):
         actions_layout.addWidget(self.run_button)
         actions_layout.addWidget(self.status_label, 1)
         card.add_row(actions)
+
+        self.change_button = QPushButton("Change")
+        self.change_button.setProperty("role", "secondary")
+        self.change_button.clicked.connect(self._viewmodel.edit_settings)
+        self.change_button.hide()
+        # Beside the title, next to the summary it changes, not at the far edge of the card.
+        card.add_title_suffix(self.change_button)
         return card
 
     def _build_running_card(self) -> QWidget:
@@ -156,15 +160,8 @@ class StabilityCheckTab(ScrollableTab):
     def _build_results_card(self) -> QWidget:
         card = SectionCard(self._theme, "Results")
         self._results_card = card
-        self.verdict_label = QLabel()
-        self.verdict_label.setWordWrap(True)
-        card.add_row(self.verdict_label)
-        self.results_list = QListWidget()
-        card.add_row(self.results_list)
-        self.saved_label = QLabel()
-        self.saved_label.setProperty("role", "text_muted")
-        self.saved_label.setWordWrap(True)
-        card.add_row(self.saved_label)
+        self.results_view = ResultsView(self._theme)
+        card.add_row(self.results_view)
         card.hide()
         return card
 
@@ -274,11 +271,15 @@ class StabilityCheckTab(ScrollableTab):
 
     def _render_phase(self, state: StabilityUiState) -> None:
         running = state.phase is Phase.RUNNING
+        collapsed = state.phase is Phase.DONE
         for widget in (self.runs_spin, self.workers_spin, self.timeout_spin):
             widget.setEnabled(not running)
         self.run_button.setEnabled(state.missing is None and not running)
         self.run_button.setToolTip(state.missing or "")
-        self._set_up_card.set_subtitle(state.summary if running else "")
+        for widget in (self._form_widget, self.estimate_label, self._actions_widget):
+            widget.setVisible(not collapsed)
+        self.change_button.setVisible(collapsed)
+        self._set_up_card.set_subtitle(state.summary if running or collapsed else "")
 
         if state.course_error:
             self.status_label.setText(state.course_error)
@@ -300,26 +301,13 @@ class StabilityCheckTab(ScrollableTab):
             self.progress_panel.clear()
 
         report = state.report
-        self._results_card.setVisible(state.phase is Phase.DONE and report is not None)
-        if state.phase is Phase.DONE and report is not None:
-            verdict = _VERDICT_TEXT[report.verdict]
-            if report.cancelled:
-                verdict += (
-                    f" Cancelled after run {report.runs_completed} of {report.runs_requested}."
-                )
-            self.verdict_label.setText(verdict)
-            self.results_list.clear()
-            for test in report.tests:
-                if test.state is StabilityState.PASS:
-                    continue
-                self.results_list.addItem(
-                    f"{test.state.value.capitalize()} · {test.name} · "
-                    f"{test.runs_agreed}/{test.runs_total} runs agreed · "
-                    f"{test.submissions_affected} of {test.submissions_total} submissions"
-                )
-            if self.results_list.count() == 0:
-                self.results_list.addItem("No unstable tests.")
-            self.saved_label.setText(f"Saved to {state.saved_to}" if state.saved_to else "")
+        show_results = report is not None and not running
+        self._results_card.setVisible(show_results)
+        if show_results:
+            if self.results_view.report is not report:
+                self.results_view.set_report(report, state.saved_to)
+        else:
+            self.results_view.clear()
 
 
 def _previous_text(state: StabilityUiState) -> str:
@@ -329,7 +317,9 @@ def _previous_text(state: StabilityUiState) -> str:
     outcome = {
         StabilityState.PASS: "stable",
         StabilityState.CHANGED: f"{latest.tests_changed} changed",
-        StabilityState.BROKE: f"{latest.tests_changed} changed, {latest.tests_broke} broke",
+        StabilityState.BROKE: (
+            f"{latest.tests_changed} changed, {latest.submissions_broke} submissions broke"
+        ),
     }[latest.verdict]
     when = latest.started_at.replace("T", " ")
     return f"Last checked {when} · {latest.runs_completed} runs · {outcome}"

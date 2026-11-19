@@ -247,6 +247,22 @@ class StabilityCheckViewModel(QObject):
         self._cancel.set()
         self._update(cancel_requested=True)
 
+    def edit_settings(self) -> None:
+        """Back to the Set up card; the report stays on the page until a new check starts."""
+        if self._state.phase is Phase.DONE:
+            self._update(phase=Phase.SET_UP)
+
+    def open_report(self, path: Path) -> None:
+        """Show a saved report as if it had just finished."""
+        if self._state.phase is Phase.RUNNING:
+            return
+        try:
+            report = self._store.load(path)
+        except (OSError, ValueError, KeyError) as exc:
+            self._update(phase=Phase.FAILED, error=f"Could not open {path.name}: {exc}")
+            return
+        self._update(phase=Phase.DONE, report=report, saved_to=Path(path), error=None)
+
     def _report_progress(self, progress: DownloadProgress) -> None:
         # Called on a worker thread; the signal delivers it on the GUI thread.
         self._progress_reported.emit(progress)

@@ -250,3 +250,34 @@ def test_previous_checks_are_listed_for_the_picked_autograder(ready, workspace, 
 
     assert len(ready.state.previous) == 2
     assert all(isinstance(p.path, Path) for p in ready.state.previous)
+
+
+def test_a_saved_report_can_be_reopened(ready):
+    ready.set_runs(2)
+    ready.start()
+    saved = ready.state.saved_to
+    assert saved is not None
+    ready.edit_settings()
+    assert ready.state.phase is Phase.SET_UP
+    assert ready.state.report is not None
+
+    ready.select_course(None)
+    assert ready.state.report is None
+
+    ready.open_report(saved)
+
+    assert ready.state.phase is Phase.DONE
+    assert ready.state.saved_to == saved
+    assert ready.state.report is not None
+    assert ready.state.report.runs_completed == 2
+
+
+def test_opening_a_bad_file_is_reported(ready, tmp_path):
+    bad = tmp_path / "not-a-report.json"
+    bad.write_text("{}", encoding="utf-8")
+
+    ready.open_report(bad)
+
+    assert ready.state.phase is Phase.FAILED
+    assert ready.state.error is not None
+    assert ready.state.error.startswith("Could not open not-a-report.json")

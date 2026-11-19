@@ -140,10 +140,18 @@ def test_a_finished_check_shows_the_results_card(qapp, theme, workspace, course)
     assert vm.state.phase is Phase.DONE
     assert not tab._running_card.isVisibleTo(tab)
     assert tab._results_card.isVisibleTo(tab)
-    assert tab.verdict_label.text().startswith("Stable")
-    assert tab.results_list.count() == 1
-    assert tab.results_list.item(0).text() == "No unstable tests."
-    assert tab.saved_label.text().startswith("Saved to ")
+    assert tab.results_view.verdict_badge.text() == "STABLE"
+    assert tab.results_view.saved_label.text().startswith("Saved to ")
+    # Set up collapses to its summary line until Change is pressed.
+    assert not tab._form_widget.isVisibleTo(tab)
+    assert tab.change_button.isVisibleTo(tab)
+    assert tab._set_up_card.subtitle.startswith("Module 9 · folder_grader")
+
+    tab.change_button.click()
+
+    assert vm.state.phase is Phase.SET_UP
+    assert tab._form_widget.isVisibleTo(tab)
+    assert tab._results_card.isVisibleTo(tab)
     assert tab.run_button.isEnabled()
     assert tab.previous_note.text().startswith("Last checked")
 
@@ -164,10 +172,11 @@ def test_unstable_tests_are_listed_worst_first(qapp, theme, workspace, course):
 
     tab.run_button.click()
 
-    assert tab.verdict_label.text().startswith("Unstable")
-    assert tab.results_list.item(0).text() == (
-        "Changed · Adds · 5/6 runs agreed · 1 of 3 submissions"
-    )
+    assert tab.results_view.verdict_badge.text() == "UNSTABLE"
+    group = tab.results_view.tree.topLevelItem(0)
+    assert group.text(0).startswith("Changed · 1 test")
+    assert group.child(0).text(0) == "Adds"
+    assert group.child(0).text(2) == "1 of 3"
 
     tab.deleteLater()
 

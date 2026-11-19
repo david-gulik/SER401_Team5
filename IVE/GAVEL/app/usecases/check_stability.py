@@ -26,8 +26,6 @@ from GAVEL.app.dtos.stability import (
     StabilityState,
     SubmissionItemStability,
     SubmissionStability,
-    severity,
-    worst,
 )
 from GAVEL.app.ports.autograder_runner import AutograderRunner
 from GAVEL.app.progress import ProgressCallback, report
@@ -290,20 +288,24 @@ def _item(
         for submission, records in by_submission.items()
         if records
     ]
-    # Worst first: Broke before Changed, then the lowest agreement, then by name.
+    # Submissions whose completed runs disagreed, lowest agreement first. A
+    # submission that never completed is reported with the broken submissions.
     affected = sorted(
-        (entry for entry in entries if entry.state is not StabilityState.PASS),
-        key=lambda entry: (
-            -severity(entry.state),
-            entry.runs_agreed / entry.runs_total,
-            entry.submission,
-        ),
+        (entry for entry in entries if entry.state is StabilityState.CHANGED),
+        key=lambda entry: (entry.runs_agreed / entry.runs_total, entry.submission),
     )
+    if entries and all(entry.state is StabilityState.BROKE for entry in entries):
+        state = StabilityState.BROKE  # no completed run gave this item a result
+    elif any(entry.state is StabilityState.CHANGED for entry in entries):
+        state = StabilityState.CHANGED
+    else:
+        state = StabilityState.PASS
     return ItemStability(
         name=name,
-        state=worst(tuple(entry.state for entry in entries)),
+        state=state,
         runs_agreed=sum(entry.runs_agreed for entry in entries),
         runs_total=sum(entry.runs_total for entry in entries),
+        runs_broke=sum(entry.runs_broke for entry in entries),
         submissions_total=len(entries),
         affected=tuple(affected),
         built_from=built_from,
@@ -328,8 +330,7 @@ def _submission_item(submission: str, values: list[tuple[int, _Value]]) -> Submi
     results.sort(key=lambda r: (r.score is None, -len(r.runs), r.runs[0]))
 
     with_result = [r for r in results if r.score is not None]
-    without_result = [r for r in results if r.score is None]
-    if without_result:
+    if not with_result:
         state = StabilityState.BROKE
     elif len(with_result) > 1:
         state = StabilityState.CHANGED

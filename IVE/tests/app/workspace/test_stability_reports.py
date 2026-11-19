@@ -71,7 +71,8 @@ def test_json_carries_a_schema_version_and_plain_values(tmp_path):
     data = json.loads(report_to_json(report))
 
     assert data["schema_version"] == 1
-    assert data["tests"][0]["state"] == "broke"
+    assert data["tests"][0]["state"] == "changed"
+    assert data["tests"][0]["runs_broke"] == 1
     assert data["executions"][0]["status"] == "completed"
 
 
@@ -111,7 +112,8 @@ def test_list_gives_newest_first_with_a_summary(store, tmp_path):
     assert summaries[0].path == newer_path
     assert summaries[0].verdict is StabilityState.BROKE
     assert (summaries[0].runs_completed, summaries[0].runs_requested) == (3, 3)
-    assert summaries[0].tests_broke == 1
+    assert summaries[0].submissions_broke == 1
+    assert summaries[0].tests_changed == 1
     assert summaries[1].verdict is StabilityState.PASS
     assert not summaries[1].cancelled
 

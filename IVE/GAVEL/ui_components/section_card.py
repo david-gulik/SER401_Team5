@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.layout import set_spacing
@@ -41,11 +41,16 @@ class SectionCard(QFrame):
 
         self._subtitle = QLabel()
         self._subtitle.setProperty("role", "text_muted")
+        # Takes the width the title and actions leave, so a long subtitle stays on one
+        # line while there is room and wraps only in a narrow window, never pushing
+        # the action buttons out of view.
+        self._subtitle.setWordWrap(True)
+        self._subtitle.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self._subtitle.hide()
 
         header_layout.addWidget(self._title)
-        header_layout.addWidget(self._subtitle)
-        header_layout.addStretch(1)
+        header_layout.addWidget(self._subtitle, 1)
+        header_layout.addStretch(0)
         header_layout.addWidget(self._actions)
 
         # Body
