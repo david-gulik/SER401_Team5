@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QTabWidget, QVBoxLayout
 from GAVEL.app_context import AppContext
 from GAVEL.core.base_page import BasePage
 from GAVEL.core.page_registry import PageRegistry, PageSpec
-from GAVEL.pages.autograders.tabs import AutogradersDiagnosticsPage, RunAutogradersTab
+from GAVEL.pages.autograders.tabs import AATComparisonPage, RunAutogradersTab
 
 _ICONS_DIR = Path(__file__).resolve().parents[2] / "assets" / "icons"
 
@@ -30,7 +30,7 @@ class AutogradersPage(BasePage):
     def build_tabs(self):
         return [
             ("Run Autograder(s)", RunAutogradersTab(self._ctx)),
-            ("Autograder Diagnostics", AutogradersDiagnosticsPage(self._theme)),
+            ("AAT Comparisons", AATComparisonPage(self._ctx)),
         ]
 
 

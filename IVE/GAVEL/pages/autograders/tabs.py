@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QStyle,
-    QWidget,
+    QWidget, QListWidget, QVBoxLayout,
 )
 
 from GAVEL.app.workspace import CourseFolder
@@ -358,17 +358,149 @@ class RunAutogradersTab(ScrollableTab):
         )
 
 
-class AutogradersDiagnosticsPage(ScrollableTab):
-    def __init__(self, theme: ThemeContext) -> None:
-        super().__init__(theme)
-        self._theme = theme
+class AATComparisonPage(ScrollableTab):
+    def __init__(self, ctx: AppContext) -> None:
+        super().__init__(ctx.theme)
+        self._ctx = ctx
+        self._theme = ctx.theme
+        self._active_course = ctx.active_course
+        self._active_course.changed.connect(self._on_active_course_changed)
+        load_dotenv()
+        env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
+        self.root_path = (
+            Path(env_dir).expanduser() if env_dir else Path.home() / "Downloads" / "GAVEL"
+        )
+        self.courses_path = self.root_path / "courses"
+        self.autograders_path = self.root_path / "autograders"
+        self.assignment_folder = self._active_course.course.path / "anonymized" / "gradescope_submissions"
+        self.reference_list_widget = QListWidget()
+        self.candidate_list_widget = QListWidget()
+        self.reference_list_widget.itemSelectionChanged.connect(
+            self._on_reference_changed
+        )
 
-        self.add_section(self._build_description_card())
+        self.add_section(self._build_assignments_dropdown())
+        self._on_active_course_changed(self._active_course.course)
+        self.add_section(self._build_evaluations_selection())
+
         self.add_stretch()
 
-    def _build_description_card(self) -> QWidget:
-        card = SectionCard(self._theme, "Autograders Stability Test")
-        description = QLabel("This is just a stub right now...")
-        description.setWordWrap(True)
-        card.add_row(description)
+    def _build_assignments_dropdown(self) -> QWidget:
+        card = SectionCard(self._theme, "Select Assignment:")
+
+        self.assignment_combo = QComboBox()
+        self.assignment_combo.setProperty("role", "dropdown")
+
+        self.assignment_combo.setCurrentIndex(-1)
+
+        self.assignment_combo.currentTextChanged.connect(self._on_assignment_selected)
+
+        card.add_row(self.assignment_combo)
         return card
+
+    def _build_evaluations_selection(self) -> QWidget:
+        card = SectionCard(
+            self._theme,
+            "Select Autograder Evaluation Sets:",
+        )
+
+        layout = QHBoxLayout()
+        self.reference_list_widget.setMaximumHeight(100)
+        self.candidate_list_widget.setMaximumHeight(100)
+        # self.reference_list_widget.setMaximumWidth(100)
+        # self.candidate_list_widget.setMaximumWidth(100)
+
+        # Reference column
+        reference_layout = QVBoxLayout()
+        reference_label = QLabel("Reference:")
+        reference_label.setStyleSheet("""
+            font-size: 16px;
+            font-weight: 700;
+            border-width: 2px;
+        """)
+        reference_layout.addWidget(reference_label)
+        reference_layout.addWidget(self.reference_list_widget)
+
+        # Candidate column
+        candidate_layout = QVBoxLayout()
+        candidate_label = QLabel("Candidate:")
+        candidate_label.setStyleSheet("""
+            font-size: 16px;
+            font-weight: 700;
+            border-width: 2px;
+        """)
+        candidate_layout.addWidget(candidate_label)
+        candidate_layout.addWidget(self.candidate_list_widget)
+
+        layout.addLayout(reference_layout)
+        layout.addLayout(candidate_layout)
+
+        card.layout().addLayout(layout)
+
+        return card
+
+    def _populate_evaluation_lists(self, evaluations_folder: Path) -> None:
+        evaluation_sets = get_assignment_subfolders(evaluations_folder)
+        print(evaluation_sets)
+
+        self.reference_list_widget.clear()
+        self.candidate_list_widget.clear()
+
+        for evaluation_set in evaluation_sets:
+            self.reference_list_widget.addItem(evaluation_set)
+            self.candidate_list_widget.addItem(evaluation_set)
+
+        self._evaluation_sets = evaluation_sets
+
+    def _on_assignment_selected(self, assignment: str) -> None:
+        active_course = self._active_course.course
+
+        if active_course is None or not assignment:
+            return
+
+        self.evaluations_folder = self.saved_evaluations_folder / assignment
+        print(self.evaluations_folder)
+
+        self._populate_evaluation_lists(self.evaluations_folder)
+
+
+    def _on_active_course_changed(
+        self,
+        course: CourseFolder | None,
+    ) -> None:
+        if course is None:
+            self.assignment_combo.clear()
+            # self._clear_autograders()
+            return
+
+        self.assignment_folder = course.path / "anonymized" / "gradescope_submissions"
+
+        self.evaluations_folder = course.path / "anonymized" / "evaluations"
+
+        self.saved_evaluations_folder = self.evaluations_folder
+
+        assignments = get_assignment_subfolders(self.assignment_folder)
+
+        self.assignment_combo.clear()
+        self.assignment_combo.addItems(assignments)
+        self.assignment_combo.setCurrentIndex(-1)
+
+        self.reference_list_widget.clear()
+        self.candidate_list_widget.clear()
+    def _on_reference_changed(self):
+        selected = self.reference_list_widget.currentItem()
+
+        self.candidate_list_widget.clear()
+
+        if not selected:
+            self.candidate_list_widget.addItems(
+                self._evaluation_sets
+            )
+            return
+
+        selected_name = selected.text()
+
+        for evaluation in self._evaluation_sets:
+            if evaluation != selected_name:
+                self.candidate_list_widget.addItem(evaluation)
+
