@@ -196,3 +196,31 @@ def test_changing_course_clears_the_picks(qapp, theme, workspace, course):
     assert not tab.run_button.isEnabled()
 
     tab.deleteLater()
+
+
+def test_open_submission_folder_resolves_the_path(qapp, theme, workspace, course):
+    def script(name, index):
+        if name == "anon_4821" and index == 1:
+            return completed({"Adds": (0.0, 2.0)})
+        return completed({"Adds": (2.0, 2.0)})
+
+    tab, vm = _tab(theme, workspace, FakeAutograderRunner(script))
+    tab.set_course(course)
+    tab.assignment_combo.setCurrentIndex(2)
+    _pick_autograder(tab, "folder_grader")
+    tab.runs_spin.setValue(2)
+    tab.run_button.click()
+    opened = []
+    tab.open_folder = opened.append
+
+    tab.results_view.open_folder_requested.emit("anon_4821")
+
+    assert opened == [vm.state.module.submission_dirs[1]]
+    assert opened[0].name == "anon_4821"
+
+    tab.results_view.open_folder_requested.emit("anon_9999")
+
+    assert len(opened) == 1
+    assert tab.status_label.text().startswith("The folder for anon_9999")
+
+    tab.deleteLater()

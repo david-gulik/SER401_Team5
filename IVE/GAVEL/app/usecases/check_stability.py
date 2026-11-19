@@ -244,20 +244,44 @@ def _test_value(execution: ExecutionRecord, name: str) -> _Value:
     return None
 
 
-def _criterion_points(
-    execution: ExecutionRecord, mapping: ProxyGradeMapping
-) -> tuple[float, ...] | None:
-    submission = GradescopeSubmission(
+def _as_submission(execution: ExecutionRecord) -> GradescopeSubmission:
+    return GradescopeSubmission(
         submission_key=execution.submission,
         submitter=GradescopeSubmitter(sid="", email="", name=""),
         created_at=datetime.min,
         tests=list(execution.scores),
     )
+
+
+def _criterion_points(
+    execution: ExecutionRecord, mapping: ProxyGradeMapping
+) -> tuple[float, ...] | None:
     try:
-        return compute_proxy_grade(submission, mapping).criterion_scores
+        return compute_proxy_grade(_as_submission(execution), mapping).criterion_scores
     except MissingTestResultsError:
         # The autograder's test names do not cover the mapping; no points can be derived.
         return None
+
+
+def proxy_totals(
+    report: StabilityReport, mapping: ProxyGradeMapping
+) -> dict[str, tuple[float, float]]:
+    """The lowest and highest proxy total each submission earned across its completed runs."""
+    totals: dict[str, list[float]] = {}
+    for execution in report.executions:
+        if not execution.completed:
+            continue
+        try:
+            total = compute_proxy_grade(_as_submission(execution), mapping).total_score
+        except MissingTestResultsError:
+            continue
+        totals.setdefault(execution.submission, []).append(total)
+    return {name: (min(values), max(values)) for name, values in totals.items()}
+
+
+def mapping_points_possible(mapping: ProxyGradeMapping) -> float:
+    """The most points the mapping can award: the top tier of every criterion."""
+    return sum(max(tier.points for tier in criterion.tiers) for criterion in mapping.criteria)
 
 
 def _criterion_value(

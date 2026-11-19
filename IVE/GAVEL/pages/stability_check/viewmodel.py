@@ -263,6 +263,18 @@ class StabilityCheckViewModel(QObject):
             return
         self._update(phase=Phase.DONE, report=report, saved_to=Path(path), error=None)
 
+    def submission_folder(self, name: str) -> Path | None:
+        """The anonymized folder of a submission named in the shown report, if it still exists."""
+        report = self._state.report
+        course = self._state.course
+        if report is None or course is None:
+            return None
+        module = course.anonymized.module_submissions(report.module_number)
+        for folder in module.submission_dirs():
+            if folder.name == name:
+                return folder
+        return None
+
     def _report_progress(self, progress: DownloadProgress) -> None:
         # Called on a worker thread; the signal delivers it on the GUI thread.
         self._progress_reported.emit(progress)

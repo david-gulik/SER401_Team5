@@ -154,7 +154,9 @@ def test_the_tree_goes_test_submission_result_run(view, tmp_path):
     assert anon_2.text(2) == "2/2 pts ×3 · 0/2 pts ×3"
     assert view.tree.itemWidget(anon_2, 1).text == "3/6"
 
-    usual, differing = _children(anon_2)
+    usual, differing, all_runs, folder = _children(anon_2)
+    assert all_runs.text(0) == "All runs"
+    assert folder.text(0) == "Open submission folder"
     assert usual.text(0) == "2/2 pts · usual result"
     assert usual.text(2) == "3 runs"
     assert differing.text(0) == "0/2 pts · differs from the usual result"
@@ -170,7 +172,8 @@ def test_broken_submissions_list_their_failed_runs(view, tmp_path):
     assert anon_3.text(0) == "anon_3"
     assert anon_3.text(2) == "timed out ×1"
     assert view.tree.itemWidget(anon_3, 1).text == "5/6"
-    [run] = _children(anon_3)
+    run, folder = _children(anon_3)
+    assert folder.text(0) == "Open submission folder"
     assert run.text(0) == "Run 2"
     assert run.text(2) == "timed out · Stopped after 300.0 seconds"
 
@@ -185,7 +188,7 @@ def test_long_run_lists_fold_behind_show_more(view, tmp_path):
 
     adds = view.tree.topLevelItem(0).child(0)
     [anon_1] = _children(adds)
-    usual, differing = _children(anon_1)
+    usual, differing, _all_runs, _folder = _children(anon_1)
     rows = _children(differing)
     assert len(rows) == 11
     assert rows[-1].text(0) == "Show 6 more runs"
@@ -214,7 +217,7 @@ def test_a_run_row_opens_everything_the_autograder_printed(view, tmp_path):
     dialogs = []
     view.dialog_launcher = dialogs.append
     [anon_3] = _children(view.tree.topLevelItem(0))
-    [run] = _children(anon_3)
+    run = _children(anon_3)[0]
     assert run.text(2) == "crashed · Exited with status 1: ZeroDivisionError: division by zero"
     assert run.toolTip(0) == "Double-click or right-click for the full output"
 

@@ -281,3 +281,16 @@ def test_opening_a_bad_file_is_reported(ready, tmp_path):
     assert ready.state.phase is Phase.FAILED
     assert ready.state.error is not None
     assert ready.state.error.startswith("Could not open not-a-report.json")
+
+
+def test_submission_folder_follows_the_shown_report(ready, workspace, course):
+    assert ready.submission_folder("anon_4821") is None  # no report yet
+    ready.set_runs(2)
+    ready.start()
+
+    folder = ready.submission_folder("anon_4821")
+
+    assert folder is not None
+    assert folder.name == "anon_4821"
+    assert folder.parent.name == "m9"
+    assert ready.submission_folder("missing") is None

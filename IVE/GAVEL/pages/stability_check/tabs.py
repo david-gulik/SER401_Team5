@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from GAVEL.app.dtos.stability import StabilityState
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.pages.sanitize.file_manager import show_in_file_manager
 from GAVEL.pages.stability_check.results_view import ResultsView
 from GAVEL.pages.stability_check.viewmodel import (
     MAX_RUNS,
@@ -161,9 +162,19 @@ class StabilityCheckTab(ScrollableTab):
         card = SectionCard(self._theme, "Results")
         self._results_card = card
         self.results_view = ResultsView(self._theme)
+        self.results_view.open_folder_requested.connect(self._open_submission_folder)
+        # Swapped out in tests so no file manager window opens.
+        self.open_folder = show_in_file_manager
         card.add_row(self.results_view)
         card.hide()
         return card
+
+    def _open_submission_folder(self, name: str) -> None:
+        folder = self._viewmodel.submission_folder(name)
+        if folder is None:
+            self.status_label.setText(f"The folder for {name} is not in the workspace any more.")
+            return
+        self.open_folder(folder)
 
     # ----- the page follows the active course ------------------------------------------------
 
