@@ -8,6 +8,7 @@ from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import QLabel
 
 from GAVEL.app.workspace.layout import Workspace
+from GAVEL.core.active_assignment import ActiveAssignment, AssignmentPick
 from GAVEL.core.active_course import ActiveCourse
 from GAVEL.core.course_selector import ActiveCourseGate
 from GAVEL.core.main_window import MainWindow
@@ -18,7 +19,11 @@ COURSE = "ser222_26f_11111"
 
 def ctx(theme, tmp_path: Path) -> SimpleNamespace:
     settings = QSettings(str(tmp_path / "gavel.ini"), QSettings.Format.IniFormat)
-    return SimpleNamespace(theme=theme, active_course=ActiveCourse(Workspace(tmp_path), settings))
+    return SimpleNamespace(
+        theme=theme,
+        active_course=ActiveCourse(Workspace(tmp_path), settings),
+        active_assignment=ActiveAssignment(),
+    )
 
 
 def registry() -> PageRegistry:
@@ -103,3 +108,24 @@ def test_opening_a_scoped_page_drops_a_course_whose_folder_is_gone(qapp, theme, 
     window.navigate_to("scoped")
 
     assert context.active_course.course is None
+
+
+def test_a_page_hand_off_shows_the_requested_page(qapp, theme, tmp_path):
+    context = ctx(theme, tmp_path)
+    window = MainWindow(registry(), context)
+    assert window.course_chip.isHidden()
+
+    context.active_assignment.hand_off(AssignmentPick(COURSE, 9, "anon_1"), "scoped")
+
+    assert not window.course_chip.isHidden()
+    assert isinstance(window._stack.currentWidget(), ActiveCourseGate)
+
+
+def test_a_hand_off_to_an_unknown_page_is_ignored(qapp, theme, tmp_path):
+    context = ctx(theme, tmp_path)
+    window = MainWindow(registry(), context)
+    window.navigate_to("plain")
+
+    context.active_assignment.hand_off(AssignmentPick(COURSE, 9), "no_such_page")
+
+    assert window._stack.currentWidget().text() == "plain"

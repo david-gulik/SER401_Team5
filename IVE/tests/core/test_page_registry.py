@@ -53,6 +53,7 @@ def test_app_pages_run_from_home_to_analytics():
         "download",
         "sanitize",
         "autograders",
+        "stability_check",
         "inspect_grades",
         "analytics",
     ]

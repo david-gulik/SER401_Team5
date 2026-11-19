@@ -9,6 +9,7 @@ from GAVEL.app.workspace.layout import Workspace, default_workspace_root
 from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_asu_browser, build_canvas_client, build_roster_client
+from GAVEL.core.active_assignment import ActiveAssignment
 from GAVEL.core.active_course import ActiveCourse
 from GAVEL.core.main_window import MainWindow
 from GAVEL.core.page_registry import PageRegistry
@@ -19,6 +20,7 @@ from GAVEL.pages.home.page import HomePage  # noqa: F401
 from GAVEL.pages.inspect_grades.page import InspectGradesPage  # noqa: F401
 from GAVEL.pages.sanitize.page import SanitizePage  # noqa: F401
 from GAVEL.pages.settings.page import SettingsPage  # noqa: F401
+from GAVEL.pages.stability_check.page import StabilityCheckPage  # noqa: F401
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger, configure_logging
 from GAVEL.theme.context import ThemeContext
@@ -79,6 +81,7 @@ def main() -> None:
         services=services,
         active_course=active_course,
         settings=settings,
+        active_assignment=ActiveAssignment(),
     )
 
     registry = PageRegistry.get()
