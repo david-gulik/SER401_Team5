@@ -11,6 +11,8 @@ from GAVEL.pages.stability_check.tabs import StabilityCheckTab
 from GAVEL.pages.stability_check.viewmodel import StabilityCheckViewModel
 
 _ICONS_DIR = Path(__file__).resolve().parents[2] / "assets" / "icons"
+# The page a submission is handed to; it reads ctx.active_assignment when it opens.
+INSPECT_GRADES_PAGE_ID = "inspect_grades"
 
 
 class StabilityCheckPage(BasePage):
@@ -30,6 +32,9 @@ class StabilityCheckPage(BasePage):
         # Pages are built the first time they open, so read the current pick as well.
         ctx.active_course.changed.connect(tab.set_course)
         tab.set_course(ctx.active_course.course)
+        tab.inspect_requested.connect(
+            lambda pick: ctx.active_assignment.hand_off(pick, INSPECT_GRADES_PAGE_ID)
+        )
 
         root = QVBoxLayout(self)
         root.addWidget(tab)

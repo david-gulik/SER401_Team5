@@ -202,17 +202,19 @@ def test_submissions_are_grouped_with_their_unstable_tests(view, tmp_path):
     assert anon_3.text(1) == "0 of 3"
     assert view.tree.itemWidget(anon_3, 2).text == "83% · 15/18"
     assert anon_3.text(3) == "6 of 6"
-    note, folder = _children(anon_3)
+    note, folder, inspect = _children(anon_3)
     assert note.text(0) == "Runs with no result · timed out ×1"
     assert [r.text(0) for r in _children(note)] == ["Run 2"]
     assert folder.text(0) == "Open submission folder"
+    assert inspect.text(0) == "View in Inspect Grades"
 
     anon_2 = _find(_children(tops[1]), "anon_2")
     assert anon_2.text(1) == "1 of 3"
     assert anon_2.text(3) == "4 to 6 of 6"
     assert view.tree.itemWidget(anon_2, 2).text == "83% · 15/18"
-    adds, folder = _children(anon_2)
+    adds, folder, inspect = _children(anon_2)
     assert adds.text(0) == "Adds"
+    assert inspect.text(0) == "View in Inspect Grades"
     assert adds.text(3) == "2/2 pts ×3 · 0/2 pts ×3"
     assert [a.text(0) for a in _children(adds)] == ["All runs", "In test view"]
 
@@ -260,7 +262,7 @@ def test_open_folder_rows_emit_the_submission_name(view, tmp_path):
     view.open_folder_requested.connect(asked.append)
     adds = _find(_children(_top(view)[1]), "Adds")
     [anon_2] = _children(adds)
-    folder_row = _children(anon_2)[-1]
+    folder_row = _children(anon_2)[-2]
     assert folder_row.text(0) == "Open submission folder"
 
     view.tree.itemClicked.emit(folder_row, 0)
@@ -274,7 +276,7 @@ def test_all_runs_opens_the_detail_dialog(view, tmp_path):
     view.dialog_launcher = opened.append
     adds = _find(_children(_top(view)[1]), "Adds")
     [anon_2] = _children(adds)
-    all_runs = _children(anon_2)[-2]
+    all_runs = _children(anon_2)[-3]
     assert all_runs.text(0) == "All runs"
 
     view.tree.itemClicked.emit(all_runs, 0)
@@ -321,3 +323,42 @@ def test_proxy_totals_give_each_submissions_range(tmp_path):
 
     assert totals == {"anon_1": (4.0, 6.0), "anon_2": (4.0, 6.0), "anon_3": (6.0, 6.0)}
     assert mapping_points_possible(MAPPING) == 6.0
+
+
+def test_view_in_inspect_grades_hands_off_the_submission(view, tmp_path):
+    view.set_report(_report(tmp_path), mapping=MAPPING)
+    asked = []
+    view.inspect_requested.connect(asked.append)
+    adds = _find(_children(_top(view)[1]), "Adds")
+    [anon_2] = _children(adds)
+    inspect_row = _children(anon_2)[-1]
+    assert inspect_row.text(0) == "View in Inspect Grades"
+
+    view.tree.itemClicked.emit(inspect_row, 0)
+
+    assert asked == ["anon_2"]
+
+    # The By submission view and the broken group offer it too.
+    view.set_grouping(Grouping.SUBMISSION)
+    [anon_3] = _children(_top(view)[0])
+    view.tree.itemClicked.emit(_children(anon_3)[-1], 0)
+
+    assert asked == ["anon_2", "anon_3"]
+
+
+def test_the_dialog_hands_off_and_closes(view, tmp_path):
+    view.set_report(_report(tmp_path), mapping=MAPPING)
+    opened = []
+    view.dialog_launcher = opened.append
+    asked = []
+    view.inspect_requested.connect(asked.append)
+    adds = _find(_children(_top(view)[1]), "Adds")
+    [anon_2] = _children(adds)
+    view.tree.itemClicked.emit(_children(anon_2)[-3], 0)
+    [dialog] = opened
+    assert dialog.inspect_button.isVisibleTo(dialog)
+
+    dialog.inspect_button.click()
+
+    assert asked == ["anon_2"]
+    assert dialog.result() == dialog.DialogCode.Accepted

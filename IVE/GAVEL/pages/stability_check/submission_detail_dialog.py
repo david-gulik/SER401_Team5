@@ -37,6 +37,7 @@ class SubmissionDetailDialog(QDialog):
         item_name: str,
         entry: SubmissionItemStability,
         open_folder: Callable[[str], None] | None = None,
+        on_inspect: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self._theme = theme
@@ -98,10 +99,19 @@ class SubmissionDetailDialog(QDialog):
             self.open_folder_button.hide()
         else:
             self.open_folder_button.clicked.connect(lambda: open_folder(entry.submission))
+        self.inspect_button = QPushButton("View in Inspect Grades")
+        self.inspect_button.setProperty("role", "secondary")
+        if on_inspect is None:
+            self.inspect_button.hide()
+        else:
+            self.inspect_button.clicked.connect(
+                lambda: self._hand_off(on_inspect, entry.submission)
+            )
         self.close_button = QPushButton("Close")
         self.close_button.setProperty("role", "primary")
         self.close_button.clicked.connect(self.accept)
         buttons.addWidget(self.open_folder_button)
+        buttons.addWidget(self.inspect_button)
         buttons.addStretch(1)
         buttons.addWidget(self.close_button)
 
@@ -146,6 +156,11 @@ class SubmissionDetailDialog(QDialog):
         execution = self._executions.get(run)
         if execution is not None:
             QApplication.clipboard().setText(run_output_text(execution, self._autograder))
+
+    def _hand_off(self, on_inspect: Callable[[str], None], submission: str) -> None:
+        # Close first so the page switch is not hidden behind a modal dialog.
+        self.accept()
+        on_inspect(submission)
 
 
 def _points(score: float | None, max_score: float | None) -> str:

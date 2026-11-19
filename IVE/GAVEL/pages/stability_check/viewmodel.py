@@ -171,11 +171,19 @@ class StabilityCheckViewModel(QObject):
     def select_module(self, module_number: int | None) -> None:
         module = next((m for m in self._state.modules if m.module_number == module_number), None)
         autograders: tuple[AutograderOption, ...] = ()
+        autograder: AutograderOption | None = None
+        previous: tuple[ReportSummary, ...] = ()
         if module is not None and self._state.course is not None:
-            autograders = list_autograders(
-                self._workspace, self._state.course.key, module.module_number
-            )
-        self._update(module=module, autograders=autograders, autograder=None, previous=())
+            key = self._state.course.key
+            autograders = list_autograders(self._workspace, key, module.module_number)
+            # The autograder of the latest check is the likely pick, so it starts selected.
+            latest = self._store.latest_autograder(key.folder_name, module.module_number)
+            autograder = next((a for a in autograders if a.name == latest), None)
+            if autograder is not None:
+                previous = self._store.list(key.folder_name, module.module_number, autograder.name)
+        self._update(
+            module=module, autograders=autograders, autograder=autograder, previous=previous
+        )
 
     def select_autograder(self, name: str | None) -> None:
         option = next((a for a in self._state.autograders if a.name == name), None)
@@ -262,6 +270,18 @@ class StabilityCheckViewModel(QObject):
             self._update(phase=Phase.FAILED, error=f"Could not open {path.name}: {exc}")
             return
         self._update(phase=Phase.DONE, report=report, saved_to=Path(path), error=None)
+
+    def delete_report(self, path: Path) -> None:
+        """Remove a saved report from the workspace. The report on screen is never removed."""
+        path = Path(path)
+        if self._state.phase is Phase.RUNNING or path == self._state.saved_to:
+            return
+        try:
+            self._store.delete(path)
+        except OSError as exc:
+            self._update(phase=Phase.FAILED, error=f"Could not delete {path.name}: {exc}")
+            return
+        self._update(previous=tuple(p for p in self._state.previous if p.path != path))
 
     def submission_folder(self, name: str) -> Path | None:
         """The anonymized folder of a submission named in the shown report, if it still exists."""

@@ -162,6 +162,7 @@ FOOTNOTE = (
 
 class ResultsView(QWidget):
     open_folder_requested = pyqtSignal(str)  # a submission's folder name
+    inspect_requested = pyqtSignal(str)  # a submission to show in Inspect Grades
 
     def __init__(self, theme: ThemeContext, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -584,6 +585,7 @@ class ResultsView(QWidget):
             self._add_result(row, result, entry.submission, item_name, usual=index == 0)
         self._add_action(row, "All runs", "all-runs", (item_name, entry))
         self._add_action(row, "Open submission folder", "open-folder", entry.submission)
+        self._add_action(row, "View in Inspect Grades", "inspect", entry.submission)
 
     def _cell_for(self, entry: SubmissionItemStability) -> AgreementCell:
         return AgreementCell(
@@ -641,6 +643,7 @@ class ResultsView(QWidget):
         )
         self._add_broken_runs(row, submission.name)
         self._add_action(row, "Open submission folder", "open-folder", submission.name)
+        self._add_action(row, "View in Inspect Grades", "inspect", submission.name)
 
     def _add_broken_runs(self, parent: QTreeWidgetItem, submission: str) -> None:
         runs = tuple(
@@ -750,6 +753,7 @@ class ResultsView(QWidget):
             item.addChild(broke_row)
             self._add_broken_runs(broke_row, row.name)
         self._add_action(item, "Open submission folder", "open-folder", row.name)
+        self._add_action(item, "View in Inspect Grades", "inspect", row.name)
 
     # ----- clicks -----------------------------------------------------------------------------
 
@@ -766,6 +770,8 @@ class ResultsView(QWidget):
             self.show_test(payload)
         elif kind == "open-folder":
             self.open_folder_requested.emit(payload)
+        elif kind == "inspect":
+            self.inspect_requested.emit(payload)
         elif kind == "all-runs" and self._report is not None:
             item_name, entry = payload
             dialog = SubmissionDetailDialog(
@@ -775,6 +781,7 @@ class ResultsView(QWidget):
                 item_name,
                 entry,
                 open_folder=self.open_folder_requested.emit,
+                on_inspect=self.inspect_requested.emit,
             )
             self.dialog_launcher(dialog)
 

@@ -239,6 +239,23 @@ def test_a_course_change_during_a_run_waits_for_the_run(qapp, workspace, course,
     assert vm.state.report is None
 
 
+def test_the_autograder_of_the_latest_check_starts_picked(ready, workspace, course):
+    ready.set_runs(2)
+    ready.start()
+    ready.select_autograder("zipped_grader")
+    ready.start()
+
+    ready.select_module(3)
+
+    assert ready.state.autograder is None, "never checked, so nothing is picked"
+
+    ready.select_module(9)
+
+    assert ready.state.autograder is not None
+    assert ready.state.autograder.name == "zipped_grader"
+    assert len(ready.state.previous) == 1
+
+
 def test_previous_checks_are_listed_for_the_picked_autograder(ready, workspace, course):
     store = StabilityReportStore(workspace)
     assert store.list(course.key.folder_name, 9, "folder_grader") == ()
@@ -270,6 +287,27 @@ def test_a_saved_report_can_be_reopened(ready):
     assert ready.state.saved_to == saved
     assert ready.state.report is not None
     assert ready.state.report.runs_completed == 2
+
+
+def test_a_previous_check_can_be_deleted_but_not_the_one_on_screen(ready):
+    ready.set_runs(2)
+    ready.start()
+    first = ready.state.saved_to
+    ready.start()
+    second = ready.state.saved_to
+    assert first is not None and second is not None and first != second
+    assert len(ready.state.previous) == 2
+
+    ready.delete_report(second)
+
+    assert second.exists(), "the report on screen stays"
+    assert len(ready.state.previous) == 2
+
+    ready.delete_report(first)
+
+    assert not first.exists()
+    assert [p.path for p in ready.state.previous] == [second]
+    assert ready.state.report is not None and ready.state.phase is Phase.DONE
 
 
 def test_opening_a_bad_file_is_reported(ready, tmp_path):

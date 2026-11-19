@@ -9,6 +9,7 @@ from PyQt6.QtSvg import QSvgRenderer
 import GAVEL.pages.autograders.page  # noqa: F401
 import GAVEL.pages.inspect_grades.page  # noqa: F401
 from GAVEL.bootstrap import build_dataset_readers
+from GAVEL.core.active_assignment import ActiveAssignment, AssignmentPick
 from GAVEL.core.active_course import ActiveCourse
 from GAVEL.core.page_registry import PageRegistry
 from GAVEL.pages.stability_check.page import StabilityCheckPage
@@ -24,6 +25,7 @@ def _ctx(theme, tmp_path: Path, workspace) -> SimpleNamespace:
             dataset_readers=build_dataset_readers(), autograder_runner=FakeAutograderRunner()
         ),
         active_course=ActiveCourse(workspace, settings),
+        active_assignment=ActiveAssignment(),
     )
 
 
@@ -79,5 +81,22 @@ def test_the_page_starts_on_the_course_already_active(qapp, theme, tmp_path, wor
 
     [tab] = page.findChildren(StabilityCheckTab)
     assert tab.assignment_combo.count() == 3
+
+    page.deleteLater()
+
+
+def test_a_submission_is_handed_to_inspect_grades(qapp, theme, tmp_path, workspace, course):
+    ctx = _ctx(theme, tmp_path, workspace)
+    ctx.active_course.select(course)
+    page = PageRegistry.get().get_page("stability_check").factory(ctx)
+    [tab] = page.findChildren(StabilityCheckTab)
+    pages: list[str] = []
+    ctx.active_assignment.page_requested.connect(pages.append)
+    pick = AssignmentPick(course.key.folder_name, 9, "anon_4821")
+
+    tab.inspect_requested.emit(pick)
+
+    assert ctx.active_assignment.pick == pick
+    assert pages == ["inspect_grades"]
 
     page.deleteLater()

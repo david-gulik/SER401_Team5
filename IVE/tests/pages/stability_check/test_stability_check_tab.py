@@ -3,6 +3,7 @@ from __future__ import annotations
 import zipfile
 
 from GAVEL.bootstrap import build_dataset_readers
+from GAVEL.core.active_assignment import AssignmentPick
 from GAVEL.core.background import run_now
 from GAVEL.pages.stability_check.tabs import AUTOGRADERS_SHOWN, StabilityCheckTab
 from GAVEL.pages.stability_check.viewmodel import Phase, StabilityCheckViewModel
@@ -153,7 +154,16 @@ def test_a_finished_check_shows_the_results_card(qapp, theme, workspace, course)
     assert tab._form_widget.isVisibleTo(tab)
     assert tab._results_card.isVisibleTo(tab)
     assert tab.run_button.isEnabled()
-    assert tab.previous_note.text().startswith("Last checked")
+    # The check just run is in the history, marked as the one on screen.
+    assert tab._previous_widget.isVisibleTo(tab)
+    assert tab.previous_table.rowCount() == 1
+    assert tab.previous_table.item(0, 1).text() == "2"
+    assert tab.previous_table.item(0, 2).text() == "Stable"
+    shown = tab.previous_table.cellWidget(0, 3)
+    assert shown.text() == "Shown"
+    assert not shown.isEnabled()
+    # The button column is wide enough for the button and a margin, not clipped.
+    assert tab.previous_table.columnWidth(3) >= shown.sizeHint().width() + 8
 
     tab.deleteLater()
 
@@ -222,5 +232,154 @@ def test_open_submission_folder_resolves_the_path(qapp, theme, workspace, course
 
     assert len(opened) == 1
     assert tab.status_label.text().startswith("The folder for anon_9999")
+
+    tab.deleteLater()
+
+
+def _flaky(name, index):
+    # The fake counts runs per submission across checks, so flip every other run.
+    if name == "anon_4821" and index % 2 == 1:
+        return completed({"Adds": (0.0, 2.0)})
+    return completed({"Adds": (2.0, 2.0)})
+
+
+def test_the_history_hides_until_an_autograder_is_picked(qapp, theme, workspace, course):
+    tab, vm = _tab(theme, workspace)
+    tab.set_course(course)
+    tab.assignment_combo.setCurrentIndex(2)
+    assert not tab._previous_widget.isVisibleTo(tab)
+
+    _pick_autograder(tab, "folder_grader")
+
+    assert tab._previous_widget.isVisibleTo(tab)
+    assert tab.previous_label.text() == "Never checked with folder_grader."
+    assert not tab.previous_table.isVisibleTo(tab)
+
+    tab.deleteLater()
+
+
+def test_a_previous_check_opens_into_the_results(qapp, theme, workspace, course):
+    tab, vm = _tab(theme, workspace, FakeAutograderRunner(_flaky))
+    tab.set_course(course)
+    tab.assignment_combo.setCurrentIndex(2)
+    _pick_autograder(tab, "folder_grader")
+    tab.runs_spin.setValue(2)
+    tab.run_button.click()
+    first = vm.state.saved_to
+    tab.change_button.click()
+    tab.runs_spin.setValue(3)
+    tab.run_button.click()
+    second = vm.state.saved_to
+    assert first != second
+    tab.change_button.click()
+
+    table = tab.previous_table
+    assert table.rowCount() == 2
+    by_runs = {table.item(row, 1).text(): row for row in range(2)}
+    assert set(by_runs) == {"2", "3"}
+    assert [table.item(row, 2).text() for row in range(2)] == ["1 test changed"] * 2
+    assert table.cellWidget(by_runs["3"], 3).text() == "Shown"
+    assert table.cellWidget(by_runs["2"], 3).text() == "Open"
+
+    table.cellWidget(by_runs["2"], 3).click()
+
+    assert vm.state.phase is Phase.DONE
+    assert vm.state.saved_to == first
+    assert tab._results_card.isVisibleTo(tab)
+    assert tab.results_view.report is vm.state.report
+    assert tab.results_view.report.runs_completed == 2
+    assert tab.results_view.saved_label.text() == f"Saved to {first}"
+    # Both checks stay listed.
+    assert len(vm.state.previous) == 2
+
+    tab.deleteLater()
+
+
+def test_delete_asks_first_and_removes_the_check(qapp, theme, workspace, course):
+    tab, vm = _tab(theme, workspace, FakeAutograderRunner(_flaky))
+    tab.set_course(course)
+    tab.assignment_combo.setCurrentIndex(2)
+    _pick_autograder(tab, "folder_grader")
+    tab.runs_spin.setValue(2)
+    tab.run_button.click()
+    first = vm.state.saved_to
+    tab.change_button.click()
+    tab.runs_spin.setValue(3)
+    tab.run_button.click()
+    second = vm.state.saved_to
+    tab.change_button.click()
+    table = tab.previous_table
+    by_runs = {table.item(row, 1).text(): row for row in range(2)}
+    asked = []
+    tab.confirm = lambda title, text: asked.append((title, text)) or False
+
+    # The check on screen cannot be deleted; the other one asks first.
+    assert not table.cellWidget(by_runs["3"], 4).isEnabled()
+    assert table.cellWidget(by_runs["3"], 4).toolTip().startswith("This check is on screen")
+    table.cellWidget(by_runs["2"], 4).click()
+
+    started = next(p.started_at for p in vm.state.previous if p.path == first)
+    assert asked == [
+        (
+            "Delete this check?",
+            f"Delete the check started {started.replace('T', ' ')[:16]}?\n\n"
+            "Its saved report is removed from the workspace. This cannot be undone.",
+        )
+    ]
+    assert first.exists()
+    assert table.rowCount() == 2
+
+    tab.confirm = lambda title, text: True
+    table.cellWidget(by_runs["2"], 4).click()
+
+    assert not first.exists()
+    assert second.exists()
+    assert table.rowCount() == 1
+    assert table.cellWidget(0, 3).text() == "Shown"
+    assert vm.state.report is not None and vm.state.saved_to == second
+
+    tab.deleteLater()
+
+
+def test_run_again_starts_a_new_check_and_keeps_the_earlier_one(qapp, theme, workspace, course):
+    tab, vm = _tab(theme, workspace)
+    tab.set_course(course)
+    tab.assignment_combo.setCurrentIndex(2)
+    _pick_autograder(tab, "folder_grader")
+    tab.runs_spin.setValue(2)
+    tab.run_button.click()
+    first = vm.state.saved_to
+    assert tab.run_again_button.isEnabled()
+
+    tab.run_again_button.click()
+
+    assert vm.state.phase is Phase.DONE
+    assert vm.state.saved_to != first
+    assert vm.state.report is not None and vm.state.report.runs_completed == 2
+    assert len(vm.state.previous) == 2
+    assert first is not None and first.exists()
+
+    tab.set_course(None)
+
+    assert not tab.run_again_button.isEnabled()
+    assert tab.run_again_button.toolTip() == "Choose a course"
+
+    tab.deleteLater()
+
+
+def test_view_in_inspect_grades_names_the_assignment_and_student(qapp, theme, workspace, course):
+    tab, vm = _tab(theme, workspace, FakeAutograderRunner(_flaky))
+    tab.set_course(course)
+    tab.assignment_combo.setCurrentIndex(2)
+    _pick_autograder(tab, "folder_grader")
+    tab.runs_spin.setValue(2)
+    picks = []
+    tab.inspect_requested.connect(picks.append)
+
+    tab.results_view.inspect_requested.emit("anon_4821")  # nothing to hand off before a check
+    tab.run_button.click()
+    tab.results_view.inspect_requested.emit("anon_4821")
+
+    assert picks == [AssignmentPick(course.key.folder_name, 9, "anon_4821")]
 
     tab.deleteLater()

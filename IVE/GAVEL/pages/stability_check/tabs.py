@@ -1,23 +1,31 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from collections.abc import Callable
+
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QFormLayout,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from GAVEL.app.dtos.stability import StabilityState
 from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.stability_reports import ReportSummary
+from GAVEL.core.active_assignment import AssignmentPick
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.sanitize.file_manager import show_in_file_manager
 from GAVEL.pages.stability_check.results_view import ResultsView
@@ -42,12 +50,17 @@ AUTOGRADERS_SHOWN = 6
 class StabilityCheckTab(ScrollableTab):
     """Set up a check, watch it run, and see what it found."""
 
+    inspect_requested = pyqtSignal(object)  # AssignmentPick: a submission for Inspect Grades
+
     def __init__(self, theme: ThemeContext, viewmodel: StabilityCheckViewModel) -> None:
         super().__init__(theme)
         self._theme = theme
         self._viewmodel = viewmodel
         self._rendering = False
         self._listed_autograders: list[str] = []
+        self._previous_shown: tuple[object, ...] | None = None
+        # Swapped out in tests so no question box blocks.
+        self.confirm: Callable[[str, str], bool] = self._ask
 
         self.add_section(self._build_set_up_card())
         self.add_section(self._build_running_card())
@@ -81,15 +94,7 @@ class StabilityCheckTab(ScrollableTab):
         self.autograder_list.setProperty("role", "picker_list")
         self.autograder_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.autograder_list.currentRowChanged.connect(self._on_autograder_picked)
-        self.previous_note = QLabel()
-        self.previous_note.setProperty("role", "text_muted")
-        self.previous_note.setWordWrap(True)
-        for widget in (
-            self.autograder_placeholder,
-            self.autograder_filter,
-            self.autograder_list,
-            self.previous_note,
-        ):
+        for widget in (self.autograder_placeholder, self.autograder_filter, self.autograder_list):
             picker_layout.addWidget(widget)
 
         self.runs_spin = QSpinBox()
@@ -135,6 +140,31 @@ class StabilityCheckTab(ScrollableTab):
         actions_layout.addWidget(self.status_label, 1)
         card.add_row(actions)
 
+        self._previous_widget = QWidget()
+        previous_layout = QVBoxLayout(self._previous_widget)
+        previous_layout.setContentsMargins(0, 0, 0, 0)
+        set_spacing(previous_layout, self._theme, 4)
+        self.previous_label = QLabel()
+        self.previous_label.setProperty("role", "text_muted")
+        self.previous_label.setWordWrap(True)
+        self.previous_table = QTableWidget(0, 5)
+        self.previous_table.setHorizontalHeaderLabels(["Started", "Runs", "Result", "", ""])
+        self.previous_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.previous_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.previous_table.verticalHeader().setVisible(False)
+        header = self.previous_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        # Sized to the Open and Delete buttons when rows are filled in; fitting to contents
+        # would measure the empty cell text and clip the buttons at the table's edge.
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        header.setHighlightSections(False)
+        previous_layout.addWidget(self.previous_label)
+        previous_layout.addWidget(self.previous_table)
+        self._previous_widget.hide()
+        card.add_row(self._previous_widget)
+
         self.change_button = QPushButton("Change")
         self.change_button.setProperty("role", "secondary")
         self.change_button.clicked.connect(self._viewmodel.edit_settings)
@@ -161,8 +191,14 @@ class StabilityCheckTab(ScrollableTab):
     def _build_results_card(self) -> QWidget:
         card = SectionCard(self._theme, "Results")
         self._results_card = card
+        self.run_again_button = QPushButton("Run again")
+        self.run_again_button.setProperty("role", "secondary")
+        self.run_again_button.clicked.connect(self._viewmodel.start)
+        # Beside the title, not at the far edge of the card.
+        card.add_title_suffix(self.run_again_button)
         self.results_view = ResultsView(self._theme)
         self.results_view.open_folder_requested.connect(self._open_submission_folder)
+        self.results_view.inspect_requested.connect(self._inspect_submission)
         # Swapped out in tests so no file manager window opens.
         self.open_folder = show_in_file_manager
         card.add_row(self.results_view)
@@ -175,6 +211,31 @@ class StabilityCheckTab(ScrollableTab):
             self.status_label.setText(f"The folder for {name} is not in the workspace any more.")
             return
         self.open_folder(folder)
+
+    def _inspect_submission(self, name: str) -> None:
+        report = self._viewmodel.state.report
+        if report is None:
+            return
+        self.inspect_requested.emit(AssignmentPick(report.course, report.module_number, name))
+
+    def _delete_report(self, summary: ReportSummary) -> None:
+        when = summary.started_at.replace("T", " ")[:16]
+        if self.confirm(
+            "Delete this check?",
+            f"Delete the check started {when}?\n\n"
+            "Its saved report is removed from the workspace. This cannot be undone.",
+        ):
+            self._viewmodel.delete_report(summary.path)
+
+    def _ask(self, title: str, text: str) -> bool:
+        answer = QMessageBox.question(
+            self,
+            title,
+            text,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     # ----- the page follows the active course ------------------------------------------------
 
@@ -226,6 +287,7 @@ class StabilityCheckTab(ScrollableTab):
             self.workers_spin.setValue(state.workers)
             self.timeout_spin.setValue(state.timeout_minutes)
             self.estimate_label.setText(state.estimate)
+            self._render_previous(state)
             self._render_phase(state)
         finally:
             self._rendering = False
@@ -270,15 +332,70 @@ class StabilityCheckTab(ScrollableTab):
         picked = state.autograder.name if state.autograder is not None else None
         self.autograder_list.setCurrentRow(names.index(picked) if picked in names else -1)
 
-        self.previous_note.setVisible(state.autograder is not None)
-        if state.autograder is not None:
-            self.previous_note.setText(_previous_text(state))
-
     def _fit_autograder_list(self) -> None:
         """As tall as its rows up to AUTOGRADERS_SHOWN of them; the rest scroll."""
         rows = min(self.autograder_list.count(), AUTOGRADERS_SHOWN)
         height = sum(self.autograder_list.sizeHintForRow(index) for index in range(rows))
         self.autograder_list.setFixedHeight(height + 2 * self.autograder_list.frameWidth())
+
+    def _render_previous(self, state: StabilityUiState) -> None:
+        running = state.phase is Phase.RUNNING
+        shown = (state.autograder, state.previous, state.saved_to, state.phase)
+        if shown == self._previous_shown:
+            return
+        self._previous_shown = shown
+        self._previous_widget.setVisible(
+            state.autograder is not None and state.phase is not Phase.DONE
+        )
+        table = self.previous_table
+        table.setRowCount(0)
+        if state.autograder is None:
+            return
+        if not state.previous:
+            self.previous_label.setText(f"Never checked with {state.autograder.name}.")
+            table.hide()
+            return
+        self.previous_label.setText(f"Previous checks with {state.autograder.name}, newest first.")
+        table.show()
+        table.setRowCount(len(state.previous))
+        open_buttons = []
+        delete_buttons = []
+        for row, summary in enumerate(state.previous):
+            table.setItem(row, 0, QTableWidgetItem(summary.started_at.replace("T", " ")[:16]))
+            table.setItem(row, 1, QTableWidgetItem(_runs_text(summary)))
+            table.setItem(row, 2, QTableWidgetItem(_outcome_text(summary)))
+            on_screen = state.report is not None and summary.path == state.saved_to
+            button = QPushButton("Open")
+            button.setProperty("role", "secondary")
+            if on_screen:
+                button.setText("Shown")
+                button.setEnabled(False)
+            elif running:
+                button.setEnabled(False)
+            button.clicked.connect(
+                lambda _=False, path=summary.path: self._viewmodel.open_report(path)
+            )
+            table.setCellWidget(row, 3, button)
+            open_buttons.append(button)
+            delete = QPushButton("Delete")
+            delete.setProperty("role", "secondary")
+            if on_screen:
+                delete.setEnabled(False)
+                delete.setToolTip("This check is on screen. Open another one first.")
+            elif running:
+                delete.setEnabled(False)
+            delete.clicked.connect(lambda _=False, s=summary: self._delete_report(s))
+            table.setCellWidget(row, 4, delete)
+            delete_buttons.append(delete)
+        # Room for the widest button plus a margin on each side of it.
+        margin = self._theme.tokens.sp(8)
+        table.setColumnWidth(3, max(b.sizeHint().width() for b in open_buttons) + 2 * margin)
+        table.setColumnWidth(4, max(b.sizeHint().width() for b in delete_buttons) + 2 * margin)
+        table.resizeRowsToContents()
+        rows = min(table.rowCount(), 6)
+        height = table.horizontalHeader().height() + 2 * table.frameWidth()
+        height += sum(table.rowHeight(index) for index in range(rows))
+        table.setFixedHeight(height)
 
     def _render_phase(self, state: StabilityUiState) -> None:
         running = state.phase is Phase.RUNNING
@@ -287,6 +404,10 @@ class StabilityCheckTab(ScrollableTab):
             widget.setEnabled(not running)
         self.run_button.setEnabled(state.missing is None and not running)
         self.run_button.setToolTip(state.missing or "")
+        self.run_again_button.setEnabled(state.missing is None and not running)
+        self.run_again_button.setToolTip(
+            state.missing or "Start a new check with the current settings."
+        )
         for widget in (self._form_widget, self.estimate_label, self._actions_widget):
             widget.setVisible(not collapsed)
         self.change_button.setVisible(collapsed)
@@ -321,16 +442,20 @@ class StabilityCheckTab(ScrollableTab):
             self.results_view.clear()
 
 
-def _previous_text(state: StabilityUiState) -> str:
-    if not state.previous:
-        return "Never checked."
-    latest = state.previous[0]
-    outcome = {
-        StabilityState.PASS: "stable",
-        StabilityState.CHANGED: f"{latest.tests_changed} changed",
-        StabilityState.BROKE: (
-            f"{latest.tests_changed} changed, {latest.submissions_broke} submissions broke"
-        ),
-    }[latest.verdict]
-    when = latest.started_at.replace("T", " ")
-    return f"Last checked {when} · {latest.runs_completed} runs · {outcome}"
+def _runs_text(summary: ReportSummary) -> str:
+    if summary.cancelled:
+        return f"{summary.runs_completed} of {summary.runs_requested} · cancelled"
+    return str(summary.runs_completed)
+
+
+def _outcome_text(summary: ReportSummary) -> str:
+    if summary.verdict is StabilityState.PASS:
+        return "Stable"
+    changed = f"{_count(summary.tests_changed, 'test')} changed"
+    if summary.verdict is StabilityState.CHANGED:
+        return changed
+    return f"{changed} · {_count(summary.submissions_broke, 'submission')} broke"
+
+
+def _count(number: int, noun: str) -> str:
+    return f"{number} {noun}{'' if number == 1 else 's'}"

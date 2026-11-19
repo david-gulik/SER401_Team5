@@ -93,8 +93,27 @@ class StabilityReportStore:
         summaries.sort(key=lambda s: s.started_at, reverse=True)
         return tuple(summaries)
 
+    def latest_autograder(self, course: str, module_number: int) -> str | None:
+        """The autograder of the report saved most recently for an assignment, if any."""
+        module_folder = self._workspace.runs_dir / course / f"m{module_number}"
+        if not module_folder.is_dir():
+            return None
+        reports = list(module_folder.glob("*/*.json"))
+        if not reports:
+            return None
+        newest = max(reports, key=lambda p: (p.stat().st_mtime_ns, p.name))
+        return newest.parent.name
+
     def load(self, path: Path) -> StabilityReport:
         return report_from_json(Path(path).read_text(encoding="utf-8"))
+
+    def delete(self, path: Path) -> None:
+        """Remove a saved report; its autograder folder goes too once it is empty."""
+        path = Path(path)
+        path.unlink(missing_ok=True)
+        folder = path.parent
+        if folder.is_dir() and not any(folder.iterdir()):
+            folder.rmdir()
 
 
 # ----- JSON shape -------------------------------------------------------------------------

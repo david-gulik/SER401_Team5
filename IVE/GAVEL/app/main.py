@@ -9,6 +9,7 @@ from GAVEL.app.workspace.layout import Workspace, default_workspace_root
 from GAVEL.app_context import AppContext
 from GAVEL.app_services import AppServices
 from GAVEL.bootstrap import build_asu_browser, build_canvas_client, build_roster_client
+from GAVEL.core.active_assignment import ActiveAssignment
 from GAVEL.core.active_course import ActiveCourse
 from GAVEL.core.main_window import MainWindow
 from GAVEL.core.page_registry import PageRegistry
@@ -80,6 +81,7 @@ def main() -> None:
         services=services,
         active_course=active_course,
         settings=settings,
+        active_assignment=ActiveAssignment(),
     )
 
     registry = PageRegistry.get()
