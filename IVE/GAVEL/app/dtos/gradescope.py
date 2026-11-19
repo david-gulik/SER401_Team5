@@ -17,6 +17,8 @@ class GradescopeTestScore:
     score: float
     max_score: float | None = None
     number: str | None = None
+    # What the test printed for the student, when the source carries it.
+    output: str | None = None
 
 
 @dataclass(frozen=True)
