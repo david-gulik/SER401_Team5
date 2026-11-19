@@ -32,6 +32,7 @@ class InspectGradesViewModel:
         self.proxy_grades_error: str | None = None
         self.rubric_definition: RubricDefinition | None = None
         self.rubric_definition_error: str | None = None
+        self.corrections: dict[tuple[int, str], float] = {}
 
     def select_course(self, course: CourseFolder | None) -> None:
         self.selected_course = course
@@ -39,6 +40,7 @@ class InspectGradesViewModel:
         self.assignments = ()
         self.assignment_error = None
         self._clear_grades()
+        self.corrections.clear()
 
         if course is None:
             return
@@ -59,6 +61,7 @@ class InspectGradesViewModel:
 
         self.selected_assignment = assignment
         self._clear_grades()
+        self.corrections.clear()
 
         if assignment is None or self.selected_course is None:
             return
@@ -114,6 +117,21 @@ class InspectGradesViewModel:
                 IndexError,
             ) as exc:
                 self.proxy_grades_error = str(exc)
+
+    def set_correction(
+        self,
+        student_id: int,
+        criterion_id: str,
+        corrected_score: float,
+    ) -> None:
+        self.corrections[(student_id, criterion_id)] = corrected_score
+
+    def get_correction(
+        self,
+        student_id: int,
+        criterion_id: str,
+    ) -> float | None:
+        return self.corrections.get((student_id, criterion_id))
 
     def _clear_grades(self) -> None:
         self.human_grades = ()
