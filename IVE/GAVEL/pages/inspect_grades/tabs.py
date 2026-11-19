@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.pages.inspect_grades.grade_comparison_panel import GradeComparisonPanel
+from GAVEL.pages.inspect_grades.rubric_correction_panel import RubricCorrectionPanel
 from GAVEL.pages.inspect_grades.student_grade_matrix import StudentGradeMatrix
 from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 from GAVEL.theme.context import ThemeContext
@@ -50,14 +51,11 @@ class InspectGradesTab(ScrollableTab):
         self.student_grade_matrix = StudentGradeMatrix(theme)
         self.add_section(self.student_grade_matrix)
 
-        self.comparison_card = SectionCard(theme, "Grade Comparison")
-
         self.selected_student_label = QLabel(
             "Select a student from the matrix to view grading details."
         )
         self.selected_student_label.setProperty("role", "text_muted")
-
-        self.comparison_card.add_row(self.selected_student_label)
+        self.add_section(self.selected_student_label)
 
         panels_widget = QWidget()
         panels_layout = QHBoxLayout(panels_widget)
@@ -66,15 +64,17 @@ class InspectGradesTab(ScrollableTab):
 
         self.human_panel = GradeComparisonPanel(theme, "Human Grade")
         self.proxy_panel = GradeComparisonPanel(theme, "Proxy / Autograder Grade")
+        self.rubric_correction_panel = RubricCorrectionPanel(theme)
 
-        self.human_panel.setMinimumWidth(350)
-        self.proxy_panel.setMinimumWidth(350)
-
-        self.human_details_label = self.human_panel.message_label
-        self.proxy_details_label = self.proxy_panel.message_label
+        self.human_panel.setMinimumWidth(280)
+        self.proxy_panel.setMinimumWidth(280)
+        self.rubric_correction_panel.setMinimumWidth(280)
 
         panels_layout.addWidget(self.human_panel, 1)
         panels_layout.addWidget(self.proxy_panel, 1)
+        panels_layout.addWidget(self.rubric_correction_panel, 1)
+
+        self.add_section(panels_widget)
 
         human_scrollbar = self.human_panel.scroll_area.verticalScrollBar()
         proxy_scrollbar = self.proxy_panel.scroll_area.verticalScrollBar()
@@ -85,11 +85,10 @@ class InspectGradesTab(ScrollableTab):
         self.human_panel.criterion_selected.connect(self._on_criterion_selected)
         self.proxy_panel.criterion_selected.connect(self._on_criterion_selected)
 
-        self.comparison_card.add_row(panels_widget)
-        self.add_section(self.comparison_card)
+        self.human_details_label = self.human_panel.message_label
+        self.proxy_details_label = self.proxy_panel.message_label
 
         self.student_grade_matrix.table.itemSelectionChanged.connect(self._on_student_selected)
-
         self.add_stretch()
 
         self.assignment_combo.currentIndexChanged.connect(self._on_assignment_changed)
@@ -160,7 +159,57 @@ class InspectGradesTab(ScrollableTab):
         self.human_panel.select_criterion(index)
         self.proxy_panel.select_criterion(index)
 
+        selected_rows = self.student_grade_matrix.table.selectionModel().selectedRows()
+        rubric = self._viewmodel.rubric_definition
+
+        if not selected_rows or rubric is None:
+            self.rubric_correction_panel.clear()
+            return
+
+        if not 0 <= index < len(rubric.criteria):
+            self.rubric_correction_panel.clear()
+            return
+
+        row = selected_rows[0].row()
+        student_item = self.student_grade_matrix.table.item(row, 0)
+
+        if student_item is None:
+            self.rubric_correction_panel.clear()
+            return
+
+        student_id = int(student_item.text())
+        criterion = rubric.criteria[index]
+
+        assessment = next(
+            (
+                assessment
+                for assessment in self._viewmodel.human_grades
+                if assessment.student_id == student_id
+            ),
+            None,
+        )
+
+        original_score = None
+
+        if assessment is not None:
+            original_score = next(
+                (
+                    score.points
+                    for score in assessment.criteria
+                    if score.criterion_id == criterion.id
+                ),
+                None,
+            )
+
+        self.rubric_correction_panel.set_criterion(
+            student_id=student_id,
+            criterion=criterion,
+            original_score=original_score,
+        )
+
     def _on_student_selected(self) -> None:
+        self.rubric_correction_panel.clear()
+
         selected_rows = self.student_grade_matrix.table.selectionModel().selectedRows()
 
         if not selected_rows:

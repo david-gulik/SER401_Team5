@@ -10,14 +10,52 @@
       "description": "Problem 1",
       "long_description": "Synthetic rubric criterion for Problem 1.",
       "points": 4.0,
-      "ratings": []
+      "ratings": [
+        {
+          "id": "crit_1_full",
+          "description": "Full Credit",
+          "long_description": "",
+          "points": 4.0
+        },
+        {
+          "id": "crit_1_partial",
+          "description": "Partial Credit",
+          "long_description": "",
+          "points": 2.0
+        },
+        {
+          "id": "crit_1_none",
+          "description": "No Credit",
+          "long_description": "",
+          "points": 0.0
+        }
+      ]
     },
     {
       "id": "crit_2",
       "description": "Problem 2",
       "long_description": "Synthetic rubric criterion for Problem 2.",
       "points": 2.0,
-      "ratings": []
+      "ratings": [
+        {
+          "id": "crit_2_full",
+          "description": "Full Credit",
+          "long_description": "",
+          "points": 2.0
+        },
+        {
+          "id": "crit_2_partial",
+          "description": "Partial Credit",
+          "long_description": "",
+          "points": 1.0
+        },
+        {
+          "id": "crit_2_none",
+          "description": "No Credit",
+          "long_description": "",
+          "points": 0.0
+        }
+      ]
     }
   ]
 }
