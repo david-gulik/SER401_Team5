@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
@@ -13,6 +15,8 @@ from GAVEL.pages.inspect_grades.student_grade_matrix import (
     ComparisonCellDelegate,
     StudentGradeMatrix,
 )
+
+TEST_WORKSPACE = Path(__file__).resolve().parents[2] / "data" / "workspace"
 
 
 def make_rubric(criterion_count=3):
@@ -403,5 +407,133 @@ def test_matrix_shows_message_when_filters_hide_all_students(qapp, theme):
 
     assert not matrix.table.isRowHidden(0)
     assert matrix.empty_label.isHidden()
+
+    matrix.deleteLater()
+
+
+def test_corrected_row_updates_without_losing_selection(qapp, theme):
+    from GAVEL.app.workspace.dataset import CourseDataset
+    from GAVEL.app.workspace.layout import Workspace
+    from GAVEL.bootstrap import build_dataset_readers
+
+    workspace = Workspace(TEST_WORKSPACE)
+    course = workspace.list_courses()[0]
+    dataset = CourseDataset.anonymized(course, build_dataset_readers())
+
+    assignment = next(a for a in dataset.assignments() if a.module_number == 4)
+
+    rubric = dataset.rubric_definition(assignment.canvas_id)
+    assessments = dataset.rubric_assessments(assignment.canvas_id)
+
+    matrix = StudentGradeMatrix(theme)
+    matrix.display(assessments, rubric)
+
+    matrix.table.selectRow(1)
+
+    assessment = next(a for a in assessments if a.student_id == 100002)
+
+    matrix.update_corrected_row(
+        assessment,
+        rubric,
+        {(100002, "crit_2"): 2.0},
+    )
+
+    assert matrix.table.item(1, 1).text() == "5*"
+    assert matrix.table.item(1, 4).text() == "3"
+    assert matrix.table.item(1, 5).text() == "2*"
+
+    assert "Original Canvas grade: 1" in (matrix.table.item(1, 5).toolTip())
+
+    assert matrix.table.currentRow() == 1
+    assert matrix.table.item(0, 1).text() == "6"
+
+    matrix.deleteLater()
+
+
+def test_correction_updates_proxy_comparison(qapp, theme):
+    matrix = StudentGradeMatrix(theme)
+
+    rubric = make_rubric(2)
+    assessment = make_assessment(101, [3.0, 2.0])
+
+    proxy_scores = {
+        101: {
+            "criterion_0": 4.0,
+            "criterion_1": 2.0,
+        }
+    }
+
+    matrix.display(
+        (assessment,),
+        rubric,
+        proxy_scores_by_student=proxy_scores,
+    )
+
+    assert matrix.table.item(0, 1).text() == "5"
+    assert matrix.table.item(0, 2).text() == "6"
+    assert matrix.table.item(0, 3).text() == "-1"
+    assert matrix.table.item(0, 4).text() == "3/4"
+
+    matrix.update_corrected_row(
+        assessment,
+        rubric,
+        {(101, "criterion_0"): 4.0},
+    )
+
+    assert matrix.table.item(0, 1).text() == "6*"
+    assert matrix.table.item(0, 2).text() == "6"
+    assert matrix.table.item(0, 3).text() == "0"
+    assert matrix.table.item(0, 4).text() == "4*/4"
+    assert matrix.table.item(0, 5).text() == "2/2"
+
+    assert not matrix.table.item(0, 0).data(Qt.ItemDataRole.UserRole)
+
+    assert matrix.table.item(0, 4).background().color() == QColor("#246B48")
+
+    matrix.deleteLater()
+
+
+def test_correction_updates_mismatch_filter_and_legend(qapp, theme):
+    matrix = StudentGradeMatrix(theme)
+
+    rubric = make_rubric(2)
+    assessment = make_assessment(101, [3.0, 2.0])
+
+    proxy_scores = {
+        101: {
+            "criterion_0": 4.0,
+            "criterion_1": 2.0,
+        }
+    }
+
+    matrix.display(
+        (assessment,),
+        rubric,
+        proxy_scores_by_student=proxy_scores,
+    )
+
+    assert "Match: 1" in matrix.legend_label.text()
+    assert "Mismatch: 1" in matrix.legend_label.text()
+
+    matrix.mismatch_checkbox.setChecked(True)
+
+    assert not matrix.table.isRowHidden(0)
+
+    matrix.update_corrected_row(
+        assessment,
+        rubric,
+        {(101, "criterion_0"): 4.0},
+    )
+
+    assert "Match: 2" in matrix.legend_label.text()
+    assert "Mismatch: 0" in matrix.legend_label.text()
+
+    assert matrix.table.isRowHidden(0)
+    assert not matrix.empty_label.isHidden()
+
+    matrix.mismatch_checkbox.setChecked(False)
+
+    assert not matrix.table.isRowHidden(0)
+    assert matrix.table.item(0, 4).text() == "4*/4"
 
     matrix.deleteLater()

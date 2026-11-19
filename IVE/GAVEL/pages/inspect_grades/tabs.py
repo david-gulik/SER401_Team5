@@ -332,13 +332,39 @@ class InspectGradesTab(ScrollableTab):
         student_id = int(student_item.text())
         criterion_id = rubric.criteria[index].id
 
-        self._viewmodel.set_correction(
-            student_id=student_id,
-            criterion_id=criterion_id,
-            corrected_score=corrected_score,
+        assessment = next(
+            (
+                assessment
+                for assessment in self._viewmodel.human_grades
+                if assessment.student_id == student_id
+            ),
+            None,
         )
 
+        if assessment is None:
+            return
+
+        original_score = next(
+            (score.points for score in assessment.criteria if score.criterion_id == criterion_id),
+            None,
+        )
+
+        if original_score is not None and abs(corrected_score - original_score) < 0.0001:
+            self._viewmodel.corrections.pop((student_id, criterion_id), None)
+        else:
+            self._viewmodel.set_correction(
+                student_id=student_id,
+                criterion_id=criterion_id,
+                corrected_score=corrected_score,
+            )
+
         self._refresh_corrected_human_panel(student_id)
+
+        self.student_grade_matrix.update_corrected_row(
+            assessment,
+            rubric,
+            self._viewmodel.corrections,
+        )
 
     def _render_grading_status(self) -> None:
         if self._viewmodel.selected_assignment is None:

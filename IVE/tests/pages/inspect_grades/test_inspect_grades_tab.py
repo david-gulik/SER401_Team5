@@ -507,3 +507,41 @@ def test_switching_students_preserves_corrected_grades(qapp, theme):
     )
 
     tab.deleteLater()
+
+
+def test_correction_updates_matrix_and_human_panel(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+
+    matrix = tab.student_grade_matrix.table
+
+    assert matrix.item(1, 1).text() == "4"
+    assert matrix.item(1, 5).text() == "1"
+
+    tab.human_panel.criterion_selected.emit(1)
+    tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
+
+    assert vm.get_correction(100002, "crit_2") == 2.0
+
+    assert matrix.item(1, 1).text() == "5*"
+    assert matrix.item(1, 5).text() == "2*"
+
+    assert tab.human_panel.total_label.text() == ("Total: 5 / 6 (corrected)")
+
+    assert matrix.currentRow() == 1
+    assert tab.selected_student_label.text() == ("Selected student: 100002")
+
+    assessment = next(a for a in vm.human_grades if a.student_id == 100002)
+
+    original_score = next(
+        score.points for score in assessment.criteria if score.criterion_id == "crit_2"
+    )
+
+    assert original_score == 1.0
+    tab.rubric_correction_panel.grade_buttons.buttons()[1].click()
+
+    assert vm.get_correction(100002, "crit_2") is None
+    tab.deleteLater()
