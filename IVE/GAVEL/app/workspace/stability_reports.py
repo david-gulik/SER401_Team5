@@ -38,6 +38,14 @@ class ReportSummary:
     verdict: StabilityState
     tests_changed: int
     tests_broke: int
+    # Seconds one execution took on average, for estimating the next check; None if none ran.
+    mean_execution_seconds: float | None
+
+
+def _mean_execution_seconds(report: StabilityReport) -> float | None:
+    if not report.executions:
+        return None
+    return sum(e.duration_seconds for e in report.executions) / len(report.executions)
 
 
 class StabilityReportStore:
@@ -50,8 +58,14 @@ class StabilityReportStore:
     def save(self, report: StabilityReport) -> Path:
         folder = self.folder(report.course, report.module_number, report.autograder)
         folder.mkdir(parents=True, exist_ok=True)
-        # Colons are not allowed in Windows file names.
-        path = folder / (report.started_at.replace(":", "-") + ".json")
+        # Colons are not allowed in Windows file names. Two checks started in the
+        # same second get numbered rather than overwriting each other.
+        stem = report.started_at.replace(":", "-")
+        path = folder / f"{stem}.json"
+        counter = 2
+        while path.exists():
+            path = folder / f"{stem}-{counter}.json"
+            counter += 1
         path.write_text(report_to_json(report), encoding="utf-8")
         return path
 
@@ -73,6 +87,7 @@ class StabilityReportStore:
                     verdict=report.verdict,
                     tests_changed=len(report.tests_in(StabilityState.CHANGED)),
                     tests_broke=len(report.tests_in(StabilityState.BROKE)),
+                    mean_execution_seconds=_mean_execution_seconds(report),
                 )
             )
         summaries.sort(key=lambda s: s.started_at, reverse=True)

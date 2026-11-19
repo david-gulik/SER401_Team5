@@ -19,6 +19,7 @@ from GAVEL.pages.home.page import HomePage  # noqa: F401
 from GAVEL.pages.inspect_grades.page import InspectGradesPage  # noqa: F401
 from GAVEL.pages.sanitize.page import SanitizePage  # noqa: F401
 from GAVEL.pages.settings.page import SettingsPage  # noqa: F401
+from GAVEL.pages.stability_check.page import StabilityCheckPage  # noqa: F401
 from GAVEL.services.config_service import ConfigService
 from GAVEL.services.logger import AppLogger, configure_logging
 from GAVEL.theme.context import ThemeContext

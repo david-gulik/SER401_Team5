@@ -32,14 +32,14 @@ MAPPING = ProxyGradeMapping(
 )
 
 
-def _submissions(tmp_path: Path, names=("anon_1", "anon_2", "anon_3")) -> Path:
+def _submissions(tmp_path: Path, names=("anon_1", "anon_2", "anon_3")) -> tuple[Path, ...]:
     folder = tmp_path / "extracted"
     folder.mkdir()
     for name in names:
         (folder / name).mkdir()
         (folder / name / "answer.txt").write_text("42", encoding="utf-8")
     (folder / "submission_metadata.yml").write_text("{}", encoding="utf-8")
-    return folder
+    return tuple(folder / name for name in names)
 
 
 def _request(tmp_path: Path, runs: int = 4, **overrides) -> CheckStabilityRequest:
@@ -48,7 +48,7 @@ def _request(tmp_path: Path, runs: int = 4, **overrides) -> CheckStabilityReques
         "module_number": 9,
         "autograder": "ser334_m9_grader",
         "autograder_dir": tmp_path / "grader",
-        "submissions_dir": _submissions(tmp_path),
+        "submission_dirs": _submissions(tmp_path),
         "runs": runs,
     }
     fields.update(overrides)
@@ -307,13 +307,10 @@ def test_executions_pass_the_timeout_and_run_in_parallel(tmp_path):
     assert sorted(c.submission_dir.name for c in runner.calls) == ["anon_1", "anon_2", "anon_3"]
 
 
-def test_a_folder_without_submissions_is_refused(tmp_path):
-    empty = tmp_path / "empty"
-    empty.mkdir()
-
+def test_a_check_without_submissions_is_refused(tmp_path):
     with pytest.raises(NoSubmissionsError):
         CheckStabilityUseCase(FakeAutograderRunner()).execute(
-            _request(tmp_path, submissions_dir=empty)
+            _request(tmp_path, submission_dirs=())
         )
 
 

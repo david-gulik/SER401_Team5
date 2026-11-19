@@ -41,7 +41,7 @@ def _report(tmp_path: Path, started: datetime, flaky: bool = True):
         module_number=9,
         autograder="ser334_m9_grader.zip",
         autograder_dir=tmp_path / "grader",
-        submissions_dir=folder,
+        submission_dirs=tuple(sorted(p for p in folder.iterdir() if p.is_dir())),
         runs=3,
         workers=2,
         timeout_seconds=5.0,
@@ -118,3 +118,14 @@ def test_list_gives_newest_first_with_a_summary(store, tmp_path):
 
 def test_list_is_empty_for_an_assignment_never_checked(store):
     assert store.list("ser334_25fc_82931", 3, "other.zip") == ()
+
+
+def test_two_checks_started_in_the_same_second_keep_both_files(store, tmp_path):
+    report = _report(tmp_path, datetime(2026, 11, 16, 14, 0, 0))
+
+    first = store.save(report)
+    second = store.save(report)
+
+    assert first.name == "2026-11-16T14-00-00.json"
+    assert second.name == "2026-11-16T14-00-00-2.json"
+    assert len(store.list("ser334_25fc_82931", 9, "ser334_m9_grader.zip")) == 2

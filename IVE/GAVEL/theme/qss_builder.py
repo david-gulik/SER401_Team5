@@ -56,6 +56,7 @@ def build_app_qss(t: ThemeTokens) -> str:
         _qss_progress_panel(t),
         _qss_input_mode_toggle(t),
         _qss_tree_view(t),
+        _qss_picker_list(t),
         _qss_tile(t),
         _qss_chart_toolbar(t),
     ]
@@ -1086,6 +1087,55 @@ def _qss_tree_view(t: ThemeTokens) -> str:
         border: none;
         border-bottom: 1px solid {c["border"]};
         padding: {_px(sp_xs)} {_px(sp_sm)};
+    }}
+    """
+
+
+def _qss_picker_list(t: ThemeTokens) -> str:
+    """A single-pick list in a form (the Stability Check autograder picker).
+
+    Repeated under each surface frame, after ``_qss_surface_card``, so the list
+    keeps an input-like box instead of the frames' transparency rule, and its
+    picked row is drawn in the interactive accent so the pick reads at a glance.
+    """
+    c = t.color
+    r_sm = int(t.shape["radius_sm"])
+    sp_xs = t.sp(4)
+    sp_sm = t.sp(8)
+    frames = (
+        'QFrame[role="app_bg"]',
+        'QFrame[role="panel_bg"]',
+        'QFrame[role="surface"]',
+    )
+
+    def under_frames(selector: str) -> str:
+        return ",\n    ".join([selector, *(f"{frame} {selector}" for frame in frames)])
+
+    base = 'QListWidget[role="picker_list"]'
+    return f"""
+    {under_frames(base)} {{
+        background-color: {c["input_bg"]};
+        border: 1px solid {c["input_border"]};
+        border-radius: {_px(r_sm)};
+        padding: {_px(sp_xs)};
+        outline: 0;
+    }}
+    {under_frames(base + ":focus")} {{
+        border-color: {c["border_focus"]};
+    }}
+    {under_frames(base + "::item")} {{
+        padding: {_px(sp_xs)} {_px(sp_sm)};
+        border-radius: {_px(r_sm)};
+        border-left: 3px solid transparent;
+    }}
+    {under_frames(base + "::item:hover")} {{
+        background-color: {c["interactive_ghost"]};
+    }}
+    {under_frames(base + "::item:selected")},
+    {under_frames(base + "::item:selected:!active")} {{
+        background-color: {c["interactive"]};
+        color: {c["interactive_text"]};
+        border-left: 3px solid {c["interactive_active"]};
     }}
     """
 

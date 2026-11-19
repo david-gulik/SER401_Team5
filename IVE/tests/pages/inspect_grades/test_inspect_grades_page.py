@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from PyQt6.QtCore import QSettings
 
 import GAVEL.pages.autograders.page  # noqa: F401
+import GAVEL.pages.stability_check.page  # noqa: F401
 from GAVEL.app.workspace.layout import Workspace
 from GAVEL.core.active_course import ActiveCourse
 from GAVEL.core.page_registry import PageRegistry
@@ -32,10 +33,11 @@ def test_inspect_grades_page_is_registered():
     assert spec.uses_active_course
 
 
-def test_inspect_grades_sits_directly_below_autograders():
+def test_inspect_grades_sits_below_autograders_and_the_stability_check():
     page_ids = [spec.page_id for spec in PageRegistry.get().list_pages()]
 
-    assert page_ids[page_ids.index("autograders") + 1] == "inspect_grades"
+    start = page_ids.index("autograders")
+    assert page_ids[start : start + 3] == ["autograders", "stability_check", "inspect_grades"]
 
 
 def test_factory_builds_page_with_one_inspect_grades_tab(qapp, theme, tmp_path):

@@ -48,7 +48,8 @@ class CheckStabilityRequest:
     module_number: int
     autograder: str
     autograder_dir: Path
-    submissions_dir: Path
+    # One folder per submission; each is graded ``runs`` times.
+    submission_dirs: tuple[Path, ...]
     runs: int
     workers: int = 1
     timeout_seconds: float | None = None
@@ -82,12 +83,9 @@ class CheckStabilityUseCase:
         is_cancelled: CancelCheck | None = None,
     ) -> StabilityReport:
         cancelled_check = is_cancelled or (lambda: False)
-        submission_dirs = sorted(
-            (p for p in Path(request.submissions_dir).iterdir() if p.is_dir()),
-            key=lambda p: p.name,
-        )
+        submission_dirs = sorted((Path(p) for p in request.submission_dirs), key=lambda p: p.name)
         if not submission_dirs:
-            raise NoSubmissionsError(f"No submission folders in {request.submissions_dir}")
+            raise NoSubmissionsError("A stability check needs at least one submission.")
 
         started = self._clock()
         total = request.runs * len(submission_dirs)
