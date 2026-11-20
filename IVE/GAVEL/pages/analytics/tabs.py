@@ -30,8 +30,6 @@ from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.hint_icon import hint_icon
 from GAVEL.ui_components.section_card import SectionCard
 
-_PLACEHOLDER_VISUALIZATIONS = ("Multi-Autograder Heat Map",)
-
 # Dock position, size, and visibility, saved under the same per-app settings
 # as the last course pick.
 _DOCK_LAYOUT_SETTINGS_KEY = "analytics/dock_layout"
@@ -125,36 +123,26 @@ class OverviewTab(QWidget):
         # docks, giving every card drag-to-rearrange and resize for free.
         self._dock_host.setWindowFlags(Qt.WindowType.Widget)
 
-        # Default layout is three full-width rows: Generate Report alone on
-        # top, the three real charts side by side below it, and the three
-        # not-yet-built visualizations side by side at the bottom. Dragging
+        # Default layout is two full-width rows: Generate Report alone on
+        # top, the four real charts side by side below it. Dragging
         # afterward is unrestricted; this only sets the first look.
         generate_dock = self._make_dock("Generate Report", self._generate_card)
         histogram_dock = self._make_dock("Signed Error Histogram", histogram_card)
         heat_map_dock = self._make_dock("Heat Map", heat_map_card)
         score_dock = self._make_dock("Score Distribution Boxplot", score_distribution_card)
         r_squared_dock = self._make_dock("R²", r_squared_card)
-        placeholder_docks = [
-            self._make_dock(title, _PlaceholderCard(theme, title))
-            for title in _PLACEHOLDER_VISUALIZATIONS
-        ]
 
-        # The three rows are split first, each spanning the full width, so
-        # every row boundary is a real splitter all the way across. Splitting
-        # a row into its columns afterward only divides within that row,
+        # The two rows are split first, each spanning the full width, so the
+        # row boundary is a real splitter all the way across. Splitting a
+        # row into its columns afterward only divides within that row,
         # instead of a column split accidentally confining a later row's
         # split (and its resize handle) to one side of the window.
         self._dock_host.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, generate_dock)
         self._dock_host.splitDockWidget(generate_dock, histogram_dock, Qt.Orientation.Vertical)
-        self._dock_host.splitDockWidget(
-            histogram_dock, placeholder_docks[0], Qt.Orientation.Vertical
-        )
 
         self._dock_host.splitDockWidget(histogram_dock, heat_map_dock, Qt.Orientation.Horizontal)
         self._dock_host.splitDockWidget(heat_map_dock, score_dock, Qt.Orientation.Horizontal)
         self._dock_host.splitDockWidget(score_dock, r_squared_dock, Qt.Orientation.Horizontal)
-        for left, right in zip(placeholder_docks, placeholder_docks[1:], strict=False):
-            self._dock_host.splitDockWidget(left, right, Qt.Orientation.Horizontal)
 
         # Builds a Manage Analytics dropdown so that analytics visuals can be displayed or hidden.
         # It is a QPushButton with a menu.
@@ -168,7 +156,6 @@ class OverviewTab(QWidget):
             heat_map_dock,
             score_dock,
             r_squared_dock,
-            *placeholder_docks,
         ):
             action = dock.toggleViewAction()
             action.setIcon(checkbox_icon)
@@ -219,26 +206,6 @@ class OverviewTab(QWidget):
         self._generate_card.set_course(course)
         for card in self._report_cards:
             card.clear()
-
-
-class _PlaceholderCard(QWidget):
-    """A named spot for a visualization that has not been built yet."""
-
-    def __init__(self, theme: ThemeContext, title: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._card = SectionCard(theme, title)
-
-        label = QLabel("Not yet implemented.")
-        label.setProperty("role", "text_muted")
-        self._card.add_row(label)
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.addWidget(self._card)
-
-    def clear_title(self) -> None:
-        """Empties this card's own title text, for a caller that already shows it."""
-        self._card.clear_title()
 
 
 class GenerateReportCard(QWidget):

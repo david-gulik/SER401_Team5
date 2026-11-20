@@ -4,18 +4,14 @@ import json
 from pathlib import Path
 
 from PyQt6.QtCore import QSettings
-from PyQt6.QtWidgets import QLabel, QPushButton
+from PyQt6.QtWidgets import QPushButton
 
 from GAVEL.app.workspace.layout import CourseFolder, CourseKey
 from GAVEL.bootstrap import build_dataset_readers
 from GAVEL.pages.analytics.heat_map_card import HeatMapCard
 from GAVEL.pages.analytics.score_distribution_card import ScoreDistributionCard
 from GAVEL.pages.analytics.signed_error_histogram_card import SignedErrorHistogramCard
-from GAVEL.pages.analytics.tabs import (
-    _PLACEHOLDER_VISUALIZATIONS,
-    GenerateReportCard,
-    OverviewTab,
-)
+from GAVEL.pages.analytics.tabs import GenerateReportCard, OverviewTab
 from GAVEL.ui_components.chart_canvas import ChartCanvas
 
 _COURSE = CourseFolder(path=Path("unused"), key=CourseKey.parse("ser222_25sc_12345"))
@@ -26,7 +22,7 @@ def _tab(theme, tmp_path: Path) -> OverviewTab:
     return OverviewTab(theme, build_dataset_readers(), settings)
 
 
-def test_overview_tab_starts_with_empty_placeholder_charts(qapp, theme, tmp_path: Path):
+def test_overview_tab_starts_with_no_charts_shown(qapp, theme, tmp_path: Path):
     tab = _tab(theme, tmp_path)
 
     canvases = tab.findChildren(ChartCanvas)
@@ -88,16 +84,6 @@ def test_overview_tab_includes_the_score_distribution_card(qapp, theme, tmp_path
     assert len(tab.findChildren(ScoreDistributionCard)) == 1
 
 
-def test_overview_tab_includes_a_placeholder_for_every_other_visualization(
-    qapp, theme, tmp_path: Path
-):
-    tab = _tab(theme, tmp_path)
-
-    placeholder_labels = [w for w in tab.findChildren(QLabel) if w.text() == "Not yet implemented."]
-
-    assert len(placeholder_labels) == len(_PLACEHOLDER_VISUALIZATIONS)
-
-
 def test_the_dock_layout_is_remembered_for_the_next_launch(qapp, theme, tmp_path: Path):
     settings_path = str(tmp_path / "gavel.ini")
     tab = OverviewTab(
@@ -138,7 +124,7 @@ def test_manage_analytics_lists_every_card_checked_by_default(qapp, theme, tmp_p
 
     actions = _manage_analytics_menu(tab).actions()
 
-    assert len(actions) == 5 + len(_PLACEHOLDER_VISUALIZATIONS)
+    assert len(actions) == 5
     assert all(action.isCheckable() and action.isChecked() for action in actions)
 
 
