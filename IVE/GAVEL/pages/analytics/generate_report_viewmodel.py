@@ -7,6 +7,10 @@ from GAVEL.app.usecases.proxy_grade.generate_heat_map_report import (
     compute_heat_map_rows,
     write_heat_map_report,
 )
+from GAVEL.app.usecases.proxy_grade.generate_r_squared_report import (
+    compute_r_squared_report,
+    write_r_squared_report,
+)
 from GAVEL.app.usecases.proxy_grade.generate_signed_error_report import (
     compute_signed_error_rows,
     write_report,
@@ -32,6 +36,13 @@ class GenerateHeatMapOutcome:
     unmatched: int
     failed: int
     missing_human_scores: int
+
+
+@dataclass(frozen=True)
+class GenerateRSquaredOutcome:
+    output_path: Path
+    test_pairs: int
+    cross_assessment_r_squared: float
 
 
 class GenerateReportViewModel:
@@ -91,6 +102,15 @@ class GenerateReportViewModel:
 
         matched = tuple(c.raw_header for c in gradebook.columns if c.canvas_id in matched_ids)
         return matched or tuple(c.raw_header for c in gradebook.columns)
+
+    def list_all_gradebook_columns(self, course: CourseFolder) -> tuple[str, ...]:
+        """Every gradebook column header and encompasses all modules.
+        The r-squared report's cross-assessment check compares a module's
+        own assignment against a different assessment, like a quiz, which
+        may belong to another module entirely.
+        """
+        dataset = CourseDataset.anonymized(course, self._dataset_readers)
+        return tuple(column.raw_header for column in dataset.gradebook().columns)
 
     def list_rubric_assignments(
         self, course: CourseFolder, module_number: int
@@ -175,4 +195,38 @@ class GenerateReportViewModel:
             unmatched=len(result.unmatched_submissions),
             failed=len(result.failed_submissions),
             missing_human_scores=len(result.students_without_human_scores),
+        )
+
+    def generate_r_squared(
+        self,
+        workspace_root: Path,
+        course: CourseFolder,
+        module_number: int,
+        assessment_column_a: str,
+        assessment_column_b: str,
+    ) -> GenerateRSquaredOutcome:
+        """Builds an r-squared report.
+        This visualization needs no proxy mapping as test
+        redundancy only looks at raw Gradescope test outcomes and the
+        cross-assessment check only compares two gradebook columns.
+        """
+        dataset = CourseDataset.anonymized(course, self._dataset_readers)
+        submissions = dataset.gradescope_submissions(module_number)
+        gradebook = dataset.gradebook()
+
+        result = compute_r_squared_report(
+            submissions, gradebook, assessment_column_a, assessment_column_b
+        )
+
+        workspace = Workspace(workspace_root)
+        output_path = (
+            workspace.runs_dir / f"{course.key.folder_name}_m{module_number}_rsquared.json"
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        write_r_squared_report(result, output_path)
+
+        return GenerateRSquaredOutcome(
+            output_path=output_path,
+            test_pairs=len(result.test_pairs),
+            cross_assessment_r_squared=result.cross_assessment.r_squared,
         )

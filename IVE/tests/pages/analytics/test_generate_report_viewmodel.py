@@ -239,6 +239,35 @@ def test_gradebook_columns_without_a_manifest_still_lists_every_column(
     assert set(columns) == {_MODULE_9_COLUMN, _OTHER_COLUMN}
 
 
+def test_list_all_gradebook_columns_is_not_narrowed_to_a_module(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    workspace_root = _build_course(tmp_path, with_manifest=True)
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+
+    columns = vm.list_all_gradebook_columns(course)
+
+    assert set(columns) == {_MODULE_9_COLUMN, _OTHER_COLUMN}
+
+
+def test_generate_r_squared_writes_a_report_to_the_runs_folder(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    workspace_root = _build_course(tmp_path)
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+
+    outcome = vm.generate_r_squared(workspace_root, course, 9, _MODULE_9_COLUMN, _OTHER_COLUMN)
+
+    # Student A passes every test, student B passes none, so every pair of
+    # the mapping's 15 tests is perfectly (anti-)correlated: 15 choose 2.
+    assert outcome.test_pairs == 105
+    assert outcome.cross_assessment_r_squared == pytest.approx(1.0)
+    assert outcome.output_path.exists()
+    assert outcome.output_path.parent == Workspace(workspace_root).runs_dir
+
+
 def test_rubric_assignments_lists_only_assignments_with_a_rubric(
     tmp_path: Path, readers: DatasetReaders
 ) -> None:

@@ -23,17 +23,12 @@ from GAVEL.app.workspace.layout import CourseFolder
 from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.pages.analytics.generate_report_viewmodel import GenerateReportViewModel
 from GAVEL.pages.analytics.heat_map_card import HeatMapCard
+from GAVEL.pages.analytics.r_squared_card import RSquaredCard
 from GAVEL.pages.analytics.score_distribution_card import ScoreDistributionCard
 from GAVEL.pages.analytics.signed_error_histogram_card import SignedErrorHistogramCard
 from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.hint_icon import hint_icon
 from GAVEL.ui_components.section_card import SectionCard
-
-_PLACEHOLDER_VISUALIZATIONS = (
-    "Swiss Cheese Comparison Table",
-    "Multi-Autograder Heat Map",
-    "R² Chart",
-)
 
 # Dock position, size, and visibility, saved under the same per-app settings
 # as the last course pick.
@@ -109,11 +104,18 @@ class OverviewTab(QWidget):
         histogram_card = SignedErrorHistogramCard(theme)
         heat_map_card = HeatMapCard(theme)
         score_distribution_card = ScoreDistributionCard(theme)
+        r_squared_card = RSquaredCard(theme)
         self._generate_card.signed_error_report_generated.connect(histogram_card.load_report)
         self._generate_card.heat_map_report_generated.connect(heat_map_card.load_report)
         self._generate_card.heat_map_report_generated.connect(score_distribution_card.load_report)
+        self._generate_card.r_squared_report_generated.connect(r_squared_card.load_report)
         # Each chart shows one course's report, so a change of course empties them.
-        self._report_cards = (histogram_card, heat_map_card, score_distribution_card)
+        self._report_cards = (
+            histogram_card,
+            heat_map_card,
+            score_distribution_card,
+            r_squared_card,
+        )
 
         self._dock_host = QMainWindow()
         self._dock_host.setDockNestingEnabled(True)
@@ -121,34 +123,26 @@ class OverviewTab(QWidget):
         # docks, giving every card drag-to-rearrange and resize for free.
         self._dock_host.setWindowFlags(Qt.WindowType.Widget)
 
-        # Default layout is three full-width rows: Generate Report alone on
-        # top, the three real charts side by side below it, and the three
-        # not-yet-built visualizations side by side at the bottom. Dragging
+        # Default layout is two full-width rows: Generate Report alone on
+        # top, the four real charts side by side below it. Dragging
         # afterward is unrestricted; this only sets the first look.
         generate_dock = self._make_dock("Generate Report", self._generate_card)
         histogram_dock = self._make_dock("Signed Error Histogram", histogram_card)
         heat_map_dock = self._make_dock("Heat Map", heat_map_card)
         score_dock = self._make_dock("Score Distribution Boxplot", score_distribution_card)
-        placeholder_docks = [
-            self._make_dock(title, _PlaceholderCard(theme, title))
-            for title in _PLACEHOLDER_VISUALIZATIONS
-        ]
+        r_squared_dock = self._make_dock("R²", r_squared_card)
 
-        # The three rows are split first, each spanning the full width, so
-        # every row boundary is a real splitter all the way across. Splitting
-        # a row into its columns afterward only divides within that row,
+        # The two rows are split first, each spanning the full width, so the
+        # row boundary is a real splitter all the way across. Splitting a
+        # row into its columns afterward only divides within that row,
         # instead of a column split accidentally confining a later row's
         # split (and its resize handle) to one side of the window.
         self._dock_host.addDockWidget(Qt.DockWidgetArea.TopDockWidgetArea, generate_dock)
         self._dock_host.splitDockWidget(generate_dock, histogram_dock, Qt.Orientation.Vertical)
-        self._dock_host.splitDockWidget(
-            histogram_dock, placeholder_docks[0], Qt.Orientation.Vertical
-        )
 
         self._dock_host.splitDockWidget(histogram_dock, heat_map_dock, Qt.Orientation.Horizontal)
         self._dock_host.splitDockWidget(heat_map_dock, score_dock, Qt.Orientation.Horizontal)
-        for left, right in zip(placeholder_docks, placeholder_docks[1:], strict=False):
-            self._dock_host.splitDockWidget(left, right, Qt.Orientation.Horizontal)
+        self._dock_host.splitDockWidget(score_dock, r_squared_dock, Qt.Orientation.Horizontal)
 
         # Builds a Manage Analytics dropdown so that analytics visuals can be displayed or hidden.
         # It is a QPushButton with a menu.
@@ -156,7 +150,13 @@ class OverviewTab(QWidget):
         # A plain QMenu closes after every single one.
         checkbox_icon = _checkbox_icon(theme)
         view_menu = _PersistentCheckMenu(self._dock_host)
-        for dock in (generate_dock, histogram_dock, heat_map_dock, score_dock, *placeholder_docks):
+        for dock in (
+            generate_dock,
+            histogram_dock,
+            heat_map_dock,
+            score_dock,
+            r_squared_dock,
+        ):
             action = dock.toggleViewAction()
             action.setIcon(checkbox_icon)
             view_menu.addAction(action)
@@ -208,42 +208,24 @@ class OverviewTab(QWidget):
             card.clear()
 
 
-class _PlaceholderCard(QWidget):
-    """A named spot for a visualization that has not been built yet."""
-
-    def __init__(self, theme: ThemeContext, title: str, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._card = SectionCard(theme, title)
-
-        label = QLabel("Not yet implemented.")
-        label.setProperty("role", "text_muted")
-        self._card.add_row(label)
-
-        root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.addWidget(self._card)
-
-    def clear_title(self) -> None:
-        """Empties this card's own title text, for a caller that already shows it."""
-        self._card.clear_title()
-
-
 class GenerateReportCard(QWidget):
     """Builds a report from the active course.
-
     The report type picked determines which extra fields appear: a signed-
     error report needs a gradebook column, a heat map report needs a rubric
-    assignment. Always reads the anonymized side of the course folder,
-    through GenerateReportViewModel. The course comes in through set_course;
-    the report lands in the runs/ folder of the workspace that course sits in.
+    assignment, and an r-squared report needs two assessment columns to
+    compare. Always reads the anonymized side of the course folder, through
+    GenerateReportViewModel. The course comes in through set_course; the
+    report lands in the runs/ folder of the workspace that course sits in.
     """
 
     signed_error_report_generated = pyqtSignal(Path)
     heat_map_report_generated = pyqtSignal(Path)
+    r_squared_report_generated = pyqtSignal(Path)
 
     _CHOOSE_TYPE = "Choose a report type…"
     _SIGNED_ERROR = "Signed Error Report"
     _HEAT_MAP = "Heat Map Report"
+    _R_SQUARED = "R-Squared Report"
     _NO_COURSE = "No course selected."
 
     def __init__(
@@ -268,7 +250,9 @@ class GenerateReportCard(QWidget):
         )
 
         self._report_type_box = QComboBox()
-        self._report_type_box.addItems((self._CHOOSE_TYPE, self._SIGNED_ERROR, self._HEAT_MAP))
+        self._report_type_box.addItems(
+            (self._CHOOSE_TYPE, self._SIGNED_ERROR, self._HEAT_MAP, self._R_SQUARED)
+        )
         self._report_type_box.currentIndexChanged.connect(self._on_report_type_changed)
         type_form = QFormLayout()
         type_form.addRow("Report type", self._report_type_box)
@@ -299,6 +283,15 @@ class GenerateReportCard(QWidget):
         self._heat_map_fields.setLayout(heat_map_form)
         self._card.add_row(self._heat_map_fields)
 
+        self._assessment_a_box = QComboBox()
+        self._assessment_b_box = QComboBox()
+        r_squared_form = QFormLayout()
+        r_squared_form.addRow("Assessment A (this module)", self._assessment_a_box)
+        r_squared_form.addRow("Assessment B (any module)", self._assessment_b_box)
+        self._r_squared_fields = QWidget()
+        self._r_squared_fields.setLayout(r_squared_form)
+        self._card.add_row(self._r_squared_fields)
+
         self._generate_button = QPushButton("Generate Report")
         self._generate_button.clicked.connect(self._generate)
         self._card.add_row(self._generate_button)
@@ -314,7 +307,9 @@ class GenerateReportCard(QWidget):
         self._common_fields.setVisible(False)
         self._signed_error_fields.setVisible(False)
         self._heat_map_fields.setVisible(False)
+        self._r_squared_fields.setVisible(False)
         self._generate_button.setVisible(False)
+        self._update_height_to_fit_visible_fields()
 
     def clear_title(self) -> None:
         """Empties this card's own title text, for a caller that already shows it."""
@@ -340,11 +335,23 @@ class GenerateReportCard(QWidget):
 
     def _on_report_type_changed(self) -> None:
         report_type = self._report_type_box.currentText()
-        chosen = report_type in (self._SIGNED_ERROR, self._HEAT_MAP)
+        chosen = report_type in (self._SIGNED_ERROR, self._HEAT_MAP, self._R_SQUARED)
         self._common_fields.setVisible(chosen)
         self._generate_button.setVisible(chosen)
         self._signed_error_fields.setVisible(report_type == self._SIGNED_ERROR)
         self._heat_map_fields.setVisible(report_type == self._HEAT_MAP)
+        self._r_squared_fields.setVisible(report_type == self._R_SQUARED)
+        self._update_height_to_fit_visible_fields()
+
+    def _update_height_to_fit_visible_fields(self) -> None:
+        """Caps this card's height at whatever its currently visible rows need.
+
+        A fixed cap can't serve both states well: the busiest report type
+        (R-Squared) needs far more room than the empty "no type chosen"
+        state, so a constant picked for one wastes space in the other. This
+        recomputes the cap every time a row's visibility changes instead.
+        """
+        self.setMaximumHeight(self.sizeHint().height())
 
     def _refresh_modules(self) -> None:
         previous = self._module_box.currentText()
@@ -365,6 +372,7 @@ class GenerateReportCard(QWidget):
     def _refresh_module_dependents(self) -> None:
         self._refresh_columns()
         self._refresh_rubric_assignments()
+        self._refresh_assessment_columns()
 
     def _refresh_columns(self) -> None:
         previous = self._column_box.currentText()
@@ -403,6 +411,34 @@ class GenerateReportCard(QWidget):
         if index >= 0:
             self._rubric_box.setCurrentIndex(index)
 
+    def _refresh_assessment_columns(self) -> None:
+        previous_a = self._assessment_a_box.currentText()
+        previous_b = self._assessment_b_box.currentText()
+        self._assessment_a_box.clear()
+        self._assessment_b_box.clear()
+        course = self._selected_course()
+        module_text = self._module_box.currentText()
+        if course is None or not module_text:
+            return
+        try:
+            module_columns = self._view_model.list_gradebook_columns(course, int(module_text))
+            all_columns = self._view_model.list_all_gradebook_columns(course)
+        except Exception as exc:
+            self._status.setText(f"Could not read the gradebook: {exc}")
+            return
+        self._assessment_a_box.addItems(module_columns)
+        # Assessment A is always one of module_columns, so comparing it against
+        # itself (a trivial, always-perfect r-squared) is never a real choice.
+        self._assessment_b_box.addItems(
+            [column for column in all_columns if column not in module_columns]
+        )
+        index_a = self._assessment_a_box.findText(previous_a)
+        if index_a >= 0:
+            self._assessment_a_box.setCurrentIndex(index_a)
+        index_b = self._assessment_b_box.findText(previous_b)
+        if index_b >= 0:
+            self._assessment_b_box.setCurrentIndex(index_b)
+
     def _selected_course(self) -> CourseFolder | None:
         return self._course
 
@@ -422,6 +458,11 @@ class GenerateReportCard(QWidget):
             return
 
         module_number = int(module_text)
+
+        if report_type == self._R_SQUARED:
+            self._generate_r_squared_report(course, module_number)
+            return
+
         mapping_name = self._view_model.resolve_mapping_name(course, module_number)
         if mapping_name is None:
             self._status.setText(
@@ -480,3 +521,24 @@ class GenerateReportCard(QWidget):
             f"Saved to {outcome.output_path.name}."
         )
         self.heat_map_report_generated.emit(outcome.output_path)
+
+    def _generate_r_squared_report(self, course: CourseFolder, module_number: int) -> None:
+        assessment_a = self._assessment_a_box.currentText()
+        assessment_b = self._assessment_b_box.currentText()
+        if not assessment_a or not assessment_b:
+            self._status.setText("Choose both assessments to compare.")
+            return
+
+        try:
+            outcome = self._view_model.generate_r_squared(
+                course.workspace_root, course, module_number, assessment_a, assessment_b
+            )
+        except Exception as exc:
+            self._status.setText(f"Could not generate the report: {exc}")
+            return
+
+        self._status.setText(
+            f"{outcome.test_pairs} test pairs, cross-assessment r² = "
+            f"{outcome.cross_assessment_r_squared:.2f}. Saved to {outcome.output_path.name}."
+        )
+        self.r_squared_report_generated.emit(outcome.output_path)
