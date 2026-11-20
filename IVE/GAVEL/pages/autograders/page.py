@@ -29,7 +29,7 @@ class AutogradersPage(BasePage):
 
     def build_tabs(self):
         return [
-            ("Run Autograder(s)", RunAutogradersTab(self._theme)),
+            ("Run Autograder(s)", RunAutogradersTab(self._ctx)),
             ("Autograder Diagnostics", AutogradersDiagnosticsPage(self._theme)),
         ]
 
