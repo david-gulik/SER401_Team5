@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
@@ -9,9 +10,9 @@ from GAVEL.app.dtos.rubric_definition import (
 )
 from GAVEL.app.workspace.layout import Workspace
 from GAVEL.bootstrap import build_dataset_readers
+from GAVEL.pages.inspect_grades.correction_store import load_corrections
 from GAVEL.pages.inspect_grades.tabs import InspectGradesTab
 from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
-from GAVEL.pages.inspect_grades.correction_store import load_corrections
 
 TEST_WORKSPACE = Path(__file__).resolve().parents[2] / "data" / "workspace"
 [COURSE] = Workspace(TEST_WORKSPACE).list_courses()
@@ -24,11 +25,7 @@ def isolate_correction_files(tmp_path, monkeypatch):
     monkeypatch.setattr(
         InspectGradesViewModel,
         "_corrections_path",
-        lambda self: (
-            correction_file
-            if self.selected_assignment is not None
-            else None
-        ),
+        lambda self: correction_file if self.selected_assignment is not None else None,
     )
 
 
@@ -600,9 +597,7 @@ def test_criterion_notes_are_saved(qapp, theme):
     tab.student_grade_matrix.table.selectRow(1)
     tab.human_panel.criterion_selected.emit(1)
 
-    tab.rubric_correction_panel.notes_input.setPlainText(
-        "Reviewed the student's work."
-    )
+    tab.rubric_correction_panel.notes_input.setPlainText("Reviewed the student's work.")
 
     path = vm._corrections_path()
     assert path is not None
@@ -610,9 +605,7 @@ def test_criterion_notes_are_saved(qapp, theme):
     saved_corrections, saved_notes = load_corrections(path)
 
     assert saved_corrections == {}
-    assert saved_notes == {
-        (100002, "crit_2"): "Reviewed the student's work."
-    }
+    assert saved_notes == {(100002, "crit_2"): "Reviewed the student's work."}
 
     tab.rubric_correction_panel.notes_input.clear()
 
@@ -632,13 +625,9 @@ def test_saved_notes_restore_when_reselecting_criterion(qapp, theme):
 
     tab.human_panel.criterion_selected.emit(1)
 
-    tab.rubric_correction_panel.notes_input.setPlainText(
-        "Reviewed the student's work."
-    )
+    tab.rubric_correction_panel.notes_input.setPlainText("Reviewed the student's work.")
 
-    assert vm.notes[(100002, "crit_2")] == (
-        "Reviewed the student's work."
-    )
+    assert vm.notes[(100002, "crit_2")] == ("Reviewed the student's work.")
 
     tab.human_panel.criterion_selected.emit(0)
 
@@ -646,9 +635,7 @@ def test_saved_notes_restore_when_reselecting_criterion(qapp, theme):
 
     tab.human_panel.criterion_selected.emit(1)
 
-    assert tab.rubric_correction_panel.notes_input.toPlainText() == (
-        "Reviewed the student's work."
-    )
+    assert tab.rubric_correction_panel.notes_input.toPlainText() == ("Reviewed the student's work.")
 
     tab.deleteLater()
 
@@ -674,9 +661,7 @@ def test_reopening_assignment_restores_saved_corrections_and_notes(
     tab.human_panel.criterion_selected.emit(1)
 
     tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
-    tab.rubric_correction_panel.notes_input.setPlainText(
-        "Awarded full credit after review."
-    )
+    tab.rubric_correction_panel.notes_input.setPlainText("Awarded full credit after review.")
 
     assert tab.student_grade_matrix.table.item(1, 1).text() == "5*"
 
@@ -684,9 +669,7 @@ def test_reopening_assignment_restores_saved_corrections_and_notes(
     tab.assignment_combo.setCurrentIndex(2)
 
     assert vm.get_correction(100002, "crit_2") == 2.0
-    assert vm.notes[(100002, "crit_2")] == (
-        "Awarded full credit after review."
-    )
+    assert vm.notes[(100002, "crit_2")] == ("Awarded full credit after review.")
 
     matrix = tab.student_grade_matrix.table
     assert matrix.item(1, 1).text() == "5*"
@@ -695,9 +678,7 @@ def test_reopening_assignment_restores_saved_corrections_and_notes(
     matrix.selectRow(1)
     tab.human_panel.criterion_selected.emit(1)
 
-    assert tab.human_panel.total_label.text() == (
-        "Total: 5 / 6 (corrected)"
-    )
+    assert tab.human_panel.total_label.text() == ("Total: 5 / 6 (corrected)")
     assert tab.rubric_correction_panel.grade_buttons.buttons()[0].isChecked()
     assert tab.rubric_correction_panel.notes_input.toPlainText() == (
         "Awarded full credit after review."

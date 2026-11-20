@@ -1,8 +1,8 @@
-
 import json
-from pathlib import Path
 import os
 import tempfile
+from pathlib import Path
+
 
 def save_corrections(
     path: Path,
@@ -28,7 +28,6 @@ def save_corrections(
         "corrections": entries,
     }
 
-
     content = json.dumps(data, indent=2) + "\n"
     temporary_path = None
 
@@ -50,7 +49,6 @@ def save_corrections(
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
-
 
 
 def load_corrections(

@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-from zipfile import BadZipFile
 from pathlib import Path
+from zipfile import BadZipFile
 
-from GAVEL.app.workspace.layout import Workspace
-from GAVEL.pages.inspect_grades.correction_store import (
-    load_corrections,
-    save_corrections,
-)
 from GAVEL.app.dtos.gradescope import GradescopeSubmission
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 from GAVEL.app.dtos.rubric_definition import RubricDefinition
@@ -16,12 +11,15 @@ from GAVEL.app.workspace.dataset import (
     DatasetReaders,
     MissingArtifactError,
 )
-from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.layout import CourseFolder, Workspace
 from GAVEL.app.workspace.manifest import AssignmentEntry, ManifestError
+from GAVEL.pages.inspect_grades.correction_store import (
+    load_corrections,
+    save_corrections,
+)
 
 
 class InspectGradesViewModel:
-
     def __init__(self, dataset_readers: DatasetReaders) -> None:
         self._dataset_readers = dataset_readers
 

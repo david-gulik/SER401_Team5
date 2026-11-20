@@ -69,9 +69,7 @@ class InspectGradesTab(ScrollableTab):
 
         self.rubric_correction_panel.correction_changed.connect(self._on_correction_changed)
 
-        self.rubric_correction_panel.notes_changed.connect(
-            self._on_notes_changed
-        )
+        self.rubric_correction_panel.notes_changed.connect(self._on_notes_changed)
 
         self.human_panel.setMinimumWidth(280)
         self.proxy_panel.setMinimumWidth(280)
@@ -340,9 +338,7 @@ class InspectGradesTab(ScrollableTab):
         index = self._selected_criterion_index
         rubric = self._viewmodel.rubric_definition
 
-        selected_rows = (
-            self.student_grade_matrix.table.selectionModel().selectedRows()
-        )
+        selected_rows = self.student_grade_matrix.table.selectionModel().selectedRows()
 
         if index is None or rubric is None or not selected_rows:
             return

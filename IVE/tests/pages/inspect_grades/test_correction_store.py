@@ -1,4 +1,3 @@
-
 from GAVEL.pages.inspect_grades.correction_store import (
     load_corrections,
     save_corrections,

@@ -6,11 +6,11 @@ import pytest
 
 from GAVEL.app.workspace.layout import Workspace
 from GAVEL.bootstrap import build_dataset_readers
-from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 from GAVEL.pages.inspect_grades.correction_store import (
     load_corrections,
     save_corrections,
 )
+from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 
 TEST_WORKSPACE = Path(__file__).resolve().parents[2] / "data" / "workspace"
 [COURSE] = Workspace(TEST_WORKSPACE).list_courses()
@@ -295,9 +295,7 @@ def test_overwrites_existing_rubric_correction():
 
 
 def test_selecting_assignment_loads_saved_corrections(tmp_path, monkeypatch):
-    vm = InspectGradesViewModel(
-        dataset_readers=build_dataset_readers()
-    )
+    vm = InspectGradesViewModel(dataset_readers=build_dataset_readers())
     vm.select_course(COURSE)
 
     correction_file = tmp_path / "corrections" / "7216983.json"
@@ -331,9 +329,7 @@ def test_selecting_assignment_loads_saved_corrections(tmp_path, monkeypatch):
 
 
 def test_saves_current_assignment_corrections(tmp_path, monkeypatch):
-    vm = InspectGradesViewModel(
-        dataset_readers=build_dataset_readers()
-    )
+    vm = InspectGradesViewModel(dataset_readers=build_dataset_readers())
     vm.select_course(COURSE)
 
     correction_file = tmp_path / "corrections" / "7216983.json"
@@ -344,10 +340,7 @@ def test_saves_current_assignment_corrections(tmp_path, monkeypatch):
         lambda: correction_file,
     )
 
-    assignment = next(
-        a for a in vm.assignments
-        if a.module_number == 4
-    )
+    assignment = next(a for a in vm.assignments if a.module_number == 4)
 
     vm.select_assignment(assignment)
 
@@ -361,13 +354,9 @@ def test_saves_current_assignment_corrections(tmp_path, monkeypatch):
     saved_scores, saved_notes = load_corrections(correction_file)
 
     assert saved_scores == {(100002, "crit_2"): 2.0}
-    assert saved_notes == {
-        (100002, "crit_2"): "Awarded full credit."
-    }
+    assert saved_notes == {(100002, "crit_2"): "Awarded full credit."}
 
-    restored_vm = InspectGradesViewModel(
-        dataset_readers=build_dataset_readers()
-    )
+    restored_vm = InspectGradesViewModel(dataset_readers=build_dataset_readers())
     restored_vm.select_course(COURSE)
 
     monkeypatch.setattr(
