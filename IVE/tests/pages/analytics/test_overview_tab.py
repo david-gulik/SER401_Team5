@@ -31,7 +31,7 @@ def test_overview_tab_starts_with_empty_placeholder_charts(qapp, theme, tmp_path
 
     canvases = tab.findChildren(ChartCanvas)
 
-    assert len(canvases) == 3
+    assert len(canvases) == 4
     assert not any(canvas.is_showing_chart() for canvas in canvases)
 
 
@@ -138,7 +138,7 @@ def test_manage_analytics_lists_every_card_checked_by_default(qapp, theme, tmp_p
 
     actions = _manage_analytics_menu(tab).actions()
 
-    assert len(actions) == 4 + len(_PLACEHOLDER_VISUALIZATIONS)
+    assert len(actions) == 5 + len(_PLACEHOLDER_VISUALIZATIONS)
     assert all(action.isCheckable() and action.isChecked() for action in actions)
 
 
