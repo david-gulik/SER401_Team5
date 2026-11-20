@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from PyQt6.QtCore import Qt
 from PyQt6.QtTest import QTest
 
@@ -9,11 +10,23 @@ from GAVEL.app.dtos.rubric_definition import (
 )
 from GAVEL.app.workspace.layout import Workspace
 from GAVEL.bootstrap import build_dataset_readers
+from GAVEL.pages.inspect_grades.correction_store import load_corrections
 from GAVEL.pages.inspect_grades.tabs import InspectGradesTab
 from GAVEL.pages.inspect_grades.viewmodel import InspectGradesViewModel
 
 TEST_WORKSPACE = Path(__file__).resolve().parents[2] / "data" / "workspace"
 [COURSE] = Workspace(TEST_WORKSPACE).list_courses()
+
+
+@pytest.fixture(autouse=True)
+def isolate_correction_files(tmp_path, monkeypatch):
+    correction_file = tmp_path / "corrections.json"
+
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "_corrections_path",
+        lambda self: correction_file if self.selected_assignment is not None else None,
+    )
 
 
 def _tab(theme) -> tuple[InspectGradesTab, InspectGradesViewModel]:
@@ -336,4 +349,339 @@ def test_criterion_selection_is_synchronized(qapp, theme):
             assert card.property("selected") == "false"
 
     tab.close()
+    tab.deleteLater()
+
+
+def test_criterion_selection_updates_rubric_correction_panel(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    tab.student_grade_matrix.table.selectRow(0)
+
+    rubric = vm.rubric_definition
+    assert rubric is not None
+
+    tab.human_panel.criterion_selected.emit(0)
+
+    correction_panel = tab.rubric_correction_panel
+
+    assert correction_panel.student_label.text() == "Student: 100001"
+    assert correction_panel.criterion_label.text() == (
+        f"Criterion: {rubric.criteria[0].description}"
+    )
+    assert correction_panel.original_grade_label.text() == (
+        f"Original Grade (Canvas): 4 / {rubric.criteria[0].points:g}"
+    )
+
+    assert tab.human_panel.criteria_layout.itemAt(0).widget().property("selected") == "true"
+    assert tab.proxy_panel.criteria_layout.itemAt(0).widget().property("selected") == "true"
+
+    tab.student_grade_matrix.table.selectRow(1)
+
+    assert correction_panel.student_label.text() == "Student: —"
+    assert correction_panel.grade_buttons.buttons() == []
+
+    tab.deleteLater()
+
+
+def test_corrected_grade_is_stored_in_viewmodel(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    tab.student_grade_matrix.table.selectRow(1)
+
+    tab.human_panel.criterion_selected.emit(1)
+
+    assert vm.get_correction(100002, "crit_2") is None
+
+    buttons = tab.rubric_correction_panel.grade_buttons.buttons()
+
+    assert len(buttons) == 3
+    assert buttons[1].isChecked()
+
+    buttons[0].click()
+
+    assert vm.get_correction(100002, "crit_2") == 2.0
+
+    assert vm.get_correction(100002, "crit_1") is None
+    assert vm.get_correction(100001, "crit_2") is None
+
+    assessment = next(a for a in vm.human_grades if a.student_id == 100002)
+
+    original_score = next(
+        score.points for score in assessment.criteria if score.criterion_id == "crit_2"
+    )
+
+    assert original_score == 1.0
+
+    tab.deleteLater()
+
+
+def test_correction_updates_human_panel_and_total(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+
+    tab.human_panel.criterion_selected.emit(1)
+
+    assert tab.human_panel.total_label.text() == "Total: 4 / 6"
+
+    buttons = tab.rubric_correction_panel.grade_buttons.buttons()
+    buttons[0].click()
+
+    assert vm.get_correction(100002, "crit_2") == 2.0
+
+    assert tab.human_panel.total_label.text() == ("Total: 5 / 6 (corrected)")
+
+    corrected_card = tab.human_panel.criteria_layout.itemAt(1).widget()
+
+    assert corrected_card.layout().itemAt(1).widget().text() == "2 / 2"
+    assert corrected_card.property("selected") == "true"
+
+    assessment = next(a for a in vm.human_grades if a.student_id == 100002)
+
+    original_score = next(
+        score.points for score in assessment.criteria if score.criterion_id == "crit_2"
+    )
+
+    assert original_score == 1.0
+
+    tab.deleteLater()
+
+
+def test_reselecting_criterion_restores_correction(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+
+    tab.human_panel.criterion_selected.emit(1)
+    tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
+
+    assert vm.get_correction(100002, "crit_2") == 2.0
+
+    tab.human_panel.criterion_selected.emit(0)
+    tab.human_panel.criterion_selected.emit(1)
+
+    buttons = tab.rubric_correction_panel.grade_buttons.buttons()
+
+    assert buttons[0].isChecked()
+    assert not buttons[1].isChecked()
+
+    assert tab.rubric_correction_panel.original_grade_label.text() == (
+        "Original Grade (Canvas): 1 / 2"
+    )
+
+    assert tab.human_panel.total_label.text() == ("Total: 5 / 6 (corrected)")
+
+    tab.deleteLater()
+
+
+def test_switching_students_preserves_corrected_grades(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    tab.student_grade_matrix.table.selectRow(1)
+    tab.human_panel.criterion_selected.emit(1)
+    tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
+
+    assert vm.get_correction(100002, "crit_2") == 2.0
+    assert tab.human_panel.total_label.text() == ("Total: 5 / 6 (corrected)")
+
+    tab.student_grade_matrix.table.selectRow(0)
+
+    assert tab.human_panel.total_label.text() == "Total: 6 / 6"
+    assert vm.get_correction(100001, "crit_2") is None
+
+    tab.student_grade_matrix.table.selectRow(1)
+
+    assert tab.human_panel.total_label.text() == ("Total: 5 / 6 (corrected)")
+
+    corrected_card = tab.human_panel.criteria_layout.itemAt(1).widget()
+
+    assert corrected_card.layout().itemAt(1).widget().text() == "2 / 2"
+
+    tab.human_panel.criterion_selected.emit(1)
+
+    buttons = tab.rubric_correction_panel.grade_buttons.buttons()
+
+    assert buttons[0].isChecked()
+    assert tab.rubric_correction_panel.original_grade_label.text() == (
+        "Original Grade (Canvas): 1 / 2"
+    )
+
+    tab.deleteLater()
+
+
+def test_correction_updates_matrix_and_human_panel(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+
+    matrix = tab.student_grade_matrix.table
+
+    assert matrix.item(1, 1).text() == "4"
+    assert matrix.item(1, 5).text() == "1"
+
+    tab.human_panel.criterion_selected.emit(1)
+    tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
+
+    assert vm.get_correction(100002, "crit_2") == 2.0
+
+    assert matrix.item(1, 1).text() == "5*"
+    assert matrix.item(1, 5).text() == "2*"
+
+    assert tab.human_panel.total_label.text() == ("Total: 5 / 6 (corrected)")
+
+    assert matrix.currentRow() == 1
+    assert tab.selected_student_label.text() == ("Selected student: 100002")
+
+    assessment = next(a for a in vm.human_grades if a.student_id == 100002)
+
+    original_score = next(
+        score.points for score in assessment.criteria if score.criterion_id == "crit_2"
+    )
+
+    assert original_score == 1.0
+    tab.rubric_correction_panel.grade_buttons.buttons()[1].click()
+
+    assert vm.get_correction(100002, "crit_2") is None
+    tab.deleteLater()
+
+
+def test_changing_grade_automatically_saves_correction(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+    tab.human_panel.criterion_selected.emit(1)
+
+    tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
+
+    path = vm._corrections_path()
+    assert path is not None
+    assert path.is_file()
+
+    saved_corrections, saved_notes = load_corrections(path)
+
+    assert saved_corrections == {(100002, "crit_2"): 2.0}
+    assert saved_notes == {}
+
+    tab.rubric_correction_panel.grade_buttons.buttons()[1].click()
+
+    saved_corrections, saved_notes = load_corrections(path)
+
+    assert saved_corrections == {}
+    assert saved_notes == {}
+
+    tab.deleteLater()
+
+
+def test_criterion_notes_are_saved(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+    tab.human_panel.criterion_selected.emit(1)
+
+    tab.rubric_correction_panel.notes_input.setPlainText("Reviewed the student's work.")
+
+    path = vm._corrections_path()
+    assert path is not None
+
+    saved_corrections, saved_notes = load_corrections(path)
+
+    assert saved_corrections == {}
+    assert saved_notes == {(100002, "crit_2"): "Reviewed the student's work."}
+
+    tab.rubric_correction_panel.notes_input.clear()
+
+    saved_corrections, saved_notes = load_corrections(path)
+
+    assert saved_notes == {}
+
+    tab.deleteLater()
+
+
+def test_saved_notes_restore_when_reselecting_criterion(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+
+    tab.human_panel.criterion_selected.emit(1)
+
+    tab.rubric_correction_panel.notes_input.setPlainText("Reviewed the student's work.")
+
+    assert vm.notes[(100002, "crit_2")] == ("Reviewed the student's work.")
+
+    tab.human_panel.criterion_selected.emit(0)
+
+    assert tab.rubric_correction_panel.notes_input.toPlainText() == ""
+
+    tab.human_panel.criterion_selected.emit(1)
+
+    assert tab.rubric_correction_panel.notes_input.toPlainText() == ("Reviewed the student's work.")
+
+    tab.deleteLater()
+
+
+def test_reopening_assignment_restores_saved_corrections_and_notes(
+    qapp, theme, tmp_path, monkeypatch
+):
+    tab, vm = _tab(theme)
+
+    monkeypatch.setattr(
+        vm,
+        "_corrections_path",
+        lambda: (
+            tmp_path / f"{vm.selected_assignment.canvas_id}.json"
+            if vm.selected_assignment is not None
+            else None
+        ),
+    )
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+    tab.human_panel.criterion_selected.emit(1)
+
+    tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
+    tab.rubric_correction_panel.notes_input.setPlainText("Awarded full credit after review.")
+
+    assert tab.student_grade_matrix.table.item(1, 1).text() == "5*"
+
+    tab.assignment_combo.setCurrentIndex(0)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    assert vm.get_correction(100002, "crit_2") == 2.0
+    assert vm.notes[(100002, "crit_2")] == ("Awarded full credit after review.")
+
+    matrix = tab.student_grade_matrix.table
+    assert matrix.item(1, 1).text() == "5*"
+    assert matrix.item(1, 5).text() == "2*"
+
+    matrix.selectRow(1)
+    tab.human_panel.criterion_selected.emit(1)
+
+    assert tab.human_panel.total_label.text() == ("Total: 5 / 6 (corrected)")
+    assert tab.rubric_correction_panel.grade_buttons.buttons()[0].isChecked()
+    assert tab.rubric_correction_panel.notes_input.toPlainText() == (
+        "Awarded full credit after review."
+    )
+
     tab.deleteLater()

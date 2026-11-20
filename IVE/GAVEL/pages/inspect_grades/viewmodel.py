@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from zipfile import BadZipFile
 
 from GAVEL.app.dtos.gradescope import GradescopeSubmission
@@ -10,13 +11,15 @@ from GAVEL.app.workspace.dataset import (
     DatasetReaders,
     MissingArtifactError,
 )
-from GAVEL.app.workspace.layout import CourseFolder
+from GAVEL.app.workspace.layout import CourseFolder, Workspace
 from GAVEL.app.workspace.manifest import AssignmentEntry, ManifestError
+from GAVEL.pages.inspect_grades.correction_store import (
+    load_corrections,
+    save_corrections,
+)
 
 
 class InspectGradesViewModel:
-    """Assignments and grading data for the active course."""
-
     def __init__(self, dataset_readers: DatasetReaders) -> None:
         self._dataset_readers = dataset_readers
 
@@ -32,6 +35,8 @@ class InspectGradesViewModel:
         self.proxy_grades_error: str | None = None
         self.rubric_definition: RubricDefinition | None = None
         self.rubric_definition_error: str | None = None
+        self.corrections: dict[tuple[int, str], float] = {}
+        self.notes: dict[tuple[int, str], str] = {}
 
     def select_course(self, course: CourseFolder | None) -> None:
         self.selected_course = course
@@ -39,6 +44,8 @@ class InspectGradesViewModel:
         self.assignments = ()
         self.assignment_error = None
         self._clear_grades()
+        self.corrections.clear()
+        self.notes.clear()
 
         if course is None:
             return
@@ -59,9 +66,16 @@ class InspectGradesViewModel:
 
         self.selected_assignment = assignment
         self._clear_grades()
+        self.corrections.clear()
+        self.notes.clear()
 
         if assignment is None or self.selected_course is None:
             return
+
+        path = self._corrections_path()
+
+        if path is not None:
+            self.corrections, self.notes = load_corrections(path)
 
         dataset = CourseDataset.anonymized(
             self.selected_course,
@@ -114,6 +128,42 @@ class InspectGradesViewModel:
                 IndexError,
             ) as exc:
                 self.proxy_grades_error = str(exc)
+
+    def _corrections_path(self) -> Path | None:
+        if self.selected_course is None or self.selected_assignment is None:
+            return None
+
+        workspace = Workspace(self.selected_course.workspace_root)
+        course_dir = workspace.course_corrections_dir(self.selected_course.key)
+
+        return course_dir / f"{self.selected_assignment.canvas_id}.json"
+
+    def save_current_corrections(self) -> None:
+        path = self._corrections_path()
+
+        if path is None:
+            return
+
+        save_corrections(
+            path,
+            self.corrections,
+            self.notes,
+        )
+
+    def set_correction(
+        self,
+        student_id: int,
+        criterion_id: str,
+        corrected_score: float,
+    ) -> None:
+        self.corrections[(student_id, criterion_id)] = corrected_score
+
+    def get_correction(
+        self,
+        student_id: int,
+        criterion_id: str,
+    ) -> float | None:
+        return self.corrections.get((student_id, criterion_id))
 
     def _clear_grades(self) -> None:
         self.human_grades = ()
