@@ -37,6 +37,7 @@ class InspectGradesViewModel:
         self.rubric_definition_error: str | None = None
         self.corrections: dict[tuple[int, str], float] = {}
         self.notes: dict[tuple[int, str], str] = {}
+        self.corrections_error: str | None = None
 
     def select_course(self, course: CourseFolder | None) -> None:
         self.selected_course = course
@@ -46,6 +47,7 @@ class InspectGradesViewModel:
         self._clear_grades()
         self.corrections.clear()
         self.notes.clear()
+        self.corrections_error = None
 
         if course is None:
             return
@@ -68,6 +70,7 @@ class InspectGradesViewModel:
         self._clear_grades()
         self.corrections.clear()
         self.notes.clear()
+        self.corrections_error = None
 
         if assignment is None or self.selected_course is None:
             return
@@ -75,7 +78,10 @@ class InspectGradesViewModel:
         path = self._corrections_path()
 
         if path is not None:
-            self.corrections, self.notes = load_corrections(path)
+            try:
+                self.corrections, self.notes = load_corrections(path)
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                self.corrections_error = f"Could not load saved corrections: {exc}"
 
         dataset = CourseDataset.anonymized(
             self.selected_course,
@@ -129,6 +135,43 @@ class InspectGradesViewModel:
             ) as exc:
                 self.proxy_grades_error = str(exc)
 
+        if self.corrections_error is None and (self.corrections or self.notes):
+            if self.rubric_definition is None or not self.human_grades:
+                self.corrections.clear()
+                self.notes.clear()
+                self.corrections_error = (
+                    "Could not validate saved corrections because "
+                    "the rubric or human grades are unavailable."
+                )
+            else:
+                try:
+                    student_ids = {assessment.student_id for assessment in self.human_grades}
+                    criteria = {
+                        criterion.id: criterion for criterion in self.rubric_definition.criteria
+                    }
+
+                    for student_id, criterion_id in self.corrections.keys() | self.notes.keys():
+                        if student_id not in student_ids:
+                            raise ValueError(f"Unknown student ID: {student_id}")
+
+                        if criterion_id not in criteria:
+                            raise ValueError(f"Unknown rubric criterion: {criterion_id}")
+
+                        score = self.corrections.get((student_id, criterion_id))
+                        maximum = criteria[criterion_id].points
+
+                        if score is not None and maximum is not None and score > maximum:
+                            raise ValueError(
+                                f"Corrected score {score:g} exceeds "
+                                f"the maximum of {maximum:g} "
+                                f"for {criterion_id}."
+                            )
+
+                except ValueError as exc:
+                    self.corrections.clear()
+                    self.notes.clear()
+                    self.corrections_error = f"Could not load saved corrections: {exc}"
+
     def _corrections_path(self) -> Path | None:
         if self.selected_course is None or self.selected_assignment is None:
             return None
@@ -141,14 +184,17 @@ class InspectGradesViewModel:
     def save_current_corrections(self) -> None:
         path = self._corrections_path()
 
-        if path is None:
+        if path is None or self.corrections_error is not None:
             return
 
-        save_corrections(
-            path,
-            self.corrections,
-            self.notes,
-        )
+        try:
+            save_corrections(
+                path,
+                self.corrections,
+                self.notes,
+            )
+        except OSError as exc:
+            self.corrections_error = f"Could not save rubric corrections: {exc}"
 
     def set_correction(
         self,

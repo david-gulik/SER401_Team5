@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import tempfile
 from pathlib import Path
@@ -59,16 +60,52 @@ def load_corrections(
 
     data = json.loads(path.read_text(encoding="utf-8"))
 
+    if not isinstance(data, dict):
+        raise ValueError("Correction file must contain a JSON object.")
+
+    if type(data.get("version")) is not int or data["version"] != 1:
+        raise ValueError("Unsupported correction file version.")
+
+    if not isinstance(data.get("corrections"), list):
+        raise ValueError("Correction file must contain a corrections list.")
+
     corrections = {}
     notes = {}
 
     for entry in data["corrections"]:
-        key = (int(entry["student_id"]), entry["criterion_id"])
+        if not isinstance(entry, dict):
+            raise ValueError("Each correction entry must be an object.")
 
-        if entry["corrected_score"] is not None:
-            corrections[key] = float(entry["corrected_score"])
+        if not all(field in entry for field in ("student_id", "criterion_id", "corrected_score")):
+            raise ValueError("Correction entry is missing required fields.")
 
-        if entry.get("notes"):
-            notes[key] = entry["notes"]
+        student_id = entry["student_id"]
+        criterion_id = entry["criterion_id"]
+        score = entry["corrected_score"]
+        note = entry.get("notes", "")
+
+        if type(student_id) is not int or student_id <= 0:
+            raise ValueError("Correction entry has an invalid student ID.")
+
+        if not isinstance(criterion_id, str) or not criterion_id.strip():
+            raise ValueError("Correction entry has an invalid criterion ID.")
+
+        if score is not None:
+            if type(score) not in (int, float):
+                raise ValueError("Corrected score must be a number.")
+
+            if not math.isfinite(score) or score < 0:
+                raise ValueError("Corrected score must be finite and non-negative.")
+
+        if not isinstance(note, str):
+            raise ValueError("Correction notes must be text.")
+
+        key = (student_id, criterion_id)
+
+        if score is not None:
+            corrections[key] = float(score)
+
+        if note:
+            notes[key] = note
 
     return corrections, notes
