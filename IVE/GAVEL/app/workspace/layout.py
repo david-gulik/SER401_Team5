@@ -41,6 +41,7 @@ from GAVEL.app.dtos.roster import ClassSection
 COURSES_DIR = "courses"
 AUTOGRADERS_DIR = "autograders"
 RUNS_DIR = "runs"
+CORRECTIONS_DIR = "corrections"
 
 MANIFEST_FILE = "manifest.json"
 GROUND_TRUTH_DIR = "ground_truth"
@@ -460,6 +461,13 @@ class Workspace:
     @property
     def runs_dir(self) -> Path:
         return self.root / RUNS_DIR
+
+    @property
+    def corrections_dir(self) -> Path:
+        return self.root / CORRECTIONS_DIR
+
+    def course_corrections_dir(self, key: CourseKey) -> Path:
+        return self.corrections_dir / key.folder_name
 
     def course_autograders_dir(self, key: CourseKey) -> Path:
         """Where the Gradescope autograder zips for a course are kept, e.g. ``autograders/ser222/``.
