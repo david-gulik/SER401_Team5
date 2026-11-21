@@ -70,7 +70,14 @@ def test_selecting_assignment_updates_viewmodel(qapp, theme):
     assert vm.selected_assignment == vm.assignments[1]
     assert len(vm.human_grades) == 2
     assert len(vm.proxy_grades) == 2
-    assert tab.status_label.text() == ("Human grades: 2 assessments\nProxy grades: 2 submissions")
+
+    assert tab.status_label.text() == (
+        "Human grades: 2 assessments\n"
+        "Proxy grades: 2 submissions\n"
+        "Proxy scores unavailable: No proxy-grade mapping "
+        "is registered for this course and module."
+    )
+
     assert tab.student_grade_matrix.table.rowCount() == 2
     assert tab.student_grade_matrix.table.columnCount() == 6
 
@@ -768,5 +775,221 @@ def test_correction_error_resets_when_switching_assignments(qapp, theme, monkeyp
     assert vm.corrections_error is None
     assert tab.rubric_correction_panel.isEnabled()
     assert "WARNING:" not in tab.status_label.text()
+
+    tab.deleteLater()
+
+
+def test_calculated_proxy_scores_populate_student_matrix(qapp, theme, monkeypatch):
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "resolve_mapping_name",
+        lambda self: "test_mapping",
+    )
+
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "calculated_proxy_scores",
+        lambda self: {
+            100002: {
+                "crit_1": 3.0,
+                "crit_2": 2.0,
+            },
+        },
+    )
+
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    matrix = tab.student_grade_matrix.table
+
+    assert tab._proxy_scores_by_student == {
+        100002: {
+            "crit_1": 3.0,
+            "crit_2": 2.0,
+        },
+    }
+
+    assert matrix.item(0, 2).text() == "—"
+    assert matrix.item(0, 3).text() == "—"
+
+    assert matrix.item(1, 1).text() == "4"
+    assert matrix.item(1, 2).text() == "5"
+    assert matrix.item(1, 3).text() == "-1"
+
+    assert matrix.item(1, 4).text() == "3/3"
+    assert matrix.item(1, 5).text() == "1/2"
+
+    legend = tab.student_grade_matrix.legend_label.text()
+    assert "Match: 1" in legend
+    assert "Mismatch: 1" in legend
+
+    tab.deleteLater()
+
+
+def test_selected_student_displays_calculated_proxy_grades(qapp, theme, monkeypatch):
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "resolve_mapping_name",
+        lambda self: "test_mapping",
+    )
+
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "calculated_proxy_scores",
+        lambda self: {
+            100002: {
+                "crit_1": 3.0,
+                "crit_2": 2.0,
+            },
+        },
+    )
+
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    tab.student_grade_matrix.table.selectRow(1)
+
+    assert tab.proxy_panel.total_label.text() == "Total: 5 / 6"
+    assert tab.proxy_panel.criteria_layout.count() == 2
+
+    first_criterion = tab.proxy_panel.criteria_layout.itemAt(0).widget()
+    second_criterion = tab.proxy_panel.criteria_layout.itemAt(1).widget()
+
+    assert first_criterion.layout().itemAt(1).widget().text() == "3 / 4"
+    assert second_criterion.layout().itemAt(1).widget().text() == "2 / 2"
+
+    tab.student_grade_matrix.table.selectRow(0)
+
+    assert tab.proxy_panel.total_label.text() == ("Total: — (proxy grades unavailable)")
+
+    tab.deleteLater()
+
+
+def test_rubric_correction_updates_proxy_comparison(qapp, theme, monkeypatch):
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "resolve_mapping_name",
+        lambda self: "test_mapping",
+    )
+
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "calculated_proxy_scores",
+        lambda self: {
+            100002: {
+                "crit_1": 3.0,
+                "crit_2": 2.0,
+            },
+        },
+    )
+
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    matrix = tab.student_grade_matrix.table
+    matrix.selectRow(1)
+
+    assert matrix.item(1, 1).text() == "4"
+    assert matrix.item(1, 2).text() == "5"
+    assert matrix.item(1, 3).text() == "-1"
+    assert matrix.item(1, 5).text() == "1/2"
+
+    tab.human_panel.criterion_selected.emit(1)
+    tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
+
+    assert matrix.item(1, 1).text() == "5*"
+    assert matrix.item(1, 2).text() == "5"
+    assert matrix.item(1, 3).text() == "0"
+    assert matrix.item(1, 5).text() == "2*/2"
+
+    assert tab.human_panel.total_label.text() == ("Total: 5 / 6 (corrected)")
+
+    assert tab.proxy_panel.total_label.text() == "Total: 5 / 6"
+    assert tab._proxy_scores_by_student[100002] == {
+        "crit_1": 3.0,
+        "crit_2": 2.0,
+    }
+
+    tab.rubric_correction_panel.grade_buttons.buttons()[1].click()
+
+    assert vm.get_correction(100002, "crit_2") is None
+    assert matrix.item(1, 1).text() == "4"
+    assert matrix.item(1, 2).text() == "5"
+    assert matrix.item(1, 3).text() == "-1"
+    assert matrix.item(1, 5).text() == "1/2"
+
+    tab.deleteLater()
+
+
+def test_mismatch_filter_updates_after_rubric_correction(qapp, theme, monkeypatch):
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "resolve_mapping_name",
+        lambda self: "test_mapping",
+    )
+
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "calculated_proxy_scores",
+        lambda self: {
+            100002: {
+                "crit_1": 3.0,
+                "crit_2": 2.0,
+            },
+        },
+    )
+
+    tab, vm = _tab(theme)
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    grade_matrix = tab.student_grade_matrix
+    matrix = grade_matrix.table
+
+    matrix.selectRow(1)
+    tab.human_panel.criterion_selected.emit(1)
+
+    grade_matrix.mismatch_checkbox.setChecked(True)
+
+    assert matrix.isRowHidden(0)
+    assert not matrix.isRowHidden(1)
+
+    tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
+
+    assert matrix.isRowHidden(0)
+    assert matrix.isRowHidden(1)
+    assert not grade_matrix.empty_label.isHidden()
+
+    grade_matrix.mismatch_checkbox.setChecked(False)
+    matrix.selectRow(1)
+    tab.human_panel.criterion_selected.emit(1)
+
+    tab.rubric_correction_panel.grade_buttons.buttons()[1].click()
+
+    assert matrix.item(1, 5).text() == "1/2"
+
+    grade_matrix.mismatch_checkbox.setChecked(True)
+
+    assert matrix.isRowHidden(0)
+    assert not matrix.isRowHidden(1)
+
+    tab.deleteLater()
+
+
+def test_missing_proxy_mapping_displays_status_message(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    assert vm.resolve_mapping_name() is None
+
+    assert "Proxy scores unavailable: No proxy-grade mapping" in tab.status_label.text()
+
+    assert tab.student_grade_matrix.table.rowCount() == 2
+    assert tab.student_grade_matrix.table.item(1, 1).text() == "4"
 
     tab.deleteLater()

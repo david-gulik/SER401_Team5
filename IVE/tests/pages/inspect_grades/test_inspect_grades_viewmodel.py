@@ -1,10 +1,12 @@
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-from GAVEL.app.workspace.layout import Workspace
+from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
+from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.bootstrap import build_dataset_readers
 from GAVEL.pages.inspect_grades.correction_store import (
     load_corrections,
@@ -570,3 +572,183 @@ def test_save_corrections_handles_file_error(vm, tmp_path, monkeypatch):
     assert "Access denied" in vm.corrections_error
 
     assert not correction_file.exists()
+
+
+def test_resolve_mapping_name_for_supported_course(vm):
+    course = CourseFolder(
+        path=Path("unused"),
+        key=CourseKey.parse("ser334_25sc_12345"),
+    )
+
+    vm.selected_course = course
+    vm.selected_assignment = AssignmentEntry(
+        canvas_id=12345,
+        name="Module 2",
+        module_number=2,
+        has_rubric=True,
+    )
+
+    assert vm.resolve_mapping_name() == "ser334_m2"
+
+
+def test_resolve_mapping_name_for_unsupported_course(vm):
+    vm.select_course(COURSE)
+    vm.select_assignment(vm.assignments[1])
+
+    assert vm.resolve_mapping_name() is None
+
+
+def test_loads_gradebook_for_selected_assignment(vm, monkeypatch):
+    vm.select_course(COURSE)
+
+    expected_gradebook = object()
+
+    monkeypatch.setattr(
+        "GAVEL.pages.inspect_grades.viewmodel.CourseDataset.gradebook",
+        lambda self: expected_gradebook,
+    )
+
+    assignment = next(a for a in vm.assignments if a.module_number == 4)
+
+    vm.select_assignment(assignment)
+
+    assert vm.gradebook is expected_gradebook
+    assert vm.gradebook_error is None
+
+    vm.select_assignment(None)
+
+    assert vm.gradebook is None
+    assert vm.gradebook_error is None
+
+
+def test_matches_gradescope_submissions_to_canvas_students(vm):
+    vm.gradebook = SimpleNamespace(
+        rows=[
+            SimpleNamespace(sis_login_id="student1", canvas_id=100001),
+            SimpleNamespace(sis_login_id="student2", canvas_id=100002),
+        ]
+    )
+
+    submission_1 = SimpleNamespace(submitter=SimpleNamespace(email="student1@example.com"))
+    submission_2 = SimpleNamespace(submitter=SimpleNamespace(email="STUDENT2@example.com"))
+    unmatched = SimpleNamespace(submitter=SimpleNamespace(email="unknown@example.com"))
+
+    vm.proxy_grades = (submission_1, submission_2, unmatched)
+
+    matched = vm.matched_proxy_submissions()
+
+    assert matched == {
+        100001: submission_1,
+        100002: submission_2,
+    }
+
+
+def test_duplicate_gradescope_submissions_are_not_matched(vm):
+    vm.gradebook = SimpleNamespace(
+        rows=[
+            SimpleNamespace(sis_login_id="student1", canvas_id=100001),
+            SimpleNamespace(sis_login_id="student2", canvas_id=100002),
+        ]
+    )
+
+    first = SimpleNamespace(submitter=SimpleNamespace(email="student1@example.com"))
+    duplicate = SimpleNamespace(submitter=SimpleNamespace(email="STUDENT1@example.com"))
+    valid = SimpleNamespace(submitter=SimpleNamespace(email="student2@example.com"))
+
+    vm.proxy_grades = (first, duplicate, valid)
+
+    assert vm.matched_proxy_submissions() == {
+        100002: valid,
+    }
+
+
+def test_calculates_proxy_scores_for_matched_students(vm, monkeypatch):
+    mapping = SimpleNamespace(
+        criteria=[
+            SimpleNamespace(name="Problem 1"),
+            SimpleNamespace(name="Problem 2"),
+        ],
+    )
+
+    rubric = SimpleNamespace(
+        criteria=[
+            SimpleNamespace(id="crit_1"),
+            SimpleNamespace(id="crit_2"),
+        ],
+    )
+
+    submission = object()
+
+    vm.rubric_definition = rubric
+
+    monkeypatch.setattr(
+        vm,
+        "resolve_mapping_name",
+        lambda: "test_mapping",
+    )
+    monkeypatch.setitem(
+        __import__(
+            "GAVEL.pages.inspect_grades.viewmodel",
+            fromlist=["MAPPINGS"],
+        ).MAPPINGS,
+        "test_mapping",
+        mapping,
+    )
+    monkeypatch.setattr(
+        vm,
+        "matched_proxy_submissions",
+        lambda: {100002: submission},
+    )
+    monkeypatch.setattr(
+        "GAVEL.pages.inspect_grades.viewmodel.match_proxy_criteria_to_rubric",
+        lambda mapping, rubric: {
+            "Problem 1": rubric.criteria[0],
+            "Problem 2": rubric.criteria[1],
+        },
+    )
+    monkeypatch.setattr(
+        "GAVEL.pages.inspect_grades.viewmodel.compute_proxy_grade",
+        lambda submission, mapping: SimpleNamespace(
+            criterion_scores=(3.0, 2.0),
+            total_score=5.0,
+        ),
+    )
+
+    assert vm.calculated_proxy_scores() == {
+        100002: {
+            "crit_1": 3.0,
+            "crit_2": 2.0,
+        }
+    }
+
+
+def test_proxy_calculation_handles_unmatched_rubric(vm, monkeypatch):
+    mapping = SimpleNamespace(criteria=[SimpleNamespace(name="Unknown Problem")])
+    vm.rubric_definition = SimpleNamespace(criteria=[])
+
+    monkeypatch.setattr(
+        vm,
+        "resolve_mapping_name",
+        lambda: "test_mapping",
+    )
+
+    monkeypatch.setitem(
+        __import__(
+            "GAVEL.pages.inspect_grades.viewmodel",
+            fromlist=["MAPPINGS"],
+        ).MAPPINGS,
+        "test_mapping",
+        mapping,
+    )
+
+    def fail_matching(mapping, rubric):
+        raise ValueError("No rubric criterion matches: Unknown Problem")
+
+    monkeypatch.setattr(
+        "GAVEL.pages.inspect_grades.viewmodel.match_proxy_criteria_to_rubric",
+        fail_matching,
+    )
+
+    assert vm.calculated_proxy_scores() == {}
+    assert vm.proxy_calculation_error is not None
+    assert "Unknown Problem" in vm.proxy_calculation_error

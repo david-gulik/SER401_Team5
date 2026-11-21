@@ -28,6 +28,8 @@ class InspectGradesTab(ScrollableTab):
         super().__init__(theme)
         self._viewmodel = viewmodel
 
+        self._proxy_scores_by_student: dict[int, dict[str, float]] = {}
+
         card = SectionCard(theme, "Assignment Selection")
 
         self.assignment_combo = QComboBox()
@@ -148,8 +150,13 @@ class InspectGradesTab(ScrollableTab):
 
     def _on_assignment_changed(self, index: int) -> None:
         assignment = self.assignment_combo.itemData(index)
+
         self._viewmodel.select_assignment(assignment)
+
+        self._proxy_scores_by_student = self._viewmodel.calculated_proxy_scores()
+
         self._render_grading_status()
+
         self.rubric_correction_panel.setEnabled(self._viewmodel.corrections_error is None)
 
         self.student_grade_matrix.clear()
@@ -161,6 +168,12 @@ class InspectGradesTab(ScrollableTab):
             self.student_grade_matrix.display(
                 self._viewmodel.human_grades,
                 rubric,
+                proxy_scores_by_student=(
+                    self._proxy_scores_by_student
+                    if self._viewmodel.resolve_mapping_name() is not None
+                    and self._viewmodel.proxy_calculation_error is None
+                    else None
+                ),
             )
 
             if self._viewmodel.corrections:
@@ -283,11 +296,21 @@ class InspectGradesTab(ScrollableTab):
             self.human_details_label.setText(
                 "Human grading details are unavailable for this student."
             )
+
         else:
             self._refresh_corrected_human_panel(int(student_id))
 
-            self.proxy_panel.display_criteria(rubric, None)
-            self.proxy_panel.total_label.setText("Total: — (proxy scores not yet calculated)")
+            proxy_scores = self._proxy_scores_by_student.get(int(student_id))
+
+            self.proxy_panel.display_criteria(rubric, proxy_scores)
+
+            if proxy_scores is None:
+                self.proxy_panel.total_label.setText("Total: — (proxy grades unavailable)")
+            else:
+                proxy_total = sum(proxy_scores.values())
+                self.proxy_panel.total_label.setText(
+                    f"Total: {proxy_total:g} / {rubric.points_possible:g}"
+                )
 
     def _refresh_corrected_human_panel(self, student_id: int) -> None:
         rubric = self._viewmodel.rubric_definition
@@ -445,6 +468,26 @@ class InspectGradesTab(ScrollableTab):
             messages.append(f"Proxy grades: {self._viewmodel.proxy_grades_error}")
         else:
             messages.append(f"Proxy grades: {len(self._viewmodel.proxy_grades)} submissions")
+
+        mapping_name = self._viewmodel.resolve_mapping_name()
+
+        if mapping_name is None:
+            messages.append(
+                "Proxy scores unavailable: No proxy-grade mapping "
+                "is registered for this course and module."
+            )
+        elif self._viewmodel.proxy_calculation_error:
+            messages.append(f"Proxy calculation error: {self._viewmodel.proxy_calculation_error}")
+        elif self._viewmodel.gradebook_error:
+            messages.append(
+                "Proxy scores unavailable: Could not load the "
+                f"Canvas gradebook. {self._viewmodel.gradebook_error}"
+            )
+        elif self._viewmodel.gradebook is None:
+            messages.append(
+                "Proxy scores unavailable: No Canvas gradebook "
+                "is available for matching submissions."
+            )
 
         if self._viewmodel.rubric_definition_error:
             messages.append(f"Student matrix: {self._viewmodel.rubric_definition_error}")
