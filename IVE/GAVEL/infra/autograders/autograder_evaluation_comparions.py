@@ -1,10 +1,12 @@
 import json
+import random
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 
 def load_submission_results(folder: Path) -> dict[str, dict]:
@@ -14,9 +16,7 @@ def load_submission_results(folder: Path) -> dict[str, dict]:
         with open(json_file, encoding="utf-8") as f:
             data = json.load(f)
 
-        submission_id = json_file.stem.removeprefix(
-            "submission_"
-        )
+        submission_id = json_file.stem.removeprefix("submission_")
 
         row = {}
         total = 0.0
@@ -43,13 +43,9 @@ def compare_evaluations(
     simulate_changes: bool = False,
 ) -> pd.DataFrame:
 
-    reference_scores = load_submission_results(
-        reference_folder
-    )
+    reference_scores = load_submission_results(reference_folder)
 
-    candidate_scores = load_submission_results(
-        candidate_folder
-    )
+    candidate_scores = load_submission_results(candidate_folder)
 
     if simulate_changes:
         reference_scores = perturb_scores(
@@ -61,33 +57,21 @@ def compare_evaluations(
             probability=0.15,
         )
 
-    submission_ids = sorted(
-        set(reference_scores)
-        | set(candidate_scores)
-    )
+    submission_ids = sorted(set(reference_scores) | set(candidate_scores))
 
     criteria = set()
 
     for scores in reference_scores.values():
-        criteria.update(
-            key
-            for key in scores.keys()
-            if key != "total"
-        )
+        criteria.update(key for key in scores.keys() if key != "total")
 
     for scores in candidate_scores.values():
-        criteria.update(
-            key
-            for key in scores.keys()
-            if key != "total"
-        )
+        criteria.update(key for key in scores.keys() if key != "total")
 
     criteria = sorted(criteria)
 
     rows = []
 
     for submission_id in submission_ids:
-
         reference = reference_scores.get(
             submission_id,
             {},
@@ -110,17 +94,11 @@ def compare_evaluations(
             ),
         }
 
-        row["difference"] = (
-            row[f"{reference_name}_total"]
-            - row[f"{candidate_name}_total"]
-        )
+        row["difference"] = row[f"{reference_name}_total"] - row[f"{candidate_name}_total"]
 
-        row["abs_difference"] = abs(
-            row["difference"]
-        )
+        row["abs_difference"] = abs(row["difference"])
 
         for criterion in criteria:
-
             ref_score = reference.get(
                 criterion,
                 0,
@@ -131,72 +109,66 @@ def compare_evaluations(
                 0,
             )
 
-            row[f"{criterion}_{reference_name}"] = (
-                ref_score
-            )
+            row[f"{criterion}_{reference_name}"] = ref_score
 
-            row[f"{criterion}_{candidate_name}"] = (
-                cand_score
-            )
+            row[f"{criterion}_{candidate_name}"] = cand_score
 
-            row[f"{criterion}_delta"] = (
-                cand_score - ref_score
-            )
+            row[f"{criterion}_delta"] = cand_score - ref_score
 
         rows.append(row)
 
     return pd.DataFrame(rows)
 
 
+
+
+class MatplotlibWidget(FigureCanvas):
+    def __init__(self) -> None:
+        self.figure = Figure(figsize=(8, 6))
+
+        super().__init__(self.figure)
+
+    def get_axis(self):
+        self.figure.clear()
+        return self.figure.add_subplot(111)
+
+
 def plot_score_distribution(
+    ax,
     df: pd.DataFrame,
     reference_name: str,
     candidate_name: str,
 ) -> None:
-
-    plt.figure(figsize=(8, 6))
+    ref_col = f"{reference_name}_total"
+    cand_col = f"{candidate_name}_total"
 
     sns.boxplot(
-        data=df[
-            [
-                f"{reference_name}_total",
-                f"{candidate_name}_total",
-            ]
-        ]
+        data=df[[ref_col, cand_col]],
+        ax=ax,
     )
 
     sns.stripplot(
-        data=df[
-            [
-                f"{reference_name}_total",
-                f"{candidate_name}_total",
-            ]
-        ],
+        data=df[[ref_col, cand_col]],
+        ax=ax,
         color="black",
         alpha=0.3,
         jitter=True,
         size=3,
     )
 
-    plt.title(
-        "Autograder Score Distribution"
-    )
-
-    plt.show()
+    ax.set_title("Autograder Score Distribution")
 
 
 def plot_scatter_comparison(
+    ax,
     df: pd.DataFrame,
     reference_name: str,
     candidate_name: str,
 ) -> None:
-
     ref_col = f"{reference_name}_total"
     cand_col = f"{candidate_name}_total"
 
-    plt.figure(figsize=(8, 6))
-
-    scatter = plt.scatter(
+    scatter = ax.scatter(
         df[ref_col],
         df[cand_col],
         c=df["difference"],
@@ -213,7 +185,7 @@ def plot_scatter_comparison(
         maximum + 2,
     )
 
-    plt.fill_between(
+    ax.fill_between(
         x,
         x - 1,
         x + 1,
@@ -222,7 +194,7 @@ def plot_scatter_comparison(
         label="±1 point",
     )
 
-    plt.plot(
+    ax.plot(
         [0, maximum],
         [0, maximum],
         "r--",
@@ -234,7 +206,7 @@ def plot_scatter_comparison(
         df[cand_col],
     )[0, 1]
 
-    plt.text(
+    ax.text(
         maximum * 0.05,
         maximum * 0.95,
         f"Correlation: {r:.3f}",
@@ -246,44 +218,37 @@ def plot_scatter_comparison(
     )
 
     for _, row in top.iterrows():
-        plt.annotate(
+        annotation = ax.annotate(
             row["submission"],
             (
                 row[ref_col],
                 row[cand_col],
             ),
+            arrowprops={
+                "arrowstyle": "->",
+                "color": "red",
+            },
             size=8,
         )
+        annotation.set_picker(5)
 
-    plt.colorbar(
+    ax.figure.colorbar(
         scatter,
+        ax=ax,
         label="Score Difference",
     )
 
-    plt.xlabel(
-        f"{reference_name} Score"
-    )
-
-    plt.ylabel(
-        f"{candidate_name} Score"
-    )
-
-    plt.title(
-        "Autograder Comparison"
-    )
-
-    plt.legend()
-
-    plt.show()
+    ax.set_xlabel(f"{reference_name} Score")
+    ax.set_ylabel(f"{candidate_name} Score")
+    ax.set_title("Autograder Comparison")
+    ax.legend()
 
 
 def plot_difference_histogram(
+    ax,
     df: pd.DataFrame,
 ) -> None:
-
-    plt.figure(figsize=(10, 6))
-
-    counts, bins, patches = plt.hist(
+    counts, bins, patches = ax.hist(
         df["difference"],
         bins=20,
         edgecolor="black",
@@ -291,40 +256,27 @@ def plot_difference_histogram(
 
     for patch, left_edge in zip(
         patches,
-        bins[:-1],
+        bins[:-1], strict=False,
     ):
-        patch.set_facecolor(
-            "crimson"
-            if left_edge < 0
-            else "steelblue"
-        )
+        patch.set_facecolor("crimson" if left_edge < 0 else "steelblue")
 
-    mean_diff = (
-        df["difference"]
-        .mean()
-    )
+    mean_diff = df["difference"].mean()
+    std_diff = df["difference"].std()
 
-    std_diff = (
-        df["difference"]
-        .std()
-    )
-
-    plt.text(
+    ax.text(
         0.98,
         0.95,
-        f"Total Submissions = {len(df)}\n"
-        f"Mean = {mean_diff:.2f}\n"
-        f"Std = {std_diff:.2f}",
-        transform=plt.gca().transAxes,
+        (f"Total Submissions = {len(df)}\nMean = {mean_diff:.2f}\nStd = {std_diff:.2f}"),
+        transform=ax.transAxes,
         ha="right",
         va="top",
-        bbox=dict(
-            facecolor="white",
-            alpha=0.8,
-        ),
+        bbox={
+            "facecolor": "white",
+            "alpha": 0.8,
+        },
     )
 
-    plt.axvspan(
+    ax.axvspan(
         -1,
         1,
         alpha=0.15,
@@ -336,55 +288,38 @@ def plot_difference_histogram(
         df["difference"],
         bins=20,
         kde=True,
+        ax=ax,
     )
 
-    plt.axvline(
+    ax.axvline(
         0,
         color="red",
         linestyle="--",
     )
 
-    within_one = (
-        np.abs(
-            df["difference"]
-        ) <= 1
-    ).mean() * 100
+    within_one = (np.abs(df["difference"]) <= 1).mean() * 100
 
-    plt.xlabel(
-        "Score Difference"
-    )
+    ax.set_xlabel("Score Difference")
+    ax.set_ylabel("Count")
 
-    plt.ylabel(
-        "Count"
-    )
+    ax.set_title(f"Distribution of Grading Differences\n{within_one:.1f}% within ±1 point")
 
-    plt.title(
-        "Distribution of Grading Differences\n"
-        f"{within_one:.1f}% within ±1 point"
-    )
-
-    plt.show()
+    ax.legend()
 
 
 def plot_bland_altman(
-    df,
+    ax,
+    df: pd.DataFrame,
     reference_name: str,
     candidate_name: str,
 ) -> None:
     ref_col = f"{reference_name}_total"
     cand_col = f"{candidate_name}_total"
 
-    mean_score = (
-        df[ref_col]
-        + df[cand_col]
-    ) / 2
+    mean_score = (df[ref_col] + df[cand_col]) / 2
 
-    difference = (
-        df[ref_col]
-        - df[cand_col]
-    )
+    difference = df[ref_col] - df[cand_col]
 
-    # Bland-Altman statistics
     mean_diff = difference.mean()
     std_diff = difference.std()
 
@@ -393,9 +328,6 @@ def plot_bland_altman(
 
     abs_diff = np.abs(difference)
 
-    fig, ax = plt.subplots(figsize=(10, 7))
-
-    # Agreement region
     ax.axhspan(
         lower_loa,
         upper_loa,
@@ -404,7 +336,6 @@ def plot_bland_altman(
         label="95% Agreement Region",
     )
 
-    # Points colored by disagreement magnitude
     scatter = ax.scatter(
         mean_score,
         difference,
@@ -415,7 +346,6 @@ def plot_bland_altman(
         alpha=0.8,
     )
 
-    # Mean bias line
     ax.axhline(
         mean_diff,
         color="red",
@@ -424,7 +354,6 @@ def plot_bland_altman(
         label=f"Bias = {mean_diff:.2f}",
     )
 
-    # Limits of agreement
     ax.axhline(
         upper_loa,
         color="orange",
@@ -441,14 +370,22 @@ def plot_bland_altman(
         label=f"-1.96 SD = {lower_loa:.2f}",
     )
 
-    # Optional trend line
-    coeffs = np.polyfit(mean_score, difference, 1)
+    coeffs = np.polyfit(
+        mean_score,
+        difference,
+        1,
+    )
+
     trend_x = np.linspace(
         mean_score.min(),
         mean_score.max(),
         100,
     )
-    trend_y = np.polyval(coeffs, trend_x)
+
+    trend_y = np.polyval(
+        coeffs,
+        trend_x,
+    )
 
     ax.plot(
         trend_x,
@@ -459,11 +396,7 @@ def plot_bland_altman(
         label="Trend",
     )
 
-    # Highlight outliers
-    outlier_mask = (
-        (difference > upper_loa)
-        | (difference < lower_loa)
-    )
+    outlier_mask = (difference > upper_loa) | (difference < lower_loa)
 
     ax.scatter(
         mean_score[outlier_mask],
@@ -476,7 +409,7 @@ def plot_bland_altman(
     )
 
     for idx in np.where(outlier_mask)[0]:
-        ax.annotate(
+        annotation = ax.annotate(
             df.iloc[idx]["submission"],
             (
                 mean_score.iloc[idx],
@@ -485,19 +418,16 @@ def plot_bland_altman(
             xytext=(5, 5),
             textcoords="offset points",
             fontsize=8,
-            bbox=dict(
-                boxstyle="round,pad=0.2",
-                fc="white",
-                alpha=0.7,
-            ),
+            bbox={
+                "boxstyle": "round,pad=0.2",
+                "fc": "white",
+                "alpha": 0.7,
+            },
         )
 
-    # Summary statistics box
-    agreement_pct = (
-        (~outlier_mask).sum()
-        / len(df)
-        * 100
-    )
+        annotation.set_picker(True)
+
+    agreement_pct = (~outlier_mask).sum() / len(df) * 100
 
     stats_text = (
         f"N = {len(df)}\n"
@@ -513,32 +443,23 @@ def plot_bland_altman(
         transform=ax.transAxes,
         fontsize=10,
         verticalalignment="top",
-        bbox=dict(
-            boxstyle="round",
-            facecolor="white",
-            alpha=0.9,
-        ),
+        bbox={
+            "boxstyle": "round",
+            "facecolor": "white",
+            "alpha": 0.9,
+        },
     )
 
-    cbar = plt.colorbar(
+    cbar = ax.figure.colorbar(
         scatter,
         ax=ax,
     )
-    cbar.set_label(
-        "Absolute Difference"
-    )
 
-    ax.set_xlabel(
-        "Average Score"
-    )
+    cbar.set_label("Absolute Difference")
 
-    ax.set_ylabel(
-        f"{reference_name} - {candidate_name}"
-    )
-
-    ax.set_title(
-        f"Bland-Altman: {reference_name} vs {candidate_name}"
-    )
+    ax.set_xlabel("Average Score")
+    ax.set_ylabel(f"{reference_name} - {candidate_name}")
+    ax.set_title(f"Bland-Altman: {reference_name} vs {candidate_name}")
 
     ax.grid(
         alpha=0.3,
@@ -547,37 +468,18 @@ def plot_bland_altman(
 
     ax.legend()
 
-    plt.tight_layout()
-    plt.show()
 
 def plot_criterion_heatmap(
+    ax,
     df: pd.DataFrame,
 ) -> None:
+    delta_columns = [col for col in df.columns if col.endswith("_delta")]
 
-    delta_columns = [
-        col
-        for col in df.columns
-        if col.endswith("_delta")
-    ]
-
-    heatmap_df = (
-        df
-        .set_index("submission")
-        [delta_columns]
-    )
-
-    plt.figure(
-        figsize=(
-            16,
-            max(
-                6,
-                len(df) * 0.3,
-            ),
-        )
-    )
+    heatmap_df = df.set_index("submission")[delta_columns]
 
     sns.heatmap(
         heatmap_df,
+        ax=ax,
         cmap="RdYlGn",
         center=0,
         fmt=".2f",
@@ -587,26 +489,12 @@ def plot_criterion_heatmap(
         linewidth=0.5,
     )
 
-    plt.title(
-        "Per-Criterion Differences"
-    )
+    ax.set_title("Per-Criterion Differences")
 
-    plt.xlabel(
-        "Criterion"
-    )
-
-    plt.ylabel(
-        "Submission"
-    )
-
-    plt.tight_layout()
-
-    plt.show()
-
-import random
+    ax.set_xlabel("Criterion")
+    ax.set_ylabel("Submission")
 
 
-import random
 
 
 def perturb_scores(
@@ -624,11 +512,9 @@ def perturb_scores(
     modified = {}
 
     for submission_id, scores in results.items():
-
         row = scores.copy()
 
         for criterion, score in row.items():
-
             if criterion == "total":
                 continue
 
@@ -650,15 +536,12 @@ def perturb_scores(
                 score + delta,
             )
 
-        row["total"] = sum(
-            value
-            for key, value in row.items()
-            if key != "total"
-        )
+        row["total"] = sum(value for key, value in row.items() if key != "total")
 
         modified[submission_id] = row
 
     return modified
+
 
 def main():
 
@@ -674,7 +557,7 @@ def main():
         ),
         reference_name=reference_name,
         candidate_name=candidate_name,
-        simulate_changes=True
+        simulate_changes=True,
     )
 
     # print(df.head())

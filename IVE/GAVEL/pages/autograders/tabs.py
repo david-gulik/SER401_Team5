@@ -9,16 +9,29 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QListWidget,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QStyle,
-    QWidget, QListWidget, QVBoxLayout,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from GAVEL.app.workspace import CourseFolder
 from GAVEL.app_context import AppContext
 from GAVEL.core.background import run_in_background
 from GAVEL.core.base_tab import ScrollableTab
+from GAVEL.infra.autograders.autograder_evaluation_comparions import (
+    MatplotlibWidget,
+    compare_evaluations,
+    plot_bland_altman,
+    plot_criterion_heatmap,
+    plot_difference_histogram,
+    plot_scatter_comparison,
+    plot_score_distribution,
+)
 from GAVEL.infra.autograders.autograder_metadata import (
     AutograderInfo,
     AutograderRow,
@@ -28,7 +41,6 @@ from GAVEL.infra.autograders.autograder_metadata import (
 from GAVEL.infra.autograders.parallel_autograder_client import (
     autograde_submissions_folder,
 )
-from GAVEL.theme.context import ThemeContext
 from GAVEL.ui_components.log_handler import QtLogHandler
 from GAVEL.ui_components.section_card import SectionCard
 
@@ -372,16 +384,35 @@ class AATComparisonPage(ScrollableTab):
         )
         self.courses_path = self.root_path / "courses"
         self.autograders_path = self.root_path / "autograders"
-        self.assignment_folder = self._active_course.course.path / "anonymized" / "gradescope_submissions"
+        self.assignment_folder = (
+            self._active_course.course.path / "anonymized" / "gradescope_submissions"
+        )
         self.reference_list_widget = QListWidget()
         self.candidate_list_widget = QListWidget()
-        self.reference_list_widget.itemSelectionChanged.connect(
-            self._on_reference_changed
-        )
+        self.reference_list_widget.itemSelectionChanged.connect(self._on_reference_changed)
+        self.visualization_tabs: QTabWidget | None = None
+
+        self.scatter_chart: MatplotlibWidget | None = None
+        self.histogram_chart: MatplotlibWidget | None = None
+        self.distribution_chart: MatplotlibWidget | None = None
+        self.bland_altman_chart: MatplotlibWidget | None = None
+        self.heatmap_chart: MatplotlibWidget | None = None
 
         self.add_section(self._build_assignments_dropdown())
         self._on_active_course_changed(self._active_course.course)
         self.add_section(self._build_evaluations_selection())
+        self.compare_btn = QPushButton("Compare")
+
+        self.compare_btn.clicked.connect(self._compare_selected_evaluations)
+
+        self.add_section(self.compare_btn)
+        self.add_section(self._build_visualizations_card())
+
+        self.visualization_tabs.setMinimumHeight(700)
+        self.visualization_tabs.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         self.add_stretch()
 
@@ -439,6 +470,136 @@ class AATComparisonPage(ScrollableTab):
 
         return card
 
+    def _build_visualizations_card(self) -> QWidget:
+        card = SectionCard(
+            self._theme,
+            "Comparison Visualizations",
+        )
+
+        self.visualization_tabs = QTabWidget()
+
+        self.distribution_chart = MatplotlibWidget()
+        self.scatter_chart = MatplotlibWidget()
+        self.histogram_chart = MatplotlibWidget()
+        self.bland_altman_chart = MatplotlibWidget()
+        self.heatmap_chart = MatplotlibWidget()
+
+        self.visualization_tabs.addTab(
+            self.distribution_chart,
+            "Distribution",
+        )
+
+        self.visualization_tabs.addTab(
+            self.scatter_chart,
+            "Scatter",
+        )
+
+        self.visualization_tabs.addTab(
+            self.histogram_chart,
+            "Differences",
+        )
+
+        self.visualization_tabs.addTab(
+            self.bland_altman_chart,
+            "Bland-Altman",
+        )
+
+        self.visualization_tabs.addTab(
+            self.heatmap_chart,
+            "Criteria",
+        )
+
+        card.add_row(self.visualization_tabs)
+
+        return card
+
+    def _compare_selected_evaluations(self) -> None:
+        reference_item = self.reference_list_widget.currentItem()
+
+        candidate_item = self.candidate_list_widget.currentItem()
+
+        if not reference_item or not candidate_item:
+            return
+
+        reference_name = reference_item.text()
+        candidate_name = candidate_item.text()
+
+        df = compare_evaluations(
+            reference_folder=Path(
+                r"C:\Users\dcgul\Downloads\GAVEL\courses\trn226_26sc_12345\anonymized\evaluations\m3\ser222_01_03_hw02b_autograder_2"
+            ),
+            candidate_folder=Path(
+                r"C:\Users\dcgul\Downloads\GAVEL\courses\trn226_26sc_12345\anonymized\evaluations\m3\ser222_01_03_hw02b_autograder"
+            ),
+            reference_name=reference_name,
+            candidate_name=candidate_name,
+            simulate_changes=True,
+        )
+
+        self._populate_visualizations(
+            df,
+            reference_name,
+            candidate_name,
+        )
+
+    def _populate_visualizations(
+        self,
+        df,
+        reference_name: str,
+        candidate_name: str,
+    ) -> None:
+
+        ax = self.distribution_chart.get_axis()
+
+        plot_score_distribution(
+            ax,
+            df,
+            reference_name,
+            candidate_name,
+        )
+
+        self.distribution_chart.draw()
+
+        ax = self.scatter_chart.get_axis()
+
+        plot_scatter_comparison(
+            ax,
+            df,
+            reference_name,
+            candidate_name,
+        )
+
+        self.scatter_chart.draw()
+
+        ax = self.histogram_chart.get_axis()
+
+        plot_difference_histogram(
+            ax,
+            df,
+        )
+
+        self.histogram_chart.draw()
+
+        ax = self.bland_altman_chart.get_axis()
+
+        plot_bland_altman(
+            ax,
+            df,
+            reference_name,
+            candidate_name,
+        )
+
+        self.bland_altman_chart.draw()
+
+        ax = self.heatmap_chart.get_axis()
+
+        plot_criterion_heatmap(
+            ax,
+            df,
+        )
+
+        self.heatmap_chart.draw()
+
     def _populate_evaluation_lists(self, evaluations_folder: Path) -> None:
         evaluation_sets = get_assignment_subfolders(evaluations_folder)
         print(evaluation_sets)
@@ -463,7 +624,6 @@ class AATComparisonPage(ScrollableTab):
 
         self._populate_evaluation_lists(self.evaluations_folder)
 
-
     def _on_active_course_changed(
         self,
         course: CourseFolder | None,
@@ -487,15 +647,14 @@ class AATComparisonPage(ScrollableTab):
 
         self.reference_list_widget.clear()
         self.candidate_list_widget.clear()
+
     def _on_reference_changed(self):
         selected = self.reference_list_widget.currentItem()
 
         self.candidate_list_widget.clear()
 
         if not selected:
-            self.candidate_list_widget.addItems(
-                self._evaluation_sets
-            )
+            self.candidate_list_widget.addItems(self._evaluation_sets)
             return
 
         selected_name = selected.text()
@@ -503,4 +662,3 @@ class AATComparisonPage(ScrollableTab):
         for evaluation in self._evaluation_sets:
             if evaluation != selected_name:
                 self.candidate_list_widget.addItem(evaluation)
-
