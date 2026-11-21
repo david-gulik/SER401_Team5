@@ -5,6 +5,11 @@ keeps every execution, then rolls them up per test and, when a proxy mapping
 is known, per rubric criterion. For one submission and one test, the "usual"
 result is the one most runs gave; a run that gave something else, or no
 result at all, counts against agreement.
+
+A run that timed out or crashed gives no result for any test. That is a fact
+about the submission's execution rather than about one test, so it is
+reported on the submission, and a test is judged Pass or Changed on the runs
+that did complete.
 """
 
 from __future__ import annotations
@@ -17,9 +22,9 @@ from GAVEL.app.dtos.gradescope import GradescopeTestScore
 
 
 class StabilityState(Enum):
-    """Pass: the same result every run. Changed: the result differed between
-    runs. Broke: at least one run produced no result because the autograder
-    timed out or crashed. Broke outranks Changed."""
+    """Pass: the same result on every completed run. Changed: the result
+    differed between runs. Broke: no result at all, because every run timed
+    out or crashed. Broke outranks Changed."""
 
     PASS = "pass"
     CHANGED = "changed"
@@ -70,6 +75,10 @@ class SubmissionItemStability:
                 return result
         return None
 
+    @property
+    def runs_broke(self) -> int:
+        return sum(len(r.runs) for r in self.results if r.score is None)
+
 
 @dataclass(frozen=True)
 class ItemStability:
@@ -79,8 +88,10 @@ class ItemStability:
     state: StabilityState
     runs_agreed: int
     runs_total: int
+    # Executions that produced no result for this item at all.
+    runs_broke: int
     submissions_total: int
-    # Only the submissions whose runs did not all agree, worst first.
+    # Only the submissions whose completed runs did not all agree, worst first.
     affected: tuple[SubmissionItemStability, ...]
     # For a criterion: the tests the proxy mapping builds it from.
     built_from: tuple[str, ...] = ()
@@ -92,6 +103,10 @@ class ItemStability:
     @property
     def agreement(self) -> float:
         return self.runs_agreed / self.runs_total if self.runs_total else 0.0
+
+    @property
+    def runs_changed(self) -> int:
+        return self.runs_total - self.runs_agreed - self.runs_broke
 
 
 @dataclass(frozen=True)
@@ -105,6 +120,10 @@ class SubmissionStability:
     @property
     def runs_broke(self) -> int:
         return self.runs_timed_out + self.runs_crashed
+
+    @property
+    def runs_total(self) -> int:
+        return self.runs_completed + self.runs_broke
 
 
 @dataclass(frozen=True)
@@ -143,7 +162,14 @@ class StabilityReport:
     executions: tuple[ExecutionRecord, ...]
 
     @property
+    def broken_submissions(self) -> tuple[SubmissionStability, ...]:
+        """Submissions with at least one run that timed out or crashed."""
+        return tuple(s for s in self.submissions if s.runs_broke)
+
+    @property
     def verdict(self) -> StabilityState:
+        if self.broken_submissions:
+            return StabilityState.BROKE
         return worst(tuple(test.state for test in self.tests))
 
     def tests_in(self, state: StabilityState) -> tuple[ItemStability, ...]:
@@ -155,5 +181,7 @@ class StabilityReport:
 
     @property
     def submissions_affected(self) -> int:
+        """Submissions that changed a result or broke on at least one run."""
         names = {entry.submission for test in self.tests for entry in test.affected}
+        names.update(s.name for s in self.broken_submissions)
         return len(names)
