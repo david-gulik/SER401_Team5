@@ -659,8 +659,6 @@ class AnonymizeCourseDatasetUseCase:
 
             # Equivalent destination under anonymized/
             output_path = anonymized_root / relative_path
-            output_path = output_path.parents[2]
-            output_path = output_path / "submission_metadata.yml"
 
             # Ensure parent directory exists
             output_path.parent.mkdir(parents=True, exist_ok=True)

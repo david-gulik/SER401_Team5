@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from GAVEL.app.dtos.consent_decision import ConsentStatus
 from GAVEL.app.dtos.course_summary import AnonymizationStatus
@@ -379,6 +380,36 @@ class TestFullPipeline:
         cleaned = included_file.read_text(encoding="utf-8")
         assert "// remove me" not in cleaned
         assert "class Main" in cleaned
+
+    def test_gradescope_metadata_is_anonymized_at_the_mirrored_path(
+        self,
+        use_case,
+        tmp_path: Path,
+    ):
+        write_consent_form(tmp_path)
+        write_gradescope_submissions(tmp_path)
+
+        use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=tmp_path, seed=42))
+
+        metadata_path = (
+            tmp_path
+            / "anonymized"
+            / "gradescope_submissions"
+            / "m1"
+            / "extracted"
+            / "assignment_123_export"
+            / "submission_metadata.yml"
+        )
+        assert metadata_path.is_file()
+
+        data = yaml.safe_load(metadata_path.read_text(encoding="utf-8"))
+        assert list(data.keys()) == ["submission_1"]
+
+        submitter = data["submission_1"][":submitters"][0]
+        assert submitter[":sid"] != 9999999999
+        assert submitter[":email"] != "test@example.com"
+        assert submitter[":email"].startswith("aanon")
+        assert submitter[":email"].endswith("@asu.edu")
 
     def test_rubric_is_anonymized_and_preserves_assessment_data(
         self,

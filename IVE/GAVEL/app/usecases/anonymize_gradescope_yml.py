@@ -106,7 +106,7 @@ class AnonymizeGradescopeYMLUseCase:
                 # Rewrite sid, anonymize name/email
                 s[":sid"] = id_map[sid]
                 s[":name"] = f"Anon {id_map[sid]}"
-                s[":email"] = f"Anon{id_map[sid]}@asu.edu"
+                s[":email"] = f"aanon{id_map[sid]}@asu.edu"
 
                 filtered_submitters.append(s)
 

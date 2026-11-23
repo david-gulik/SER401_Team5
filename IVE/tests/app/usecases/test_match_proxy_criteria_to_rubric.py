@@ -8,6 +8,7 @@ from GAVEL.app.usecases.match_proxy_criteria_to_rubric import (
     match_proxy_criteria_to_rubric,
 )
 from GAVEL.app.usecases.proxy_grade.mappings.ser334_m2 import SER334_M2
+from GAVEL.app.usecases.proxy_grade.mappings.ser334_m9 import SER334_M9
 
 # Real SER334 M2 rubric criterion descriptions, as downloaded from the test
 # course. "course_insert:: memory" carries the real rubric's own whitespace,
@@ -81,3 +82,43 @@ def test_two_criteria_that_normalize_the_same_are_rejected_instead_of_silently_m
 
     with pytest.raises(ValueError, match="ambiguous"):
         match_proxy_criteria_to_rubric(SER334_M2, rubric)
+
+
+# SER334 M9 rubric ("M09.02", rubric_id 1137679) as downloaded from
+# a live course (canvas_course_id 235187, assignment 6603625) and shared by the
+# sponsor.
+_M9_CRITERIA = (
+    ("Read Data: Basic", 2.0),
+    ("Read Data: Process(es)", 3.0),
+    ("Read Data: Dynamic", 8.0),
+    ("SJF: Simulation", 3.0),
+    ("SJF: Algorithms", 4.0),
+    ("SJF: Output", 3.0),
+    ("SJFL: Simulation", 3.0),
+    ("SJFL: Algorithms", 6.0),
+    ("SJFL: Output", 4.0),
+)
+
+
+def _m9_rubric() -> RubricDefinition:
+    return RubricDefinition(
+        rubric_id="1137679",
+        title="M09.02",
+        points_possible=36.0,
+        free_form_criterion_comments=False,
+        criteria=tuple(
+            RubricCriterionDefinition(
+                id=f"c{i}", description=description, long_description="", points=points, ratings=()
+            )
+            for i, (description, points) in enumerate(_M9_CRITERIA)
+        ),
+    )
+
+
+def test_matches_every_m9_criterion_against_the_real_rubric() -> None:
+    rubric = _m9_rubric()
+
+    matched = match_proxy_criteria_to_rubric(SER334_M9, rubric)
+
+    assert set(matched) == {c.name for c in SER334_M9.criteria}
+    assert all(matched[c.name].points == max(t.points for t in c.tiers) for c in SER334_M9.criteria)

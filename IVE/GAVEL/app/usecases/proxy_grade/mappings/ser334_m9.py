@@ -10,8 +10,8 @@ SER334_M9 = ProxyGradeMapping(
     name="ser334_m9",
     criteria=(
         Criterion("read data: basic", (Tier(2.0, all_of=("Read Data From File",)),)),
-        Criterion("read data: processes", (Tier(2.0, all_of=("Read Data From File",)),)),
-        Criterion("read data: dynamic", (Tier(7.0, all_of=("Dynamic Memory Allocation",)),)),
+        Criterion("read data: process(es)", (Tier(3.0, all_of=("Read Data From File",)),)),
+        Criterion("read data: dynamic", (Tier(8.0, all_of=("Dynamic Memory Allocation",)),)),
         Criterion(
             "sjf: simulation",
             (
@@ -50,13 +50,13 @@ SER334_M9 = ProxyGradeMapping(
             "sjfl: algorithms",
             (
                 Tier(
-                    4.0,
+                    6.0,
                     all_of=(
                         "SJFL Test Algorithm with 2 Processes",
                         "SJFL Test Algorithm with a variable number of Processes",
                     ),
                 ),
-                Tier(2.0, all_of=("SJFL Test Algorithm with 2 Processes",)),
+                Tier(3.0, all_of=("SJFL Test Algorithm with 2 Processes",)),
             ),
         ),
         Criterion(
