@@ -229,28 +229,6 @@ class InspectGradesTab(ScrollableTab):
         zip_path = self.autograder_zip_combo.itemData(index)
         self._viewmodel.select_autograder_zip(zip_path)
 
-    def _render_grading_status(self) -> None:
-        if self._viewmodel.selected_assignment is None:
-            self.status_label.setText("Select an assignment.")
-            return
-
-        messages = []
-
-        if self._viewmodel.human_grades_error:
-            messages.append(f"Human grades: {self._viewmodel.human_grades_error}")
-        else:
-            messages.append(f"Human grades: {len(self._viewmodel.human_grades)} assessments")
-
-        if self._viewmodel.proxy_grades_error:
-            messages.append(f"Proxy grades: {self._viewmodel.proxy_grades_error}")
-        else:
-            messages.append(f"Proxy grades: {len(self._viewmodel.proxy_grades)} submissions")
-
-        if self._viewmodel.rubric_definition_error:
-            messages.append(f"Student matrix: {self._viewmodel.rubric_definition_error}")
-
-        self.status_label.setText("\n".join(messages))
-
     def _on_criterion_selected(self, index: int) -> None:
         self.human_panel.select_criterion(index)
         self.proxy_panel.select_criterion(index)
