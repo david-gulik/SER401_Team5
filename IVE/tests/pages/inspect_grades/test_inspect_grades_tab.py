@@ -445,3 +445,37 @@ def test_criterion_selection_is_synchronized(qapp, theme):
 
     tab.close()
     tab.deleteLater()
+
+
+def test_criterion_selection_updates_rubric_correction_panel(qapp, theme):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    tab.student_grade_matrix.table.selectRow(0)
+
+    rubric = vm.rubric_definition
+    assert rubric is not None
+
+    tab.human_panel.criterion_selected.emit(0)
+
+    correction_panel = tab.rubric_correction_panel
+
+    assert correction_panel.student_label.text() == "Student: 100001"
+    assert correction_panel.criterion_label.text() == (
+        f"Criterion: {rubric.criteria[0].description}"
+    )
+    assert correction_panel.original_grade_label.text() == (
+        f"Original Grade (Canvas): 4 / {rubric.criteria[0].points:g}"
+    )
+
+    assert tab.human_panel.criteria_layout.itemAt(0).widget().property("selected") == "true"
+    assert tab.proxy_panel.criteria_layout.itemAt(0).widget().property("selected") == "true"
+
+    tab.student_grade_matrix.table.selectRow(1)
+
+    assert correction_panel.student_label.text() == "Student: —"
+    assert correction_panel.grade_buttons.buttons() == []
+
+    tab.deleteLater()
