@@ -35,10 +35,10 @@
     "tooltip_border": "#4dacff",
     "tooltip_text": "#daeeff",
 
-    "status_nominal": "#56f000",
-    "status_caution": "#fce83a",
+    "status_nominal": "#6fcf97",
+    "status_caution": "#f2b84b",
     "status_warning": "#ff8c00",
-    "status_critical": "#ff3838",
+    "status_critical": "#f26262",
     "status_unknown": "#a4abb6"
   },
   "spacing": { "0": 0, "4": 4, "8": 8, "12": 12, "16": 16, "24": 24, "32": 32 },
