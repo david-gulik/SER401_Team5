@@ -21,6 +21,19 @@ def vm():
     return InspectGradesViewModel(dataset_readers=build_dataset_readers())
 
 
+@pytest.fixture(autouse=True)
+def isolate_correction_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        InspectGradesViewModel,
+        "_corrections_path",
+        lambda self: (
+            tmp_path / f"{self.selected_assignment.canvas_id}.json"
+            if self.selected_assignment is not None
+            else None
+        ),
+    )
+
+
 def test_starts_with_nothing_selected(vm):
     assert vm.selected_course is None
     assert vm.selected_assignment is None
@@ -369,6 +382,194 @@ def test_saves_current_assignment_corrections(tmp_path, monkeypatch):
 
     assert restored_vm.get_correction(100002, "crit_2") == 2.0
     assert restored_vm.notes[(100002, "crit_2")] == "Awarded full credit."
+
+
+def test_corrupted_correction_file_does_not_block_grades(vm, tmp_path, monkeypatch):
+    vm.select_course(COURSE)
+
+    correction_file = tmp_path / "corrections.json"
+    correction_file.write_text(
+        "{invalid json",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        vm,
+        "_corrections_path",
+        lambda: correction_file,
+    )
+
+    assignment = next(a for a in vm.assignments if a.module_number == 4)
+
+    vm.select_assignment(assignment)
+
+    assert vm.corrections == {}
+    assert vm.notes == {}
+    assert vm.corrections_error is not None
+    assert "Could not load saved corrections" in vm.corrections_error
+
+    assert len(vm.human_grades) == 2
+    assert len(vm.proxy_grades) == 2
+    assert vm.rubric_definition is not None
+
+    assert correction_file.read_text(encoding="utf-8") == "{invalid json"
+
+
+def test_corrupted_correction_file_cannot_be_overwritten(vm, tmp_path, monkeypatch):
+    vm.select_course(COURSE)
+
+    correction_file = tmp_path / "corrections.json"
+    correction_file.write_text(
+        "{invalid json",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        vm,
+        "_corrections_path",
+        lambda: correction_file,
+    )
+
+    assignment = next(a for a in vm.assignments if a.module_number == 4)
+
+    vm.select_assignment(assignment)
+
+    assert vm.corrections_error is not None
+
+    vm.set_correction(100002, "crit_2", 2.0)
+    vm.notes[(100002, "crit_2")] = "Updated grade."
+
+    vm.save_current_corrections()
+
+    assert correction_file.read_text(encoding="utf-8") == "{invalid json"
+
+
+@pytest.mark.parametrize(
+    "student_id, criterion_id, score",
+    [
+        (999999, "crit_2", 2.0),
+        (100002, "invalid_criterion", 2.0),
+        (100002, "crit_2", 10.0),
+    ],
+)
+def test_rejects_corrections_not_matching_assignment(
+    vm, tmp_path, monkeypatch, student_id, criterion_id, score
+):
+    vm.select_course(COURSE)
+
+    correction_file = tmp_path / "corrections.json"
+
+    save_corrections(
+        correction_file,
+        {(student_id, criterion_id): score},
+        {},
+    )
+
+    original_content = correction_file.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        vm,
+        "_corrections_path",
+        lambda: correction_file,
+    )
+
+    assignment = next(a for a in vm.assignments if a.module_number == 4)
+
+    vm.select_assignment(assignment)
+
+    assert vm.corrections == {}
+    assert vm.notes == {}
+    assert vm.corrections_error is not None
+    assert "Could not load saved corrections" in vm.corrections_error
+
+    assert len(vm.human_grades) == 2
+    assert vm.rubric_definition is not None
+
+    vm.save_current_corrections()
+
+    assert correction_file.read_text(encoding="utf-8") == original_content
+
+
+@pytest.mark.parametrize(
+    "missing_data",
+    ["rubric", "human_grades"],
+)
+def test_saved_corrections_require_grading_data(vm, tmp_path, monkeypatch, missing_data):
+    vm.select_course(COURSE)
+
+    correction_file = tmp_path / "corrections.json"
+
+    save_corrections(
+        correction_file,
+        {(100002, "crit_2"): 2.0},
+        {},
+    )
+
+    original_content = correction_file.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        vm,
+        "_corrections_path",
+        lambda: correction_file,
+    )
+
+    if missing_data == "rubric":
+        monkeypatch.setattr(
+            "GAVEL.pages.inspect_grades.viewmodel.CourseDataset.rubric_definition",
+            lambda self, assignment_id: None,
+        )
+    else:
+        monkeypatch.setattr(
+            "GAVEL.pages.inspect_grades.viewmodel.CourseDataset.rubric_assessments",
+            lambda self, assignment_id: (),
+        )
+
+    assignment = next(a for a in vm.assignments if a.module_number == 4)
+
+    vm.select_assignment(assignment)
+
+    assert vm.corrections == {}
+    assert vm.notes == {}
+    assert vm.corrections_error is not None
+    assert "Could not validate saved corrections" in vm.corrections_error
+
+    vm.save_current_corrections()
+
+    assert correction_file.read_text(encoding="utf-8") == original_content
+
+
+def test_save_corrections_handles_file_error(vm, tmp_path, monkeypatch):
+    vm.select_course(COURSE)
+
+    correction_file = tmp_path / "corrections.json"
+
+    monkeypatch.setattr(
+        vm,
+        "_corrections_path",
+        lambda: correction_file,
+    )
+
+    assignment = next(a for a in vm.assignments if a.module_number == 4)
+
+    vm.select_assignment(assignment)
+
+    vm.set_correction(100002, "crit_2", 2.0)
+
+    def fail_save(path, corrections, notes):
+        raise PermissionError("Access denied")
+
+    monkeypatch.setattr(
+        "GAVEL.pages.inspect_grades.viewmodel.save_corrections",
+        fail_save,
+    )
+
+    vm.save_current_corrections()
+
+    assert vm.corrections_error is not None
+    assert "Could not save rubric corrections" in vm.corrections_error
+    assert "Access denied" in vm.corrections_error
+
+    assert not correction_file.exists()
 
 
 def test_autograder_zips_are_discovered(vm, tmp_path):

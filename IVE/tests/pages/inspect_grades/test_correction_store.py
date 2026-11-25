@@ -1,3 +1,7 @@
+import json
+
+import pytest
+
 from GAVEL.pages.inspect_grades.correction_store import (
     load_corrections,
     save_corrections,
@@ -58,3 +62,59 @@ def test_saving_replaces_previous_corrections(tmp_path):
     assert notes == {}
 
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+@pytest.mark.parametrize(
+    "invalid_data",
+    [
+        [],
+        {"version": 2, "corrections": []},
+        {"version": 1},
+        {"version": 1, "corrections": "invalid"},
+        {"version": 1, "corrections": ["invalid"]},
+        {
+            "version": 1,
+            "corrections": [{"student_id": 100002, "criterion_id": "crit_2"}],
+        },
+    ],
+)
+def test_load_rejects_invalid_correction_structure(tmp_path, invalid_data):
+    path = tmp_path / "invalid_corrections.json"
+    path.write_text(json.dumps(invalid_data), encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        load_corrections(path)
+
+
+@pytest.mark.parametrize(
+    "invalid_entry",
+    [
+        {"student_id": "abc", "criterion_id": "crit_2", "corrected_score": 2},
+        {"student_id": -1, "criterion_id": "crit_2", "corrected_score": 2},
+        {"student_id": 100002, "criterion_id": "", "corrected_score": 2},
+        {"student_id": 100002, "criterion_id": "crit_2", "corrected_score": -1},
+        {"student_id": 100002, "criterion_id": "crit_2", "corrected_score": "abc"},
+        {"student_id": 100002, "criterion_id": "crit_2", "corrected_score": float("inf")},
+        {
+            "student_id": 100002,
+            "criterion_id": "crit_2",
+            "corrected_score": 2,
+            "notes": 123,
+        },
+    ],
+)
+def test_load_rejects_invalid_correction_values(tmp_path, invalid_entry):
+    path = tmp_path / "invalid_values.json"
+
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "corrections": [invalid_entry],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError):
+        load_corrections(path)

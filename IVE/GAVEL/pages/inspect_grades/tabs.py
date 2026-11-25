@@ -160,6 +160,7 @@ class InspectGradesTab(ScrollableTab):
         self._viewmodel.select_assignment(assignment)
         self._render_autograder_zips()
         self._render_grading_status()
+        self.rubric_correction_panel.setEnabled(self._viewmodel.corrections_error is None)
 
         self.student_grade_matrix.clear()
         self._on_student_selected()
@@ -430,6 +431,10 @@ class InspectGradesTab(ScrollableTab):
 
         self._viewmodel.save_current_corrections()
 
+        if self._viewmodel.corrections_error:
+            self._render_grading_status()
+            self.rubric_correction_panel.setEnabled(False)
+
     def _on_correction_changed(self, corrected_score: float) -> None:
         index = self._selected_criterion_index
         rubric = self._viewmodel.rubric_definition
@@ -487,6 +492,10 @@ class InspectGradesTab(ScrollableTab):
 
         self._viewmodel.save_current_corrections()
 
+        if self._viewmodel.corrections_error:
+            self._render_grading_status()
+            self.rubric_correction_panel.setEnabled(False)
+
     def _render_grading_status(self) -> None:
         if self._viewmodel.selected_assignment is None:
             self.status_label.setText("Select an assignment.")
@@ -506,5 +515,24 @@ class InspectGradesTab(ScrollableTab):
 
         if self._viewmodel.rubric_definition_error:
             messages.append(f"Student matrix: {self._viewmodel.rubric_definition_error}")
+
+        if self._viewmodel.corrections_error:
+            error = self._viewmodel.corrections_error
+
+            if error.startswith("Could not save"):
+                messages.append(
+                    "WARNING: Rubric corrections could not be saved. "
+                    "Your latest changes may not be saved, and correction "
+                    "editing has been disabled.\n"
+                    f"Details: {error}"
+                )
+            else:
+                messages.append(
+                    "WARNING: Saved rubric corrections could not be loaded "
+                    "or validated. Original grades are still available, "
+                    "but correction saving is disabled to protect the "
+                    "existing file.\n"
+                    f"Details: {error}"
+                )
 
         self.status_label.setText("\n".join(messages))

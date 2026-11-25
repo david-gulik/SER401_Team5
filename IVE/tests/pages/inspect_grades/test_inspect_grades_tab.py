@@ -793,3 +793,88 @@ def test_reopening_assignment_restores_saved_corrections_and_notes(
     )
 
     tab.deleteLater()
+
+
+def test_corrupted_correction_file_displays_warning(qapp, theme, tmp_path, monkeypatch):
+    tab, vm = _tab(theme)
+
+    correction_file = tmp_path / "corrections.json"
+    correction_file.write_text("{invalid json", encoding="utf-8")
+
+    monkeypatch.setattr(
+        vm,
+        "_corrections_path",
+        lambda: correction_file if vm.selected_assignment is not None else None,
+    )
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    assert vm.corrections_error is not None
+    assert "WARNING:" in tab.status_label.text()
+    assert "correction saving is disabled" in tab.status_label.text()
+    assert not tab.rubric_correction_panel.isEnabled()
+    assert tab.student_grade_matrix.isEnabled()
+    assert tab.human_panel.isEnabled()
+
+    assert tab.student_grade_matrix.table.rowCount() == 2
+    assert tab.student_grade_matrix.table.item(1, 1).text() == "4"
+
+    assert correction_file.read_text(encoding="utf-8") == "{invalid json"
+
+    tab.deleteLater()
+
+
+def test_save_error_displays_warning_and_disables_corrections(qapp, theme, monkeypatch):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+    tab.student_grade_matrix.table.selectRow(1)
+    tab.human_panel.criterion_selected.emit(1)
+
+    def fail_save(path, corrections, notes):
+        raise PermissionError("Access denied")
+
+    monkeypatch.setattr(
+        "GAVEL.pages.inspect_grades.viewmodel.save_corrections",
+        fail_save,
+    )
+
+    tab.rubric_correction_panel.grade_buttons.buttons()[0].click()
+
+    assert vm.corrections_error is not None
+    assert "Could not save rubric corrections" in vm.corrections_error
+
+    assert "WARNING:" in tab.status_label.text()
+    assert "could not be saved" in tab.status_label.text()
+    assert "Access denied" in tab.status_label.text()
+
+    assert not tab.rubric_correction_panel.isEnabled()
+    assert tab.student_grade_matrix.isEnabled()
+    assert tab.human_panel.isEnabled()
+
+    assert vm.get_correction(100002, "crit_2") == 2.0
+
+    tab.deleteLater()
+
+
+def test_correction_error_resets_when_switching_assignments(qapp, theme, monkeypatch):
+    tab, vm = _tab(theme)
+
+    tab.set_course(COURSE)
+    tab.assignment_combo.setCurrentIndex(2)
+
+    vm.corrections_error = "Could not save rubric corrections: Access denied"
+    tab._render_grading_status()
+    tab.rubric_correction_panel.setEnabled(False)
+
+    assert not tab.rubric_correction_panel.isEnabled()
+
+    tab.assignment_combo.setCurrentIndex(0)
+
+    assert vm.corrections_error is None
+    assert tab.rubric_correction_panel.isEnabled()
+    assert "WARNING:" not in tab.status_label.text()
+
+    tab.deleteLater()
