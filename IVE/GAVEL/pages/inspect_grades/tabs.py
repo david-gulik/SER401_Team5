@@ -75,6 +75,8 @@ class InspectGradesTab(ScrollableTab):
 
         self.rubric_correction_panel.correction_changed.connect(self._on_correction_changed)
 
+        self.rubric_correction_panel.notes_changed.connect(self._on_notes_changed)
+
         self.human_panel.setMinimumWidth(280)
         self.proxy_panel.setMinimumWidth(280)
         self.rubric_correction_panel.setMinimumWidth(280)
@@ -163,10 +165,20 @@ class InspectGradesTab(ScrollableTab):
         self._on_student_selected()
 
         if self._viewmodel.rubric_definition is not None:
+            rubric = self._viewmodel.rubric_definition
+
             self.student_grade_matrix.display(
                 self._viewmodel.human_grades,
-                self._viewmodel.rubric_definition,
+                rubric,
             )
+
+            if self._viewmodel.corrections:
+                for assessment in self._viewmodel.human_grades:
+                    self.student_grade_matrix.update_corrected_row(
+                        assessment,
+                        rubric,
+                        self._viewmodel.corrections,
+                    )
 
     def _render_autograder_zips(self) -> None:
         self.autograder_zip_combo.blockSignals(True)
@@ -285,6 +297,17 @@ class InspectGradesTab(ScrollableTab):
             ),
         )
 
+        saved_note = self._viewmodel.notes.get(
+            (student_id, criterion.id),
+            "",
+        )
+
+        notes_input = self.rubric_correction_panel.notes_input
+
+        notes_input.blockSignals(True)
+        notes_input.setPlainText(saved_note)
+        notes_input.blockSignals(False)
+
     def _on_student_selected(self) -> None:
         self._selected_criterion_index = None
         self.rubric_correction_panel.clear()
@@ -378,6 +401,35 @@ class InspectGradesTab(ScrollableTab):
         if self._selected_criterion_index is not None:
             self.human_panel.select_criterion(self._selected_criterion_index)
 
+    def _on_notes_changed(self, notes: str) -> None:
+        index = self._selected_criterion_index
+        rubric = self._viewmodel.rubric_definition
+
+        selected_rows = self.student_grade_matrix.table.selectionModel().selectedRows()
+
+        if index is None or rubric is None or not selected_rows:
+            return
+
+        if not 0 <= index < len(rubric.criteria):
+            return
+
+        row = selected_rows[0].row()
+        student_item = self.student_grade_matrix.table.item(row, 0)
+
+        if student_item is None:
+            return
+
+        student_id = int(student_item.text())
+        criterion_id = rubric.criteria[index].id
+        key = (student_id, criterion_id)
+
+        if notes.strip():
+            self._viewmodel.notes[key] = notes
+        else:
+            self._viewmodel.notes.pop(key, None)
+
+        self._viewmodel.save_current_corrections()
+
     def _on_correction_changed(self, corrected_score: float) -> None:
         index = self._selected_criterion_index
         rubric = self._viewmodel.rubric_definition
@@ -432,3 +484,27 @@ class InspectGradesTab(ScrollableTab):
             rubric,
             self._viewmodel.corrections,
         )
+
+        self._viewmodel.save_current_corrections()
+
+    def _render_grading_status(self) -> None:
+        if self._viewmodel.selected_assignment is None:
+            self.status_label.setText("Select an assignment.")
+            return
+
+        messages = []
+
+        if self._viewmodel.human_grades_error:
+            messages.append(f"Human grades: {self._viewmodel.human_grades_error}")
+        else:
+            messages.append(f"Human grades: {len(self._viewmodel.human_grades)} assessments")
+
+        if self._viewmodel.proxy_grades_error:
+            messages.append(f"Proxy grades: {self._viewmodel.proxy_grades_error}")
+        else:
+            messages.append(f"Proxy grades: {len(self._viewmodel.proxy_grades)} submissions")
+
+        if self._viewmodel.rubric_definition_error:
+            messages.append(f"Student matrix: {self._viewmodel.rubric_definition_error}")
+
+        self.status_label.setText("\n".join(messages))
