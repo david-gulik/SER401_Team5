@@ -24,6 +24,7 @@ class MainWindow(QMainWindow):
         self._page_specs = {p.page_id: p for p in pages}
 
         self._drawer = NavigationDrawer(self._ctx.theme, pages, self.navigate_to)
+        self._ctx.active_assignment.page_requested.connect(self._on_page_requested)
 
         shell = QWidget()
         root = QHBoxLayout(shell)
@@ -66,6 +67,11 @@ class MainWindow(QMainWindow):
         if uses_course:
             # The picked folder may have been deleted or renamed since.
             self._ctx.active_course.revalidate()
+
+    def _on_page_requested(self, page_id: str) -> None:
+        # One page handing work to another, such as a submission to Inspect Grades.
+        if page_id in self._page_specs:
+            self.navigate_to(page_id)
 
     def _ensure_page(self, page_id: str) -> QWidget:
         if page_id in self._page_widgets:
