@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from GAVEL.app.ports.autograder_runner import AutograderRunner
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
 from GAVEL.app.workspace.dataset import DatasetReaders
+from GAVEL.infra.autograders.local_autograder_runner import LocalAutograderRunner
 from GAVEL.infra.canvas.http_canvas_client import CanvasApiConfig, HttpCanvasClient
 from GAVEL.infra.canvas.unconfigured_canvas_client import UnconfiguredCanvasClient
 from GAVEL.infra.csv.canvas_consent_form_csv_reader import CanvasConsentFormCSVReader
@@ -100,3 +102,9 @@ def build_dataset_readers() -> DatasetReaders:
         rubric_assessments=JsonRubricAssessmentReader(),
         gradescope=YamlGradescopeReader(),
     )
+
+
+def build_autograder_runner() -> AutograderRunner:
+    """The runner that grades one submission with one autograder on this machine."""
+    # Enough of each run's output to hold a whole traceback when the autograder crashes.
+    return LocalAutograderRunner(output_tail_chars=8000)

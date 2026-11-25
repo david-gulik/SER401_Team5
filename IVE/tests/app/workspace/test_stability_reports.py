@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 from datetime import datetime
 from pathlib import Path
@@ -41,7 +42,7 @@ def _report(tmp_path: Path, started: datetime, flaky: bool = True):
         module_number=9,
         autograder="ser334_m9_grader.zip",
         autograder_dir=tmp_path / "grader",
-        submissions_dir=folder,
+        submission_dirs=tuple(sorted(p for p in folder.iterdir() if p.is_dir())),
         runs=3,
         workers=2,
         timeout_seconds=5.0,
@@ -71,7 +72,8 @@ def test_json_carries_a_schema_version_and_plain_values(tmp_path):
     data = json.loads(report_to_json(report))
 
     assert data["schema_version"] == 1
-    assert data["tests"][0]["state"] == "broke"
+    assert data["tests"][0]["state"] == "changed"
+    assert data["tests"][0]["runs_broke"] == 1
     assert data["executions"][0]["status"] == "completed"
 
 
@@ -111,10 +113,51 @@ def test_list_gives_newest_first_with_a_summary(store, tmp_path):
     assert summaries[0].path == newer_path
     assert summaries[0].verdict is StabilityState.BROKE
     assert (summaries[0].runs_completed, summaries[0].runs_requested) == (3, 3)
-    assert summaries[0].tests_broke == 1
+    assert summaries[0].submissions_broke == 1
+    assert summaries[0].tests_changed == 1
     assert summaries[1].verdict is StabilityState.PASS
     assert not summaries[1].cancelled
 
 
 def test_list_is_empty_for_an_assignment_never_checked(store):
     assert store.list("ser334_25fc_82931", 3, "other.zip") == ()
+
+
+def test_latest_autograder_is_the_one_of_the_report_saved_last(store, tmp_path):
+    assert store.latest_autograder("ser334_25fc_82931", 9) is None
+    store.save(_report(tmp_path, datetime(2026, 11, 16, 14, 0, 0)))
+    with_other = dataclasses.replace(
+        _report(tmp_path, datetime(2026, 11, 17, 9, 0, 0)), autograder="newer_grader.zip"
+    )
+    store.save(with_other)
+
+    assert store.latest_autograder("ser334_25fc_82931", 9) == "newer_grader.zip"
+    assert store.latest_autograder("ser334_25fc_82931", 3) is None
+
+
+def test_delete_removes_the_report_and_the_folder_once_empty(store, tmp_path):
+    first = store.save(_report(tmp_path, datetime(2026, 11, 16, 14, 0, 0)))
+    second = store.save(_report(tmp_path, datetime(2026, 11, 17, 9, 0, 0)))
+
+    store.delete(first)
+
+    assert not first.exists()
+    assert [s.path for s in store.list("ser334_25fc_82931", 9, "ser334_m9_grader.zip")] == [second]
+
+    store.delete(second)
+    store.delete(second)  # already gone: not an error
+
+    assert not second.parent.exists()
+    assert store.list("ser334_25fc_82931", 9, "ser334_m9_grader.zip") == ()
+    assert store.latest_autograder("ser334_25fc_82931", 9) is None
+
+
+def test_two_checks_started_in_the_same_second_keep_both_files(store, tmp_path):
+    report = _report(tmp_path, datetime(2026, 11, 16, 14, 0, 0))
+
+    first = store.save(report)
+    second = store.save(report)
+
+    assert first.name == "2026-11-16T14-00-00.json"
+    assert second.name == "2026-11-16T14-00-00-2.json"
+    assert len(store.list("ser334_25fc_82931", 9, "ser334_m9_grader.zip")) == 2

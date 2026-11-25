@@ -239,6 +239,35 @@ def test_gradebook_columns_without_a_manifest_still_lists_every_column(
     assert set(columns) == {_MODULE_9_COLUMN, _OTHER_COLUMN}
 
 
+def test_list_all_gradebook_columns_is_not_narrowed_to_a_module(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    workspace_root = _build_course(tmp_path, with_manifest=True)
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+
+    columns = vm.list_all_gradebook_columns(course)
+
+    assert set(columns) == {_MODULE_9_COLUMN, _OTHER_COLUMN}
+
+
+def test_generate_r_squared_writes_a_report_to_the_runs_folder(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    workspace_root = _build_course(tmp_path)
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+
+    outcome = vm.generate_r_squared(workspace_root, course, 9, _MODULE_9_COLUMN, _OTHER_COLUMN)
+
+    # Student A passes every test, student B passes none, so every pair of
+    # the mapping's 15 tests is perfectly (anti-)correlated: 15 choose 2.
+    assert outcome.test_pairs == 105
+    assert outcome.cross_assessment_r_squared == pytest.approx(1.0)
+    assert outcome.output_path.exists()
+    assert outcome.output_path.parent == Workspace(workspace_root).runs_dir
+
+
 def test_rubric_assignments_lists_only_assignments_with_a_rubric(
     tmp_path: Path, readers: DatasetReaders
 ) -> None:
@@ -299,6 +328,127 @@ def test_generate_heat_map_names_the_missing_rubric_definition_file(
         vm.generate_heat_map(workspace_root, course, 9, "ser334_m9", rubric_assignment)
 
     assert str(expected_path) in str(exc_info.value)
+
+
+_ACCOUNTABILITY_RUBRIC_ASSIGNMENT_ID = 9004
+
+
+def _accountability_submission_block(sid: str, email: str, test_names: list[str]) -> str:
+    """Builds a submission YAML block with only the given tests present so that a submission can be missing
+    required tests entirely instead of merely failing them."""
+    tests = "".join(
+        f'      - name: "{name}"\n        score: 1.0\n        max_score: 1.0\n'
+        for name in test_names
+    )
+    return (
+        f"submission_{sid}:\n"
+        "  :created_at: 2026-01-01 00:00:00\n"
+        "  :submitters:\n"
+        f"  - :sid: '{sid}'\n"
+        f"    :email: {email}\n"
+        f"    :name: Test Student\n"
+        "  :results:\n"
+        "    tests:\n" + tests
+    )
+
+
+def _build_accountability_course(tmp_path: Path) -> Path:
+    """A course with one submission in each of the heat map's four outcome
+    buckets: scored, unmatched, failed, and no human scores at all."""
+    folder = Workspace(tmp_path).course(CourseKey.parse(_FOLDER_NAME))
+    folder.anonymized.root.mkdir(parents=True)
+
+    folder.anonymized.gradebook_csv.write_text(
+        "Student,ID,SIS Login ID,Section," + _MODULE_9_COLUMN + "\n"
+        ",,,,Manual Posting\n"
+        "    Points Possible,,,,32.00\n"
+        '"Scored, Student",2001,student_scored,001,30.00\n'
+        '"Failed, Student",2003,student_failed,001,0.00\n'
+        '"NoHuman, Student",2004,student_nohuman,001,0.00\n',
+        encoding="utf-8",
+    )
+
+    module = folder.anonymized.module_submissions(9)
+    module.extracted_dir.mkdir(parents=True)
+    (module.extracted_dir / "submission_metadata.yml").write_text(
+        _submission_block("2001", "student_scored@asu.edu", "Scored Student", set(_ALL_TEST_NAMES))
+        + _accountability_submission_block(
+            "2002", "student_unmatched@asu.edu", [_ALL_TEST_NAMES[0]]
+        )
+        + _accountability_submission_block("2003", "student_failed@asu.edu", [_ALL_TEST_NAMES[0]])
+        + _submission_block(
+            "2004", "student_nohuman@asu.edu", "NoHuman Student", set(_ALL_TEST_NAMES)
+        ),
+        encoding="utf-8",
+    )
+
+    assignment_folder = folder.anonymized.assignment(
+        _ACCOUNTABILITY_RUBRIC_ASSIGNMENT_ID, module_number=9
+    )
+    _write_rubric_definition(assignment_folder.rubric_definition_json)
+    assignment_folder.rubric_assessments_json.write_text(
+        json.dumps(
+            [
+                {
+                    "student_id": 2001,
+                    "submission_id": 2001,
+                    "criteria": [
+                        {
+                            "criterion_id": f"c{i}",
+                            "points": criterion.tiers[0].points,
+                            "comments": "",
+                        }
+                        for i, criterion in enumerate(SER334_M9.criteria)
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    manifest = new_manifest(folder.key)
+    manifest = record_assignment(
+        manifest,
+        AssignmentEntry(
+            canvas_id=9001, name="Programming (Gradescope)", module_number=9, has_rubric=False
+        ),
+    )
+    manifest = record_assignment(
+        manifest,
+        AssignmentEntry(
+            canvas_id=_ACCOUNTABILITY_RUBRIC_ASSIGNMENT_ID,
+            name="Programming (Manual)",
+            module_number=9,
+            has_rubric=True,
+        ),
+    )
+    save_manifest(folder.manifest_path, manifest)
+
+    return tmp_path
+
+
+def test_generate_heat_map_accountability_invariant_holds_across_all_outcomes(
+    tmp_path: Path, readers: DatasetReaders
+) -> None:
+    """The heat map's accountability invariant, run through the full
+    workspace-and-viewmodel path where every submission in the fixture is exactly
+    one of scored, unmatched, failed, or missing all human scores."""
+    workspace_root = _build_accountability_course(tmp_path)
+    vm = GenerateReportViewModel(readers)
+    course = _course(workspace_root, readers)
+    rubric_assignment = vm.list_rubric_assignments(course, 9)[0]
+
+    outcome = vm.generate_heat_map(workspace_root, course, 9, "ser334_m9", rubric_assignment)
+
+    assert outcome.unmatched == 1
+    assert outcome.failed == 1
+    assert outcome.missing_human_scores == 1
+    scored_submissions, remainder = divmod(outcome.scored, len(SER334_M9.criteria))
+    assert remainder == 0
+    accounted_for = (
+        scored_submissions + outcome.unmatched + outcome.failed + outcome.missing_human_scores
+    )
+    assert accounted_for == 4
 
 
 def test_generate_heat_map_output_paths_do_not_collide_across_rubric_assignments(

@@ -37,7 +37,15 @@ class ReportSummary:
     cancelled: bool
     verdict: StabilityState
     tests_changed: int
-    tests_broke: int
+    submissions_broke: int
+    # Seconds one execution took on average, for estimating the next check; None if none ran.
+    mean_execution_seconds: float | None
+
+
+def _mean_execution_seconds(report: StabilityReport) -> float | None:
+    if not report.executions:
+        return None
+    return sum(e.duration_seconds for e in report.executions) / len(report.executions)
 
 
 class StabilityReportStore:
@@ -50,8 +58,14 @@ class StabilityReportStore:
     def save(self, report: StabilityReport) -> Path:
         folder = self.folder(report.course, report.module_number, report.autograder)
         folder.mkdir(parents=True, exist_ok=True)
-        # Colons are not allowed in Windows file names.
-        path = folder / (report.started_at.replace(":", "-") + ".json")
+        # Colons are not allowed in Windows file names. Two checks started in the
+        # same second get numbered rather than overwriting each other.
+        stem = report.started_at.replace(":", "-")
+        path = folder / f"{stem}.json"
+        counter = 2
+        while path.exists():
+            path = folder / f"{stem}-{counter}.json"
+            counter += 1
         path.write_text(report_to_json(report), encoding="utf-8")
         return path
 
@@ -72,14 +86,34 @@ class StabilityReportStore:
                     cancelled=report.cancelled,
                     verdict=report.verdict,
                     tests_changed=len(report.tests_in(StabilityState.CHANGED)),
-                    tests_broke=len(report.tests_in(StabilityState.BROKE)),
+                    submissions_broke=len(report.broken_submissions),
+                    mean_execution_seconds=_mean_execution_seconds(report),
                 )
             )
         summaries.sort(key=lambda s: s.started_at, reverse=True)
         return tuple(summaries)
 
+    def latest_autograder(self, course: str, module_number: int) -> str | None:
+        """The autograder of the report saved most recently for an assignment, if any."""
+        module_folder = self._workspace.runs_dir / course / f"m{module_number}"
+        if not module_folder.is_dir():
+            return None
+        reports = list(module_folder.glob("*/*.json"))
+        if not reports:
+            return None
+        newest = max(reports, key=lambda p: (p.stat().st_mtime_ns, p.name))
+        return newest.parent.name
+
     def load(self, path: Path) -> StabilityReport:
         return report_from_json(Path(path).read_text(encoding="utf-8"))
+
+    def delete(self, path: Path) -> None:
+        """Remove a saved report; its autograder folder goes too once it is empty."""
+        path = Path(path)
+        path.unlink(missing_ok=True)
+        folder = path.parent
+        if folder.is_dir() and not any(folder.iterdir()):
+            folder.rmdir()
 
 
 # ----- JSON shape -------------------------------------------------------------------------
@@ -195,6 +229,7 @@ def _item_to_dict(item: ItemStability) -> dict:
         "state": item.state.value,
         "runs_agreed": item.runs_agreed,
         "runs_total": item.runs_total,
+        "runs_broke": item.runs_broke,
         "submissions_total": item.submissions_total,
         "built_from": list(item.built_from),
         "affected": [
@@ -224,6 +259,7 @@ def _item_from_dict(data: dict) -> ItemStability:
         state=StabilityState(data["state"]),
         runs_agreed=int(data["runs_agreed"]),
         runs_total=int(data["runs_total"]),
+        runs_broke=int(data["runs_broke"]),
         submissions_total=int(data["submissions_total"]),
         built_from=tuple(data["built_from"]),
         affected=tuple(

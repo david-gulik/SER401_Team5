@@ -35,6 +35,9 @@ class _RaisingViewModel:
     ) -> tuple[AssignmentEntry, ...]:
         return (_RUBRIC_ASSIGNMENT,)
 
+    def list_all_gradebook_columns(self, course: CourseFolder) -> tuple[str, ...]:
+        return ("some_column",)
+
     def generate(self, workspace_root, course, module_number, mapping_name, gradebook_column):
         raise RuntimeError("boom")
 
@@ -42,6 +45,22 @@ class _RaisingViewModel:
         self, workspace_root, course, module_number, mapping_name, rubric_assignment
     ):
         raise RuntimeError("boom")
+
+    def generate_r_squared(
+        self, workspace_root, course, module_number, assessment_column_a, assessment_column_b
+    ):
+        raise RuntimeError("boom")
+
+
+class _OverlappingColumnsViewModel(_RaisingViewModel):
+    """Like _RaisingViewModel, but the gradebook column calls succeed, and
+    the module's own column also appears in the full gradebook column list."""
+
+    def list_gradebook_columns(self, course: CourseFolder, module_number: int) -> tuple[str, ...]:
+        return ("Module 1: Programming (111)",)
+
+    def list_all_gradebook_columns(self, course: CourseFolder) -> tuple[str, ...]:
+        return ("Module 1: Programming (111)", "Quiz 1 (222)")
 
 
 class _RaisingRubricListViewModel(_RaisingViewModel):
@@ -140,3 +159,36 @@ def test_generate_heat_map_report_reports_an_unexpected_exception_without_crashi
 
     assert "Could not generate the report" in card._status.text()
     assert "boom" in card._status.text()
+
+
+def test_generate_r_squared_report_reports_an_unexpected_exception_without_crashing(qapp, theme):
+    card = _card(theme)
+    card._report_type_box.setCurrentText(GenerateReportCard._R_SQUARED)
+    card._assessment_a_box.addItem("some_column")
+    card._assessment_b_box.addItem("some_other_column")
+
+    card._generate()
+
+    assert "Could not generate the report" in card._status.text()
+    assert "boom" in card._status.text()
+
+
+def test_r_squared_report_needs_both_assessments_chosen(qapp, theme):
+    card = _card(theme)
+    card._report_type_box.setCurrentText(GenerateReportCard._R_SQUARED)
+    card._assessment_a_box.clear()
+    card._assessment_b_box.clear()
+
+    card._generate()
+
+    assert card._status.text() == "Choose both assessments to compare."
+
+
+def _assessment_b_items(card: GenerateReportCard) -> list[str]:
+    return [card._assessment_b_box.itemText(i) for i in range(card._assessment_b_box.count())]
+
+
+def test_assessment_b_excludes_assessment_a_s_own_column(qapp, theme):
+    card = _card(theme, _OverlappingColumnsViewModel())
+
+    assert _assessment_b_items(card) == ["Quiz 1 (222)"]
