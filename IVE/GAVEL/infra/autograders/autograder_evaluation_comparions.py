@@ -124,7 +124,8 @@ def compare_evaluations(
 
 class MatplotlibWidget(FigureCanvas):
     def __init__(self) -> None:
-        self.figure = Figure(figsize=(8, 6))
+        self.figure = Figure(figsize=(14,10),
+                             constrained_layout=True)
 
         super().__init__(self.figure)
 

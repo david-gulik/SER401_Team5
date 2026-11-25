@@ -3,6 +3,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+from PyQt6.QtCore import QTimer
 from dotenv import load_dotenv
 from PyQt6.QtWidgets import (
     QApplication,
@@ -13,10 +15,11 @@ from PyQt6.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QStackedWidget,
     QStyle,
     QTabWidget,
     QVBoxLayout,
-    QWidget,
+    QWidget, QTableWidget, QTableWidgetItem, QFileDialog,
 )
 
 from GAVEL.app.workspace import CourseFolder
@@ -392,29 +395,334 @@ class AATComparisonPage(ScrollableTab):
         self.reference_list_widget.itemSelectionChanged.connect(self._on_reference_changed)
         self.visualization_tabs: QTabWidget | None = None
 
+        self.stacked_widget: QStackedWidget | None = None
+
+        self.selection_page: QWidget | None = None
+        self.results_page: QWidget | None = None
+
         self.scatter_chart: MatplotlibWidget | None = None
         self.histogram_chart: MatplotlibWidget | None = None
         self.distribution_chart: MatplotlibWidget | None = None
         self.bland_altman_chart: MatplotlibWidget | None = None
         self.heatmap_chart: MatplotlibWidget | None = None
 
-        self.add_section(self._build_assignments_dropdown())
-        self._on_active_course_changed(self._active_course.course)
-        self.add_section(self._build_evaluations_selection())
-        self.compare_btn = QPushButton("Compare")
+        self.summary_tab: QWidget | None = None
+        self.outliers_tab: QWidget | None = None
 
-        self.compare_btn.clicked.connect(self._compare_selected_evaluations)
+        self.outliers_table: QTableWidget | None = None
 
-        self.add_section(self.compare_btn)
-        self.add_section(self._build_visualizations_card())
+        self.correlation_label: QLabel | None = None
+        self.mean_difference_label: QLabel | None = None
+        self.std_difference_label: QLabel | None = None
+        self.within_one_label: QLabel | None = None
+        self.largest_difference_label: QLabel | None = None
 
-        self.visualization_tabs.setMinimumHeight(700)
+        self._comparison_df = None
+        self._reference_name = None
+        self._candidate_name = None
+
+
+
+        # self.add_section(self._build_assignments_dropdown())
+        # self._on_active_course_changed(self._active_course.course)
+        # self.add_section(self._build_evaluations_selection())
+        # self.compare_btn = QPushButton("Compare")
+        #
+        # self.compare_btn.clicked.connect(self._compare_selected_evaluations)
+        #
+        # self.add_section(self.compare_btn)
+        # self.add_section(self._build_visualizations_card())
+        self.stacked_widget = QStackedWidget()
+
+        self.selection_page = self._build_selection_page()
+        self.results_page = self._build_results_page()
+
+        self.stacked_widget.addWidget(
+            self.selection_page
+        )
+
+        self.stacked_widget.addWidget(
+            self.results_page
+        )
+
+        self.add_section(
+            self.stacked_widget
+        )
+
+        self.visualization_tabs.setMinimumHeight(1000)
         self.visualization_tabs.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
 
         self.add_stretch()
+
+    def _build_selection_page(self) -> QWidget:
+        page = QWidget()
+
+        layout = QVBoxLayout(page)
+
+        layout.addWidget(
+            self._build_assignments_dropdown()
+        )
+
+        self._on_active_course_changed(self._active_course.course)
+
+
+        layout.addWidget(
+            self._build_evaluations_selection()
+        )
+
+        self.compare_btn = QPushButton(
+            "Compare"
+        )
+
+        self.compare_btn.clicked.connect(
+            self._compare_selected_evaluations
+        )
+
+        layout.addWidget(self.compare_btn)
+
+        layout.addStretch()
+
+        return page
+
+    def _build_results_page(self) -> QWidget:
+        page = QWidget()
+
+        layout = QVBoxLayout(page)
+
+        self.back_btn = QPushButton(
+            "← Return to Selection"
+        )
+
+        self.back_btn.clicked.connect(
+            self._show_selection_page
+        )
+
+        self.export_btn = QPushButton(
+            "Export Visualizations"
+        )
+
+        self.export_btn.clicked.connect(
+            self._export_comparison_report
+        )
+
+        self.copy_summary_btn = QPushButton(
+            "Copy Summary"
+        )
+
+        self.copy_summary_btn.clicked.connect(
+            self._copy_summary_to_clipboard
+        )
+
+        layout.addWidget(
+            self.copy_summary_btn
+        )
+
+        layout.addWidget(self.export_btn)
+
+        layout.addWidget(
+            self.back_btn
+        )
+
+        layout.addWidget(
+            self._build_visualizations_card()
+        )
+
+        return page
+
+    def _build_summary_text(self) -> str:
+        df = self._comparison_df
+
+        mean_difference = df["difference"].mean()
+        std_difference = df["difference"].std()
+
+        within_one = (
+                             np.abs(df["difference"]) <= 1
+                     ).mean() * 100
+
+        ref_col = f"{self._reference_name}_total"
+        cand_col = f"{self._candidate_name}_total"
+
+        correlation = np.corrcoef(
+            df[ref_col],
+            df[cand_col],
+        )[0, 1]
+
+        return (
+            "# Autograder Comparison Report\n\n"
+            f"**Reference:** {self._reference_name}\n"
+            f"**Candidate:** {self._candidate_name}\n\n"
+            f"- Correlation: {correlation:.3f}\n"
+            f"- Mean Difference: {mean_difference:.3f}\n"
+            f"- Standard Deviation: {std_difference:.3f}\n"
+            f"- Within ±1 Point: {within_one:.1f}%\n"
+        )
+
+    def _copy_summary_to_clipboard(self) -> None:
+        if self._comparison_df is None:
+            return
+
+        QApplication.clipboard().setText(
+            self._build_summary_text()
+        )
+
+        toast = QLabel(
+            "✓ Copied to clipboard!",
+            self,
+        )
+
+        toast.setStyleSheet("""
+            background-color: #2d8f4e;
+            color: white;
+            padding: 6px;
+            border-radius: 2px;
+            font-weight: bold;
+        """)
+
+        toast.adjustSize()
+
+        toast.move(
+            self.width() - toast.width() - 20,
+            20,
+            )
+
+        toast.show()
+
+        QTimer.singleShot(
+            2000,
+            toast.deleteLater,
+        )
+
+    def _export_comparison_report(self) -> None:
+        if self._comparison_df is None:
+            return
+
+        active_course = self._active_course.course
+
+        if active_course is None:
+            return
+
+        reports_folder = (
+                active_course.path
+                / "anonymized"
+                / "reports"
+        )
+
+        reports_folder.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        timestamp = datetime.now().strftime(
+            "%Y-%m-%d_%H-%M-%S"
+        )
+
+        report_folder = (
+                reports_folder
+                / f"{self._reference_name}_vs_{self._candidate_name}_{timestamp}"
+        )
+
+        report_folder.mkdir(
+            exist_ok=True,
+        )
+
+        self.distribution_chart.figure.savefig(
+            report_folder / "distribution.png",
+            dpi=300,
+            bbox_inches="tight",
+            )
+
+        self.scatter_chart.figure.savefig(
+            report_folder / "scatter.png",
+            dpi=300,
+            bbox_inches="tight",
+            )
+
+        self.histogram_chart.figure.savefig(
+            report_folder / "differences.png",
+            dpi=300,
+            bbox_inches="tight",
+            )
+
+        self.bland_altman_chart.figure.savefig(
+            report_folder / "bland_altman.png",
+            dpi=300,
+            bbox_inches="tight",
+            )
+
+        self.heatmap_chart.figure.savefig(
+            report_folder / "criteria_heatmap.png",
+            dpi=300,
+            bbox_inches="tight",
+            )
+
+        df = self._comparison_df
+
+
+        summary_text = self._build_summary_text()
+
+        with open(
+                report_folder / "summary.txt",
+                "w",
+                encoding="utf-8",
+        ) as file:
+            file.write(summary_text)
+
+        outliers = df[
+            np.abs(df["difference"]) > 1
+            ].copy()
+
+        outliers.to_csv(
+            report_folder / "outliers.csv",
+            index=False,
+            )
+
+        self._show_toast(
+            f"✓ Export saved to {report_folder.name}!"
+        )
+
+    def _show_toast(self, message: str) -> None:
+        toast = QLabel(
+            message,
+            self,
+        )
+
+        toast.setStyleSheet("""
+            background-color: #2d8f4e;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+        """)
+
+        toast.adjustSize()
+
+        toast.move(
+            self.width() - toast.width() - 20,
+            20,
+            )
+
+        toast.show()
+
+        QTimer.singleShot(
+            2500,
+            toast.deleteLater,
+        )
+
+    def _show_selection_page(self) -> None:
+        self.stacked_widget.setCurrentWidget(
+            self.selection_page
+        )
+
+
+    def _show_results_page(self) -> None:
+        self.stacked_widget.setCurrentWidget(
+            self.results_page
+        )
+
+
 
     def _build_assignments_dropdown(self) -> QWidget:
         card = SectionCard(self._theme, "Select Assignment:")
@@ -484,6 +792,9 @@ class AATComparisonPage(ScrollableTab):
         self.bland_altman_chart = MatplotlibWidget()
         self.heatmap_chart = MatplotlibWidget()
 
+        self.summary_tab = self._build_summary_tab()
+        self.outliers_tab = self._build_outliers_tab()
+
         self.visualization_tabs.addTab(
             self.distribution_chart,
             "Distribution",
@@ -509,9 +820,168 @@ class AATComparisonPage(ScrollableTab):
             "Criteria",
         )
 
+        self.visualization_tabs.addTab(
+            self.summary_tab,
+            "Statistics",
+        )
+
+        self.visualization_tabs.addTab(
+            self.outliers_tab,
+            "Outliers",
+        )
+
         card.add_row(self.visualization_tabs)
 
         return card
+
+    def _populate_summary_statistics(
+            self,
+            df,
+            reference_name: str,
+            candidate_name: str,
+    ) -> None:
+
+        ref_col = f"{reference_name}_total"
+        cand_col = f"{candidate_name}_total"
+
+        correlation = np.corrcoef(
+            df[ref_col],
+            df[cand_col],
+        )[0, 1]
+
+        mean_difference = df["difference"].mean()
+
+        std_difference = df["difference"].std()
+
+        within_one = (
+                             np.abs(df["difference"]) <= 1
+                     ).mean() * 100
+
+        largest = df.loc[
+            df["abs_difference"].idxmax()
+        ]
+
+        self.correlation_label.setText(
+            f"Correlation: {correlation:.3f}"
+        )
+
+        self.mean_difference_label.setText(
+            f"Mean Difference: {mean_difference:.3f}"
+        )
+
+        self.std_difference_label.setText(
+            f"Standard Deviation: {std_difference:.3f}"
+        )
+
+        self.within_one_label.setText(
+            f"Within ±1 Point: {within_one:.1f}%"
+        )
+
+        self.largest_difference_label.setText(
+            f"Largest Difference: {largest['submission']} "
+            f"({largest['abs_difference']:.2f})"
+        )
+
+    def _populate_outliers_table(
+            self,
+            df,
+            reference_name: str,
+            candidate_name: str,
+    ) -> None:
+
+        ref_col = f"{reference_name}_total"
+        cand_col = f"{candidate_name}_total"
+
+        outliers = df[
+            np.abs(df["difference"]) > 1
+            ].copy()
+
+        delta_columns = [
+            col
+            for col in df.columns
+            if col.endswith("_delta")
+        ]
+
+
+        self.outliers_table.clearContents()
+
+        self.outliers_table.setRowCount(
+            len(outliers)
+        )
+
+        for row_idx, (_, row) in enumerate(
+                outliers.iterrows()
+        ):
+            criterion_deltas = []
+
+            for column in delta_columns:
+                value = row[column]
+
+                if value != 0:
+                    criterion_name = (
+                        column.removesuffix("_delta")
+                    )
+
+                    criterion_deltas.append(
+                        (
+                            criterion_name,
+                            abs(value),
+                            value,
+                        )
+                    )
+
+            criterion_deltas.sort(
+                key=lambda x: x[1],
+                reverse=True,
+            )
+
+            top_five = criterion_deltas[:5]
+
+            criterion_text = "\n".join(
+                f"{name}: {delta:+.1f}"
+                for name, _, delta in top_five
+            )
+
+            self.outliers_table.setItem(
+                row_idx,
+                0,
+                QTableWidgetItem(row["submission"]),
+            )
+
+            self.outliers_table.setItem(
+                row_idx,
+                1,
+                QTableWidgetItem(
+                    f"{row[ref_col]:.1f}"
+                ),
+            )
+
+            self.outliers_table.setItem(
+                row_idx,
+                2,
+                QTableWidgetItem(
+                    f"{row[cand_col]:.1f}"
+                ),
+            )
+
+            self.outliers_table.setItem(
+                row_idx,
+                3,
+                QTableWidgetItem(
+                    f"{row['difference']:+.1f}"
+                ),
+            )
+
+            self.outliers_table.setItem(
+                row_idx,
+                4,
+                QTableWidgetItem(
+                    criterion_text
+                ),
+            )
+
+        self.outliers_table.resizeColumnsToContents()
+
 
     def _compare_selected_evaluations(self) -> None:
         reference_item = self.reference_list_widget.currentItem()
@@ -536,11 +1006,74 @@ class AATComparisonPage(ScrollableTab):
             simulate_changes=True,
         )
 
+        self._comparison_df = df
+        self._reference_name = reference_name
+        self._candidate_name = candidate_name
+
         self._populate_visualizations(
             df,
             reference_name,
             candidate_name,
         )
+
+        self._show_results_page()
+
+    def _build_summary_tab(self) -> QWidget:
+        widget = QWidget()
+
+        layout = QVBoxLayout(widget)
+
+        self.correlation_label = QLabel()
+        self.mean_difference_label = QLabel()
+        self.std_difference_label = QLabel()
+        self.within_one_label = QLabel()
+        self.largest_difference_label = QLabel()
+
+        for label in (
+                self.correlation_label,
+                self.mean_difference_label,
+                self.std_difference_label,
+                self.within_one_label,
+                self.largest_difference_label,
+        ):
+            label.setStyleSheet(
+                """
+                font-size: 16px;
+                padding: 4px;
+                """
+            )
+
+            layout.addWidget(label)
+
+        layout.addStretch()
+
+        return widget
+
+    def _build_outliers_tab(self) -> QWidget:
+        widget = QWidget()
+
+        layout = QVBoxLayout(widget)
+
+        self.outliers_table = QTableWidget()
+
+        self.outliers_table.setColumnCount(5)
+
+        self.outliers_table.setHorizontalHeaderLabels(
+            [
+                "Submission",
+                "Reference",
+                "Candidate",
+                "Difference",
+                "Top Differences",
+            ]
+        )
+
+        self.outliers_table.setSortingEnabled(True)
+
+        layout.addWidget(self.outliers_table)
+
+        return widget
+
 
     def _populate_visualizations(
         self,
@@ -600,9 +1133,23 @@ class AATComparisonPage(ScrollableTab):
 
         self.heatmap_chart.draw()
 
+        self._populate_summary_statistics(
+            df,
+            reference_name,
+            candidate_name,
+        )
+
+        self._populate_outliers_table(
+            df,
+            reference_name,
+            candidate_name,
+        )
+
+
+
     def _populate_evaluation_lists(self, evaluations_folder: Path) -> None:
         evaluation_sets = get_assignment_subfolders(evaluations_folder)
-        print(evaluation_sets)
+
 
         self.reference_list_widget.clear()
         self.candidate_list_widget.clear()
@@ -620,7 +1167,7 @@ class AATComparisonPage(ScrollableTab):
             return
 
         self.evaluations_folder = self.saved_evaluations_folder / assignment
-        print(self.evaluations_folder)
+
 
         self._populate_evaluation_lists(self.evaluations_folder)
 
