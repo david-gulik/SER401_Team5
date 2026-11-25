@@ -71,6 +71,9 @@ class InspectGradesTab(ScrollableTab):
         self.human_panel = GradeComparisonPanel(theme, "Human Grade")
         self.proxy_panel = GradeComparisonPanel(theme, "Proxy / Autograder Grade")
         self.rubric_correction_panel = RubricCorrectionPanel(theme)
+        self._selected_criterion_index: int | None = None
+
+        self.rubric_correction_panel.correction_changed.connect(self._on_correction_changed)
 
         self.human_panel.setMinimumWidth(280)
         self.proxy_panel.setMinimumWidth(280)
@@ -226,6 +229,8 @@ class InspectGradesTab(ScrollableTab):
         self.human_panel.select_criterion(index)
         self.proxy_panel.select_criterion(index)
 
+        self._selected_criterion_index = None
+
         selected_rows = self.student_grade_matrix.table.selectionModel().selectedRows()
         rubric = self._viewmodel.rubric_definition
 
@@ -268,13 +273,20 @@ class InspectGradesTab(ScrollableTab):
                 None,
             )
 
+        self._selected_criterion_index = index
+
         self.rubric_correction_panel.set_criterion(
             student_id=student_id,
             criterion=criterion,
             original_score=original_score,
+            corrected_score=self._viewmodel.get_correction(
+                student_id,
+                criterion.id,
+            ),
         )
 
     def _on_student_selected(self) -> None:
+        self._selected_criterion_index = None
         self.rubric_correction_panel.clear()
 
         selected_rows = self.student_grade_matrix.table.selectionModel().selectedRows()
@@ -315,16 +327,108 @@ class InspectGradesTab(ScrollableTab):
                 "Human grading details are unavailable for this student."
             )
         else:
-            scores = {score.criterion_id: score.points for score in assessment.criteria}
+            self._refresh_corrected_human_panel(int(student_id))
 
-            total = sum(
-                scores[criterion.id]
-                for criterion in rubric.criteria
-                if scores.get(criterion.id) is not None
+            self.proxy_panel.display_criteria(rubric, None)
+            self.proxy_panel.total_label.setText("Total: — (proxy scores not yet calculated)")
+
+    def _refresh_corrected_human_panel(self, student_id: int) -> None:
+        rubric = self._viewmodel.rubric_definition
+
+        if rubric is None:
+            return
+
+        assessment = next(
+            (
+                assessment
+                for assessment in self._viewmodel.human_grades
+                if assessment.student_id == student_id
+            ),
+            None,
+        )
+
+        if assessment is None:
+            return
+
+        scores = {score.criterion_id: score.points for score in assessment.criteria}
+
+        has_corrections = False
+
+        for criterion in rubric.criteria:
+            correction = self._viewmodel.get_correction(
+                student_id,
+                criterion.id,
             )
 
-            self.human_panel.display_criteria(rubric, scores)
-            self.proxy_panel.display_criteria(rubric, None)
+            if correction is not None:
+                scores[criterion.id] = correction
+                has_corrections = True
 
-            self.human_panel.total_label.setText(f"Total: {total:g} / {rubric.points_possible:g}")
-            self.proxy_panel.total_label.setText("Total: — (proxy scores not yet calculated)")
+        total = sum(score for score in scores.values() if score is not None)
+
+        self.human_panel.display_criteria(rubric, scores)
+
+        label = f"Total: {total:g} / {rubric.points_possible:g}"
+
+        if has_corrections:
+            label += " (corrected)"
+
+        self.human_panel.total_label.setText(label)
+
+        if self._selected_criterion_index is not None:
+            self.human_panel.select_criterion(self._selected_criterion_index)
+
+    def _on_correction_changed(self, corrected_score: float) -> None:
+        index = self._selected_criterion_index
+        rubric = self._viewmodel.rubric_definition
+
+        selected_rows = self.student_grade_matrix.table.selectionModel().selectedRows()
+
+        if index is None or rubric is None or not selected_rows:
+            return
+
+        if not 0 <= index < len(rubric.criteria):
+            return
+
+        row = selected_rows[0].row()
+        student_item = self.student_grade_matrix.table.item(row, 0)
+
+        if student_item is None:
+            return
+
+        student_id = int(student_item.text())
+        criterion_id = rubric.criteria[index].id
+
+        assessment = next(
+            (
+                assessment
+                for assessment in self._viewmodel.human_grades
+                if assessment.student_id == student_id
+            ),
+            None,
+        )
+
+        if assessment is None:
+            return
+
+        original_score = next(
+            (score.points for score in assessment.criteria if score.criterion_id == criterion_id),
+            None,
+        )
+
+        if original_score is not None and abs(corrected_score - original_score) < 0.0001:
+            self._viewmodel.corrections.pop((student_id, criterion_id), None)
+        else:
+            self._viewmodel.set_correction(
+                student_id=student_id,
+                criterion_id=criterion_id,
+                corrected_score=corrected_score,
+            )
+
+        self._refresh_corrected_human_panel(student_id)
+
+        self.student_grade_matrix.update_corrected_row(
+            assessment,
+            rubric,
+            self._viewmodel.corrections,
+        )

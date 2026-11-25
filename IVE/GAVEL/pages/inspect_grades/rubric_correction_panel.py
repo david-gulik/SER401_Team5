@@ -73,6 +73,7 @@ class RubricCorrectionPanel(QWidget):
         student_id: int,
         criterion: RubricCriterionDefinition,
         original_score: float | None,
+        corrected_score: float | None = None,
     ) -> None:
         self.clear()
 
@@ -103,7 +104,10 @@ class RubricCorrectionPanel(QWidget):
                         self.correction_changed.emit(points) if checked else None
                     )
                 )
-                if original_score is not None and rating.points == original_score:
+
+                selected_score = corrected_score if corrected_score is not None else original_score
+
+                if selected_score is not None and rating.points == selected_score:
                     button.blockSignals(True)
                     button.setChecked(True)
                     button.blockSignals(False)
