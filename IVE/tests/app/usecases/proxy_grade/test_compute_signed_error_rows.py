@@ -19,10 +19,12 @@ _ALL_TEST_NAMES = list(_MAPPING.test_names())
 _GRADEBOOK_COLUMN = "Module 2: Programming (123456)"
 
 
-def _submission(sid: str, email: str, passing: set[str]) -> GradescopeSubmission:
+def _submission(
+    sid: str, email: str, passing: set[str], names: list[str] | None = None
+) -> GradescopeSubmission:
     tests = [
         GradescopeTestScore(name=name, score=1.0 if name in passing else 0.0, max_score=1.0)
-        for name in _ALL_TEST_NAMES
+        for name in (names if names is not None else _ALL_TEST_NAMES)
     ]
     return GradescopeSubmission(
         submission_key=f"submission_{sid}",
@@ -66,3 +68,41 @@ def test_an_empty_submission_list_produces_an_empty_result() -> None:
     assert result.rows == ()
     assert result.unmatched_submissions == ()
     assert result.failed_submissions == ()
+
+
+def test_every_submission_lands_in_exactly_one_outcome_bucket() -> None:
+    """The Software Quality Plan's report-accountability invariant: every
+    input submission is a scored row, an unmatched submission, or a failed
+    submission, and never more than one of those at once."""
+    matched = _submission("1", "student1@asu.edu", set(_ALL_TEST_NAMES))
+    unmatched = _submission("2", "student2@asu.edu", set(_ALL_TEST_NAMES))
+    failed = _submission("3", "student3@asu.edu", {"Test A", "Test B"}, names=["Test A", "Test B"])
+    submissions = [matched, unmatched, failed]
+    gradebook = _gradebook(
+        [
+            GradebookStudentRow(
+                student_name="One, Student",
+                canvas_id=1,
+                sis_login_id="student1",
+                section="001",
+                assignment_scores={_GRADEBOOK_COLUMN: 4.0},
+            ),
+            GradebookStudentRow(
+                student_name="Three, Student",
+                canvas_id=3,
+                sis_login_id="student3",
+                section="001",
+                assignment_scores={_GRADEBOOK_COLUMN: 4.0},
+            ),
+        ]
+    )
+
+    result = compute_signed_error_rows(submissions, gradebook, _GRADEBOOK_COLUMN, _MAPPING)
+
+    assert len(result.rows) == 1
+    assert len(result.unmatched_submissions) == 1
+    assert len(result.failed_submissions) == 1
+    accounted_for = (
+        len(result.rows) + len(result.unmatched_submissions) + len(result.failed_submissions)
+    )
+    assert accounted_for == len(submissions)

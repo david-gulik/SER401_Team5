@@ -45,10 +45,12 @@ _RUBRIC = RubricDefinition(
 )
 
 
-def _submission(sid: str, email: str, passing: set[str]) -> GradescopeSubmission:
+def _submission(
+    sid: str, email: str, passing: set[str], names: list[str] | None = None
+) -> GradescopeSubmission:
     tests = [
         GradescopeTestScore(name=name, score=1.0 if name in passing else 0.0, max_score=1.0)
-        for name in _ALL_TEST_NAMES
+        for name in (names if names is not None else _ALL_TEST_NAMES)
     ]
     return GradescopeSubmission(
         submission_key=f"submission_{sid}",
@@ -142,6 +144,41 @@ def test_an_empty_submission_list_produces_an_empty_result() -> None:
     assert result.rows == ()
     assert result.unmatched_submissions == ()
     assert result.failed_submissions == ()
+
+
+def test_every_submission_lands_in_exactly_one_outcome_bucket() -> None:
+    """The heat map's accountability invariant, adapted from the signed-error
+    report's where every submission is exactly one of unmatched, failed, scored
+    (contributes at least one row), or scored with no human points at all."""
+    scored = _submission("1", "student1@asu.edu", set(_ALL_TEST_NAMES))
+    unscored = _submission("2", "student2@asu.edu", set(_ALL_TEST_NAMES))
+    unmatched = _submission("3", "nobody@asu.edu", set(_ALL_TEST_NAMES))
+    failed = _submission("4", "student4@asu.edu", {"Test A"}, names=["Test A"])
+    submissions = [scored, unscored, unmatched, failed]
+    gradebook = CanvasGradebook(
+        columns=(),
+        rows=(
+            _gradebook_row(1, "student1"),
+            _gradebook_row(2, "student2"),
+            _gradebook_row(4, "student4"),
+        ),
+    )
+    assessments = [_assessment(1, {"c1": 1.0, "c2": 2.0})]
+
+    result = compute_heat_map_rows(submissions, gradebook, _RUBRIC, assessments, _MAPPING)
+
+    assert {row.student_identifier for row in result.rows} == {"student1"}
+    assert result.unmatched_submissions == ("3",)
+    assert len(result.failed_submissions) == 1
+    assert result.students_without_human_scores == ("student2",)
+    scored_students = {row.student_identifier for row in result.rows}
+    accounted_for = (
+        len(scored_students)
+        + len(result.unmatched_submissions)
+        + len(result.failed_submissions)
+        + len(result.students_without_human_scores)
+    )
+    assert accounted_for == len(submissions)
 
 
 def test_raises_when_a_mapping_criterion_has_no_matching_rubric_criterion() -> None:

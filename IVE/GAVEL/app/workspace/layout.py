@@ -333,6 +333,34 @@ class ModuleSubmissions:
     def exists(self) -> bool:
         return self.path.is_dir()
 
+    def submission_dirs(self) -> tuple[Path, ...]:
+        """One folder per submission, sorted by name.
+
+        The anonymized tree puts each submission straight under the module
+        folder. A plain export keeps them beside ``submission_metadata.yml``
+        under ``extracted/``, sometimes inside one more wrapping folder, so
+        that file is used to find them. ``extracted`` and ``_unmatched`` are
+        never submissions themselves.
+        """
+        if not self.path.is_dir():
+            return ()
+        direct = _subfolders(self.path, skip=(EXTRACTED_DIR, "_unmatched"))
+        if direct:
+            return direct
+        if not self.extracted_dir.is_dir():
+            return ()
+        metadata = next(self.extracted_dir.rglob("submission_metadata.yml"), None)
+        return _subfolders(metadata.parent if metadata is not None else self.extracted_dir)
+
+
+def _subfolders(folder: Path, skip: tuple[str, ...] = ()) -> tuple[Path, ...]:
+    return tuple(
+        sorted(
+            (p for p in folder.iterdir() if p.is_dir() and p.name not in skip),
+            key=lambda p: p.name,
+        )
+    )
+
 
 @dataclass(frozen=True)
 class DataTree:

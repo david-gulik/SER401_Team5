@@ -26,8 +26,6 @@ from GAVEL.app.dtos.stability import (
     StabilityState,
     SubmissionItemStability,
     SubmissionStability,
-    severity,
-    worst,
 )
 from GAVEL.app.ports.autograder_runner import AutograderRunner
 from GAVEL.app.progress import ProgressCallback, report
@@ -48,7 +46,8 @@ class CheckStabilityRequest:
     module_number: int
     autograder: str
     autograder_dir: Path
-    submissions_dir: Path
+    # One folder per submission; each is graded ``runs`` times.
+    submission_dirs: tuple[Path, ...]
     runs: int
     workers: int = 1
     timeout_seconds: float | None = None
@@ -82,12 +81,9 @@ class CheckStabilityUseCase:
         is_cancelled: CancelCheck | None = None,
     ) -> StabilityReport:
         cancelled_check = is_cancelled or (lambda: False)
-        submission_dirs = sorted(
-            (p for p in Path(request.submissions_dir).iterdir() if p.is_dir()),
-            key=lambda p: p.name,
-        )
+        submission_dirs = sorted((Path(p) for p in request.submission_dirs), key=lambda p: p.name)
         if not submission_dirs:
-            raise NoSubmissionsError(f"No submission folders in {request.submissions_dir}")
+            raise NoSubmissionsError("A stability check needs at least one submission.")
 
         started = self._clock()
         total = request.runs * len(submission_dirs)
@@ -248,20 +244,44 @@ def _test_value(execution: ExecutionRecord, name: str) -> _Value:
     return None
 
 
-def _criterion_points(
-    execution: ExecutionRecord, mapping: ProxyGradeMapping
-) -> tuple[float, ...] | None:
-    submission = GradescopeSubmission(
+def _as_submission(execution: ExecutionRecord) -> GradescopeSubmission:
+    return GradescopeSubmission(
         submission_key=execution.submission,
         submitter=GradescopeSubmitter(sid="", email="", name=""),
         created_at=datetime.min,
         tests=list(execution.scores),
     )
+
+
+def _criterion_points(
+    execution: ExecutionRecord, mapping: ProxyGradeMapping
+) -> tuple[float, ...] | None:
     try:
-        return compute_proxy_grade(submission, mapping).criterion_scores
+        return compute_proxy_grade(_as_submission(execution), mapping).criterion_scores
     except MissingTestResultsError:
         # The autograder's test names do not cover the mapping; no points can be derived.
         return None
+
+
+def proxy_totals(
+    report: StabilityReport, mapping: ProxyGradeMapping
+) -> dict[str, tuple[float, float]]:
+    """The lowest and highest proxy total each submission earned across its completed runs."""
+    totals: dict[str, list[float]] = {}
+    for execution in report.executions:
+        if not execution.completed:
+            continue
+        try:
+            total = compute_proxy_grade(_as_submission(execution), mapping).total_score
+        except MissingTestResultsError:
+            continue
+        totals.setdefault(execution.submission, []).append(total)
+    return {name: (min(values), max(values)) for name, values in totals.items()}
+
+
+def mapping_points_possible(mapping: ProxyGradeMapping) -> float:
+    """The most points the mapping can award: the top tier of every criterion."""
+    return sum(max(tier.points for tier in criterion.tiers) for criterion in mapping.criteria)
 
 
 def _criterion_value(
@@ -292,20 +312,24 @@ def _item(
         for submission, records in by_submission.items()
         if records
     ]
-    # Worst first: Broke before Changed, then the lowest agreement, then by name.
+    # Submissions whose completed runs disagreed, lowest agreement first. A
+    # submission that never completed is reported with the broken submissions.
     affected = sorted(
-        (entry for entry in entries if entry.state is not StabilityState.PASS),
-        key=lambda entry: (
-            -severity(entry.state),
-            entry.runs_agreed / entry.runs_total,
-            entry.submission,
-        ),
+        (entry for entry in entries if entry.state is StabilityState.CHANGED),
+        key=lambda entry: (entry.runs_agreed / entry.runs_total, entry.submission),
     )
+    if entries and all(entry.state is StabilityState.BROKE for entry in entries):
+        state = StabilityState.BROKE  # no completed run gave this item a result
+    elif any(entry.state is StabilityState.CHANGED for entry in entries):
+        state = StabilityState.CHANGED
+    else:
+        state = StabilityState.PASS
     return ItemStability(
         name=name,
-        state=worst(tuple(entry.state for entry in entries)),
+        state=state,
         runs_agreed=sum(entry.runs_agreed for entry in entries),
         runs_total=sum(entry.runs_total for entry in entries),
+        runs_broke=sum(entry.runs_broke for entry in entries),
         submissions_total=len(entries),
         affected=tuple(affected),
         built_from=built_from,
@@ -330,8 +354,7 @@ def _submission_item(submission: str, values: list[tuple[int, _Value]]) -> Submi
     results.sort(key=lambda r: (r.score is None, -len(r.runs), r.runs[0]))
 
     with_result = [r for r in results if r.score is not None]
-    without_result = [r for r in results if r.score is None]
-    if without_result:
+    if not with_result:
         state = StabilityState.BROKE
     elif len(with_result) > 1:
         state = StabilityState.CHANGED
