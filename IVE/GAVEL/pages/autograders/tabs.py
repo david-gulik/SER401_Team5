@@ -50,8 +50,15 @@ class RunAutogradersTab(ScrollableTab):
         self._theme = self._ctx.theme
         self._active_course = ctx.active_course
 
-        course = self._ctx.active_course.course
-        self.assignment_folder = course.path / "anonymized" / "gradescope_submissions"
+        self.assignment_folder: Path | None = None
+
+        course = self._active_course.course if self._active_course else None
+
+        if course is not None and course.path is not None:
+            self.assignment_folder = (
+                    course.path / "anonymized" / "gradescope_submissions"
+            )
+        
         load_dotenv()
         env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
         self.root_path = (
