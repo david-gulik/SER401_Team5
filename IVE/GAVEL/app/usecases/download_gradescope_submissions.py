@@ -8,7 +8,9 @@ rubric are usually different Canvas assignments in the same module, so the
 module is what ties submissions to rubric assessments. Submissions are
 extracted next to the zip. Autograders keep their uploaded filename and go to
 the course's folder in the workspace-level ``autograders/`` area, where every
-section of the course can use them. A submissions export whose module cannot
+section of the course can use them; one that reuses a stored name with
+different contents is kept beside it, named with its module and the download
+date. A submissions export whose module cannot
 be told goes to ``gradescope_submissions/_unmatched/`` and is still recorded in the
 manifest, so nothing downloaded is ever lost.
 
@@ -27,6 +29,7 @@ import shutil
 import zipfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -160,12 +163,18 @@ class DownloadGradescopeSubmissionsUseCase:
         client_factory: Callable[..., Any] = http_gradescope_client,
         credentials: Callable[[], tuple[str | None, str | None]] = _env_credentials,
         browser: Any = None,
+        today: Callable[[], date] = date.today,
     ) -> None:
-        """``browser`` is the app's shared login browser; without it the scraper opens its own."""
+        """``browser`` is the app's shared login browser; without it the scraper opens its own.
+
+        ``today`` gives the download date used to name an autograder that
+        clashes with a stored one.
+        """
         self._canvas_client = canvas_client
         self._client_factory = client_factory
         self._credentials = credentials
         self._browser = browser
+        self._today = today
 
     def execute(
         self,
@@ -223,7 +232,12 @@ class DownloadGradescopeSubmissionsUseCase:
         for zip_path, name, kind in staged:
             module, assignment = module_for_export(name, assignments)
             if kind == "autograder":
-                target = _file_autograder(zip_path, workspace.course_autograders_dir(folder.key))
+                target = _file_autograder(
+                    zip_path,
+                    workspace.course_autograders_dir(folder.key),
+                    module=module,
+                    today=self._today(),
+                )
                 log.info("Filed autograder '%s' at %s", name, target)
             else:
                 if module is None:
@@ -338,25 +352,57 @@ def _export_on_disk(tree: DataTree, module: int | None, target: Path) -> bool:
     return module is None or tree.module_submissions(module).extracted_dir.is_dir()
 
 
-def _file_autograder(zip_path: Path, directory: Path) -> Path:
+def _file_autograder(
+    zip_path: Path, directory: Path, *, module: int | None = None, today: date | None = None
+) -> Path:
     """Move a staged autograder into ``directory`` under its uploaded name. Returns where it is.
 
-    The same name with the same bytes is the same autograder, already kept, so
-    the staged copy is dropped. The same name with different bytes is a
-    different autograder that reused a name; it is kept beside the first with
-    a short hash suffix so neither is lost.
+    The first file stored under a name keeps that name unchanged. After that:
+
+    - The same name with the same contents is the same autograder, already
+      kept, so the staged copy is dropped.
+    - The same name with different contents is a different autograder that
+      reused a name (another module's, or an update that was not renamed). It
+      is kept beside the first as ``<stem>_m<module>_<YYYYMMDD>.zip``, or
+      ``<stem>_<YYYYMMDD>.zip`` when the module is not known. The date is the
+      day of the download, ``today``.
+    - If that name is taken by yet another file, ``_<sha8>`` (the first eight
+      characters of the contents' SHA-256) is added to the end.
+
+    An autograder already stored under any of these names, or under the older
+    ``<stem>_<sha8>.zip``, is found by its contents and not stored again, so
+    downloading the same thing on a later day does not add a copy.
     """
     directory.mkdir(parents=True, exist_ok=True)
     target = directory / zip_path.name
     if target.exists():
         digest = sha256_of(zip_path)
-        if sha256_of(target) != digest:
-            target = directory / f"{zip_path.stem}_{digest[:8]}{zip_path.suffix}"
-    if target.exists():
-        zip_path.unlink()
-    else:
-        shutil.move(str(zip_path), str(target))
+        stored = _stored_copy(zip_path, digest, directory)
+        if stored is not None:
+            zip_path.unlink()
+            return stored
+        stamp = (today or date.today()).strftime("%Y%m%d")
+        label = stamp if module is None else f"m{module}_{stamp}"
+        target = directory / f"{zip_path.stem}_{label}{zip_path.suffix}"
+        if target.exists():
+            target = directory / f"{zip_path.stem}_{label}_{digest[:8]}{zip_path.suffix}"
+    shutil.move(str(zip_path), str(target))
     return target
+
+
+def _stored_copy(zip_path: Path, digest: str, directory: Path) -> Path | None:
+    """The stored autograder with these contents under the uploaded name or a clash name."""
+    prefix = f"{zip_path.stem}_"
+    siblings = sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file() and path.suffix == zip_path.suffix and path.name.startswith(prefix)
+    )
+    size = zip_path.stat().st_size
+    for candidate in (directory / zip_path.name, *siblings):
+        if candidate.stat().st_size == size and sha256_of(candidate) == digest:
+            return candidate
+    return None
 
 
 def _extract(zip_path: Path, destination: Path) -> None:

@@ -6,6 +6,7 @@ import hashlib
 import io
 import shutil
 import zipfile
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,7 @@ def export_zip(*names: str) -> bytes:
 
 
 UPLOADED_NAME = "SER222Module2Autograder_SEP10b_hotfix1.zip"
+TODAY = date(2026, 11, 24)
 
 
 class FakeScraper:
@@ -85,6 +87,11 @@ class FakeScraper:
         return written
 
 
+def grader_scraper(content: bytes, assignment: str = "Module 2 Programming") -> FakeScraper:
+    """A download that brings one autograder uploaded as ``autograder.zip``."""
+    return FakeScraper({}, autograders={assignment: ("autograder.zip", content)})
+
+
 @pytest.fixture
 def folder(tmp_path: Path) -> CourseFolder:
     return Workspace(tmp_path).course(CourseKey.parse("ser222_25sc_12345"))
@@ -95,14 +102,14 @@ def canvas() -> FakeCanvasClient:
     return FakeCanvasClient(assignments=ASSIGNMENTS)
 
 
-def make_use_case(canvas, scraper: FakeScraper, creds=("user", "pw")):
+def make_use_case(canvas, scraper: FakeScraper, creds=("user", "pw"), today: date = TODAY):
     return DownloadGradescopeSubmissionsUseCase(
-        canvas, client_factory=scraper, credentials=lambda: creds
+        canvas, client_factory=scraper, credentials=lambda: creds, today=lambda: today
     )
 
 
-def run(canvas, folder, scraper: FakeScraper, **kwargs):
-    return make_use_case(canvas, scraper).execute(
+def run(canvas, folder, scraper: FakeScraper, today: date = TODAY, **kwargs):
+    return make_use_case(canvas, scraper, today=today).execute(
         DownloadGradescopeSubmissionsRequest(course_id=COURSE_ID, folder=folder, **kwargs)
     )
 
@@ -259,16 +266,98 @@ class TestFiling:
             ),
         )
         directory = tmp_path / "autograders" / "ser222"
-        suffixed = f"autograder_{hashlib.sha256(b'THREE').hexdigest()[:8]}.zip"
-        assert sorted(p.name for p in directory.iterdir()) == ["autograder.zip", suffixed]
+        clash = "autograder_m3_20261124.zip"
+        assert sorted(p.name for p in directory.iterdir()) == ["autograder.zip", clash]
         assert (directory / "autograder.zip").read_bytes() == b"TWO"
-        assert (directory / suffixed).read_bytes() == b"THREE"
+        assert (directory / clash).read_bytes() == b"THREE"
         assert {a.module_number: a.saved_path.name for a in result.artifacts} == {
             2: "autograder.zip",
-            3: suffixed,
+            3: clash,
         }
         manifest = load_manifest(folder.manifest_path)
         assert len(manifest.artifacts_of_kind("autograder")) == 2
+        entry = manifest.artifact(f"autograders/ser222/{clash}")
+        assert entry is not None and entry.label == "Module 3 Programming"
+
+    def test_updated_autograder_that_kept_its_name_is_named_by_module_and_date(
+        self, canvas, folder, tmp_path
+    ):
+        run(canvas, folder, grader_scraper(b"OLD"), today=date(2026, 9, 10), overwrite=True)
+        result = run(
+            canvas, folder, grader_scraper(b"NEW"), today=date(2026, 11, 24), overwrite=True
+        )
+
+        directory = tmp_path / "autograders" / "ser222"
+        assert (directory / "autograder.zip").read_bytes() == b"OLD"
+        assert (directory / "autograder_m2_20261124.zip").read_bytes() == b"NEW"
+        assert result.artifacts[0].saved_path.name == "autograder_m2_20261124.zip"
+
+    def test_second_clash_on_the_same_day_adds_the_hash(self, canvas, folder, tmp_path):
+        for content in (b"ONE", b"TWO", b"THREE"):
+            result = run(canvas, folder, grader_scraper(content), overwrite=True)
+
+        directory = tmp_path / "autograders" / "ser222"
+        hashed = f"autograder_m2_20261124_{hashlib.sha256(b'THREE').hexdigest()[:8]}.zip"
+        assert {p.name: p.read_bytes() for p in directory.iterdir()} == {
+            "autograder.zip": b"ONE",
+            "autograder_m2_20261124.zip": b"TWO",
+            hashed: b"THREE",
+        }
+        assert result.artifacts[0].saved_path.name == hashed
+        manifest = load_manifest(folder.manifest_path)
+        assert manifest.artifact(f"autograders/ser222/{hashed}") is not None
+
+    def test_clash_with_no_known_module_is_named_by_date_alone(self, canvas, folder, tmp_path):
+        run(canvas, folder, grader_scraper(b"OLD", assignment="Practice Exam"), overwrite=True)
+        result = run(
+            canvas, folder, grader_scraper(b"NEW", assignment="Practice Exam"), overwrite=True
+        )
+
+        directory = tmp_path / "autograders" / "ser222"
+        assert sorted(p.name for p in directory.iterdir()) == [
+            "autograder.zip",
+            "autograder_20261124.zip",
+        ]
+        assert result.artifacts[0].saved_path.name == "autograder_20261124.zip"
+
+    def test_identical_redownload_is_stored_once(self, canvas, folder, tmp_path):
+        run(canvas, folder, grader_scraper(b"SAME"), overwrite=True)
+        result = run(
+            canvas, folder, grader_scraper(b"SAME"), today=date(2026, 12, 1), overwrite=True
+        )
+
+        directory = tmp_path / "autograders" / "ser222"
+        assert [p.name for p in directory.iterdir()] == ["autograder.zip"]
+        assert result.artifacts[0].saved_path == directory / "autograder.zip"
+
+    def test_redownloading_a_clash_on_a_later_day_does_not_add_a_copy(
+        self, canvas, folder, tmp_path
+    ):
+        run(canvas, folder, grader_scraper(b"OLD"), overwrite=True)
+        run(canvas, folder, grader_scraper(b"NEW"), overwrite=True)
+        result = run(
+            canvas, folder, grader_scraper(b"NEW"), today=date(2026, 12, 1), overwrite=True
+        )
+
+        directory = tmp_path / "autograders" / "ser222"
+        assert sorted(p.name for p in directory.iterdir()) == [
+            "autograder.zip",
+            "autograder_m2_20261124.zip",
+        ]
+        assert result.artifacts[0].saved_path.name == "autograder_m2_20261124.zip"
+
+    def test_autograder_saved_with_a_hash_name_earlier_is_left_alone(
+        self, canvas, folder, tmp_path
+    ):
+        run(canvas, folder, grader_scraper(b"OLD"), overwrite=True)
+        directory = tmp_path / "autograders" / "ser222"
+        legacy = directory / f"autograder_{hashlib.sha256(b'NEW').hexdigest()[:8]}.zip"
+        legacy.write_bytes(b"NEW")
+
+        result = run(canvas, folder, grader_scraper(b"NEW"), overwrite=True)
+
+        assert sorted(p.name for p in directory.iterdir()) == ["autograder.zip", legacy.name]
+        assert result.artifacts[0].saved_path == legacy
 
     def test_autograder_another_section_brought_is_shared_not_copied(
         self, canvas, folder, tmp_path
