@@ -55,10 +55,8 @@ class RunAutogradersTab(ScrollableTab):
         course = self._active_course.course if self._active_course else None
 
         if course is not None and course.path is not None:
-            self.assignment_folder = (
-                    course.path / "anonymized" / "gradescope_submissions"
-            )
-        
+            self.assignment_folder = course.path / "anonymized" / "gradescope_submissions"
+
         load_dotenv()
         env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
         self.root_path = (
