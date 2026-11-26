@@ -125,3 +125,8 @@ Or get a single student's submission:
 |`missing`|`bool`|Is it missing?|
 |`excused`|`bool`|Is the student excused from this assignment?|
 |`attempt`|`int`|Attempt no. #|
+|`attachments`|`list[dict[str, Any]]`|The submitted files for an `online_upload` assignment: each has `id`, `display_name`, `url`, `size`|
+
+GAVEL reads this endpoint without requesting `submission_history` so each
+submission returned is the student's latest attempt. Fetching a file's
+bytes is a plain authenticated `GET` of its `url`.

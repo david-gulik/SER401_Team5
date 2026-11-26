@@ -18,7 +18,10 @@ The layout, with one course as an example:
     │       │   ├── quizzes/<quiz id>.csv
     │       │   ├── assignments/<assignment id>_m<module>/   AssignmentFolder
     │       │   │   ├── rubric_definition.json
-    │       │   │   └── rubric_assessments.json
+    │       │   │   ├── rubric_assessments.json
+    │       │   │   ├── submissions.zip                      Canvas file uploads
+    │       │   │   ├── submissions.json                     sidecar: who, what, late
+    │       │   │   └── extracted/                           the same, unzipped
     │       │   └── gradescope_submissions/m<module>/        ModuleSubmissions
     │       │       ├── submissions.zip                      Gradescope bulk export
     │       │       └── extracted/                           the same, unzipped
@@ -55,6 +58,8 @@ ASSIGNMENTS_DIR = "assignments"
 
 RUBRIC_DEFINITION_FILE = "rubric_definition.json"
 RUBRIC_ASSESSMENTS_FILE = "rubric_assessments.json"
+ASSIGNMENT_SUBMISSIONS_FILE = "submissions.zip"
+ASSIGNMENT_SUBMISSIONS_JSON_FILE = "submissions.json"
 # Prefixed so it is not mistaken for Canvas data, which lives under assignments/.
 SUBMISSIONS_DIR = "gradescope_submissions"
 SUBMISSIONS_FILE = "submissions.zip"
@@ -298,6 +303,18 @@ class AssignmentFolder:
     @property
     def rubric_assessments_json(self) -> Path:
         return self.path / RUBRIC_ASSESSMENTS_FILE
+
+    @property
+    def submissions_zip(self) -> Path:
+        return self.path / ASSIGNMENT_SUBMISSIONS_FILE
+
+    @property
+    def submissions_extracted_dir(self) -> Path:
+        return self.path / EXTRACTED_DIR
+
+    @property
+    def submissions_json(self) -> Path:
+        return self.path / ASSIGNMENT_SUBMISSIONS_JSON_FILE
 
     def exists(self) -> bool:
         return self.path.is_dir()

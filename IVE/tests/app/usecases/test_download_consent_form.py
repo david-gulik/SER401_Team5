@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from GAVEL.app.dtos.canvas_course import CanvasCourseData
+from GAVEL.app.dtos.canvas_course import CanvasCourseData, CanvasSubmission
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 from GAVEL.app.dtos.rubric_definition import RubricDefinition
@@ -84,6 +84,14 @@ class MockCanvasClient(CanvasClient):
     def fetch_rubric_definition(
         self, course_id: int, assignment_id: int
     ) -> RubricDefinition | None:
+        raise NotImplementedError
+
+    def list_assignment_submissions(
+        self, course_id: int, assignment_id: int
+    ) -> list[CanvasSubmission]:
+        raise NotImplementedError
+
+    def fetch_attachment_bytes(self, url: str) -> bytes:
         raise NotImplementedError
 
 

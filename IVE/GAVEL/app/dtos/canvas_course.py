@@ -72,3 +72,24 @@ class CanvasAssignment:
     omit_from_final_grade: bool | None = None
     # "points", "percent", "pass_fail", "letter_grade", "gpa_scale" or "not_graded".
     grading_type: str | None = None
+
+
+@dataclass(frozen=True)
+class CanvasAttachment:
+    """One file attached to a Canvas submission."""
+
+    id: int
+    display_name: str
+    url: str
+    size: int | None = None
+
+
+@dataclass(frozen=True)
+class CanvasSubmission:
+    """One student's current submission to a Canvas assignment.
+    """
+
+    user_id: int
+    sortable_name: str
+    late: bool
+    attachments: tuple[CanvasAttachment, ...] = ()

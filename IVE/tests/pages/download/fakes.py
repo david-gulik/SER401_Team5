@@ -9,6 +9,7 @@ from GAVEL.app.dtos.canvas_course import (
     CanvasCourse,
     CanvasCourseData,
     CanvasQuiz,
+    CanvasSubmission,
 )
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.roster import ClassSection, RosterRequest, TermInfo
@@ -81,6 +82,16 @@ class FakeCanvasClient(CanvasClient):
         self, course_id: int, assignment_id: int
     ) -> RubricDefinition | None:
         self._unexpected("fetch_rubric_definition")
+        raise AssertionError
+
+    def list_assignment_submissions(
+        self, course_id: int, assignment_id: int
+    ) -> list[CanvasSubmission]:
+        self._unexpected("list_assignment_submissions")
+        raise AssertionError
+
+    def fetch_attachment_bytes(self, url: str) -> bytes:
+        self._unexpected("fetch_attachment_bytes")
         raise AssertionError
 
 

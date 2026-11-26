@@ -34,6 +34,7 @@ ARTIFACT_KINDS = frozenset(
         "rubric_assessments",
         "submissions",
         "autograder",
+        "assignment_submissions",
     }
 )
 

@@ -7,6 +7,7 @@ from GAVEL.app.dtos.canvas_course import (
     CanvasCourse,
     CanvasCourseData,
     CanvasQuiz,
+    CanvasSubmission,
 )
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
@@ -64,6 +65,19 @@ class CanvasClient(ABC):
         """Retrieve the rubric definition (criteria, rating tiers, and point values)
         associated with a Canvas assignment. Returns None if the assignment has no
         associated rubric."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_assignment_submissions(
+        self, course_id: int, assignment_id: int
+    ) -> list[CanvasSubmission]:
+        """List every student's current submission to a Canvas assignment
+        with its file attachments."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def fetch_attachment_bytes(self, url: str) -> bytes:
+        """Download one submission attachment's file content."""
         raise NotImplementedError
 
 
