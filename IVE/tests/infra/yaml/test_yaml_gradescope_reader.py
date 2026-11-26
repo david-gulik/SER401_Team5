@@ -50,6 +50,23 @@ def test_a_submission_with_no_tests_reads_as_having_an_empty_test_list(
     assert submission.output == "The autograder could not run."
 
 
+def test_submissions_after_a_document_end_marker_are_read(
+    reader: YamlGradescopeReader, tmp_path: Path
+) -> None:
+    submission = (
+        "submission_{n}:\n"
+        "  :created_at: 2026-01-01 00:00:00\n"
+        "  :submitters:\n"
+        "  - :sid: '{n}'\n"
+        "    :email: student@example.com\n"
+        "    :name: Test Student\n"
+    )
+    path = tmp_path / "document_end.yml"
+    path.write_text(submission.format(n=1) + "...\n" + submission.format(n=2), encoding="utf-8")
+
+    assert [s.submission_key for s in reader.read(path)] == ["submission_1", "submission_2"]
+
+
 def test_non_ascii_names_are_read_as_utf8(reader: YamlGradescopeReader, tmp_path: Path) -> None:
     # Gradescope exports are UTF-8. Several of these bytes are undefined in
     # cp1252, so reading with the Windows locale default would fail.

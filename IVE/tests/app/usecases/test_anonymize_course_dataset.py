@@ -760,6 +760,29 @@ class TestPartialFailures:
         ]
         assert (course_dir / "anonymized" / "gradebook.csv").is_file()
 
+    def test_document_end_markers_in_gradescope_metadata_are_not_a_failure(
+        self, use_case, course_dir: Path
+    ):
+        # Gradescope has sent "..." lines between submissions; PyYAML alone
+        # refuses whatever follows one.
+        metadata = gradescope_metadata(course_dir)
+        metadata.write_text(
+            metadata.read_text(encoding="utf-8").replace(
+                "\n\nsubmission_2:", "\n...\nsubmission_2:"
+            ),
+            encoding="utf-8",
+        )
+        assert "\n...\n" in metadata.read_text(encoding="utf-8")
+
+        result = use_case.execute(AnonymizeCourseDatasetRequest(snapshot_dir=course_dir, seed=42))
+
+        anonymized = course_dir / "anonymized" / "gradescope_submissions" / "m1"
+        assert result.failures == ()
+        assert (anonymized / "submission_1").is_dir()
+        assert "submission_1" in (anonymized / "submission_metadata.yml").read_text(
+            encoding="utf-8"
+        )
+
     def test_a_submission_that_fails_partway_leaves_nothing_behind(self, course_dir: Path):
         use_case = make_use_case(anonymize_gradescope_use_case=WritesThenFails())
 

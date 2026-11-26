@@ -6,6 +6,8 @@ from pathlib import Path
 
 import yaml
 
+from GAVEL.infra.yaml.gradescope_metadata import load_gradescope_metadata
+
 
 @dataclass(frozen=True)
 class AnonymizeGradescopeYMLRequest:
@@ -53,8 +55,7 @@ class AnonymizeGradescopeYMLUseCase:
         processed_count = 0
         downselected_count = 0
         try:
-            with open(request.input_YML, encoding="utf-8") as file:
-                data = yaml.safe_load(file)
+            data = load_gradescope_metadata(request.input_YML)
         except yaml.YAMLError as e:
             log.error(f"Invalid YAML in {request.input_YML}: {e}")
             return
