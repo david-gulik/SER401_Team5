@@ -107,6 +107,25 @@ A file the manifest lists but that was deleted from disk is downloaded again wit
 asking. Gradescope sends every export at once, so its download files only the modules
 that are missing (no zip, or no extracted copy) and keeps the ones still on disk.
 
+Autograders are never replaced, with or without overwrite, because file names are not
+assumed to be unique: an autograder is sometimes updated without being renamed, and two
+modules can upload the same name. A downloaded autograder is filed like this:
+
+- The first file stored under a name keeps that name unchanged.
+- The same name with the same contents is the same autograder, so it is stored once.
+- The same name with different contents is kept beside the first as
+  `<stem>_m<module>_<YYYYMMDD>.zip`, where the date is the day of the download. If the
+  module is not known it is `<stem>_<YYYYMMDD>.zip`.
+- If that name is also taken by a different file, `_<sha8>` (the first eight characters
+  of the file's SHA-256) is added to the end, so nothing is overwritten.
+
+For example, `autograder.zip` uploaded for module 2 and a different `autograder.zip`
+for module 3, both downloaded on 24 November 2026, are stored as `autograder.zip` and
+`autograder_m3_20261124.zip`. A file is recognised by its contents under any of these
+names, so downloading the same autograder again on a later day does not add a copy.
+Files saved as `<stem>_<sha8>.zip` by earlier versions are left as they are. The
+manifest records whichever name the file was stored under.
+
 ## 6. Reading a course folder from code
 
 ```python
@@ -170,6 +189,7 @@ any of the course's autograders. They keep the filename the instructor uploaded
 (`SER334Module2Autograder_SEP10b_hotfix1.zip`), which changes with each version, so
 versions accumulate side by side. A download that brings an autograder already there
 with the same bytes leaves it alone; one with the same name and different bytes is kept
-beside it with a short hash suffix. Each course's manifest records the autograders its
+beside it under a name with its module and the download date (see section 5). Each
+course's manifest records the autograders its
 download brought, with the Gradescope assignment name as the label; their manifest
 paths are relative to the workspace root and start with `autograders/`.
