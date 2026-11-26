@@ -21,7 +21,10 @@ This layout was agreed with Dr. Acuña on 2026-09-10.
 │       │   ├── assignments/
 │       │   │   └── <assignment id>_m<module>/     # e.g. 7216983_m4
 │       │   │       ├── rubric_definition.json     # criteria, ratings, points
-│       │   │       └── rubric_assessments.json    # one entry per graded submission
+│       │   │       ├── rubric_assessments.json    # one entry per graded submission
+│       │   │       ├── submissions.zip            # each student's latest Canvas file upload
+│       │   │       ├── submissions.json           # sidecar: who, what, late
+│       │   │       └── extracted/                 # the same, unzipped
 │       │   └── gradescope_submissions/
 │       │       ├── m<module>/                     # Gradescope exports, grouped by module
 │       │       │   ├── submissions.zip            # the bulk export as downloaded
@@ -81,7 +84,8 @@ All Canvas timestamps (`due_at`, `unlock_at`, `lock_at`, `canvas_start_at`, ...)
 | `consent_overrides` | Students included by hand on the Sanitize page although their typed name was a possible typo or did not match, keyed by SIS ID: `{"1220440005": {"override": true, "overridden_at": "..."}}`. Applied on every review and anonymization of the course, but only while the student's latest attempt still says yes with a typo or mismatched name. Never copied into `anonymized/`. |
 
 Artifact kinds: `roster`, `gradebook`, `consent_form`, `quiz`,
-`rubric_definition`, `rubric_assessments`, `submissions`, `autograder`.
+`rubric_definition`, `rubric_assessments`, `submissions`, `autograder`,
+`assignment_submissions`.
 
 ## 5. Re-downloading
 

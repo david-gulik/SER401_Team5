@@ -9,7 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from GAVEL.app.dtos.canvas_course import CanvasCourse, CanvasCourseData, CanvasModule
+from GAVEL.app.dtos.canvas_course import (
+    CanvasAssignment,
+    CanvasCourse,
+    CanvasCourseData,
+    CanvasModule,
+    CanvasSubmission,
+)
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
 from GAVEL.app.dtos.rubric_definition import (
@@ -121,6 +127,9 @@ class MockCanvasClient(CanvasClient):
         self.consent_csv: bytes | None = CONSENT_CSV_BYTES
         self.rubric_assessments: list[RubricAssessment] = RUBRIC_ASSESSMENTS
         self.rubric_definition: RubricDefinition | None = RUBRIC_DEFINITION
+        self.assignments: list = []
+        self.submissions: list[CanvasSubmission] = []
+        self.list_assignment_submissions_calls: list[tuple[int, int]] = []
 
         # Error injection
         self.fetch_course_data_error: Exception | None = None
@@ -168,7 +177,7 @@ class MockCanvasClient(CanvasClient):
         return []
 
     def list_assignments(self, course_id: int) -> list:
-        return []
+        return self.assignments
 
     def fetch_rubric_assessments(
         self, course_id: int, assignment_id: int
@@ -185,6 +194,15 @@ class MockCanvasClient(CanvasClient):
         if self.fetch_rubric_definition_error:
             raise self.fetch_rubric_definition_error
         return self.rubric_definition
+
+    def list_assignment_submissions(
+        self, course_id: int, assignment_id: int
+    ) -> list[CanvasSubmission]:
+        self.list_assignment_submissions_calls.append((course_id, assignment_id))
+        return self.submissions
+
+    def fetch_attachment_bytes(self, url: str) -> bytes:
+        raise NotImplementedError
 
 
 # ---------------------------------------------------------------------------
@@ -290,6 +308,44 @@ class TestHappyPath:
         )
         assert [o.step for o in result.outcomes] == ["course metadata", "gradebook", "consent form"]
         assert client.fetch_rubric_calls == []
+
+
+# ---------------------------------------------------------------------------
+# Assignment submissions only run for assignments that accept file uploads
+# ---------------------------------------------------------------------------
+
+
+class TestAssignmentSubmissions:
+    def test_submissions_step_runs_for_an_online_upload_assignment(self, use_case, folder, client):
+        client.assignments = [
+            CanvasAssignment(id=101, name="", submission_types=("online_upload",)),
+            CanvasAssignment(id=102, name="", submission_types=("external_tool",)),
+        ]
+        result = use_case.execute(
+            DownloadCourseDatasetRequest(
+                course_id=COURSE_ID, quiz_id=QUIZ_ID, assignment_ids=ASSIGNMENT_IDS, folder=folder
+            )
+        )
+        assert [o.step for o in result.outcomes] == [
+            "course metadata",
+            "gradebook",
+            "consent form",
+            "rubric 101",
+            "submissions 101",
+            "rubric 102",
+        ]
+        assert client.list_assignment_submissions_calls == [(COURSE_ID, 101)]
+
+    def test_submissions_step_is_skipped_when_the_assignment_is_unknown(
+        self, use_case, folder, client
+    ):
+        result = use_case.execute(
+            DownloadCourseDatasetRequest(
+                course_id=COURSE_ID, quiz_id=QUIZ_ID, assignment_ids=ASSIGNMENT_IDS, folder=folder
+            )
+        )
+        assert all(not o.step.startswith("submissions") for o in result.outcomes)
+        assert client.list_assignment_submissions_calls == []
 
 
 # ---------------------------------------------------------------------------

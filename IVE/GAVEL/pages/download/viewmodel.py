@@ -15,6 +15,10 @@ from GAVEL.app.dtos.roster import ClassSection, TermInfo
 from GAVEL.app.ports.canvas_client import CanvasClient
 from GAVEL.app.ports.roster_client import RosterClient
 from GAVEL.app.progress import DownloadProgress, ProgressCallback
+from GAVEL.app.usecases.download_all_assignment_submissions import (
+    DownloadAllAssignmentSubmissionsRequest,
+    DownloadAllAssignmentSubmissionsUseCase,
+)
 from GAVEL.app.usecases.download_all_quizzes import (
     DownloadAllQuizzesRequest,
     DownloadAllQuizzesResult,
@@ -23,6 +27,11 @@ from GAVEL.app.usecases.download_all_quizzes import (
 from GAVEL.app.usecases.download_all_rubric_assessments import (
     DownloadAllRubricAssessmentsRequest,
     DownloadAllRubricAssessmentsUseCase,
+)
+from GAVEL.app.usecases.download_assignment_submissions import (
+    DownloadAssignmentSubmissionsRequest,
+    DownloadAssignmentSubmissionsResult,
+    DownloadAssignmentSubmissionsUseCase,
 )
 from GAVEL.app.usecases.download_consent_form import (
     DownloadConsentFormRequest,
@@ -136,6 +145,7 @@ GRADESCOPE_DOWNLOAD = "Gradescope Submissions"
 CONSENT_DOWNLOAD = "Consent Form"
 QUIZ_REPORTS_DOWNLOAD = "Quiz Reports"
 RUBRIC_DOWNLOAD = "Rubric Assessment"
+SUBMISSIONS_DOWNLOAD = "Assignment Submissions"
 
 # Everything keyed to the selected Canvas course, so a course change resets it.
 CANVAS_DOWNLOADS = frozenset(
@@ -145,6 +155,7 @@ CANVAS_DOWNLOADS = frozenset(
         CONSENT_DOWNLOAD,
         QUIZ_REPORTS_DOWNLOAD,
         RUBRIC_DOWNLOAD,
+        SUBMISSIONS_DOWNLOAD,
     }
 )
 
@@ -270,6 +281,10 @@ class DownloadUiState:
         return bool(self.selected_course_id) and bool(self.assignment_ids.strip())
 
     @property
+    def can_download_assignment_submissions(self) -> bool:
+        return bool(self.selected_course_id) and bool(self.assignment_ids.strip())
+
+    @property
     def can_download_all(self) -> bool:
         return (
             self.can_download_roster
@@ -345,6 +360,7 @@ class _DownloadAllPlan:
     # None runs every quiz or assignment; a set limits the step to those ids.
     quiz_ids: frozenset[int] | None = None
     assignment_ids: frozenset[int] | None = None
+    submission_assignment_ids: frozenset[int] | None = None
 
 
 @dataclass(frozen=True)
@@ -372,6 +388,17 @@ class _RubricBatchResult:
 
 
 @dataclass(frozen=True)
+class _SubmissionsBatchResult:
+    saved: tuple[DownloadAssignmentSubmissionsResult, ...]
+    skipped: tuple[str, ...]
+    existing: tuple[str, ...]
+    failed: tuple[str, ...]
+    # The assignments behind ``existing`` and their submissions zips.
+    existing_ids: tuple[int, ...] = ()
+    existing_paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class _CourseLists:
     """A course's quiz and assignment lists; None when not asked for, the error if it failed."""
 
@@ -380,6 +407,7 @@ class _CourseLists:
 
 
 RUBRIC_PROGRESS_LABEL = "Downloading rubric assessments"
+SUBMISSIONS_PROGRESS_LABEL = "Downloading assignment submissions"
 DOWNLOAD_ALL_ORDER = (
     ROSTER_DOWNLOAD,
     GRADEBOOK_DOWNLOAD,
@@ -387,6 +415,7 @@ DOWNLOAD_ALL_ORDER = (
     CONSENT_DOWNLOAD,
     QUIZ_REPORTS_DOWNLOAD,
     RUBRIC_DOWNLOAD,
+    SUBMISSIONS_DOWNLOAD,
 )
 DOWNLOAD_ALL_STEPS = len(DOWNLOAD_ALL_ORDER)
 
@@ -1117,6 +1146,178 @@ class DownloadViewModel(QObject):
         self.state_changed.emit(self._state)
         self._finish(ShowError(message) if failed else ShowInfo(message), refused, retry)
 
+    def download_assignment_submissions(self) -> None:
+        if self._state.is_busy:
+            return
+        course_id = self._resolved_course_id()
+        if course_id is None:
+            return
+        assignment_ids = self._resolved_assignment_ids()
+        if assignment_ids is None:
+            return
+        folder = self._resolved_course_folder()
+        if folder is None:
+            return
+        self._run_submissions(course_id, assignment_ids, folder, self._state.overwrite_session)
+
+    def _run_submissions(
+        self, course_id: int, assignment_ids: list[int], folder: CourseFolder, overwrite: bool
+    ) -> None:
+        ids_text = ", ".join(str(a) for a in assignment_ids)
+        self._set_busy(
+            f"Downloading assignment submission(s) for course {course_id}, "
+            f"assignment(s) {ids_text}...",
+            DownloadProgress(SUBMISSIONS_PROGRESS_LABEL, 0, len(assignment_ids)),
+        )
+        # Each assignment is attempted on its own so one bad ID does not
+        # block the rest.
+        use_case = DownloadAssignmentSubmissionsUseCase(self._canvas_client)
+        # Only assignments loaded from Canvas carry submission_types and a name
+        # for the folder tag; a typed ID that was never loaded is attempted as-is.
+        known = {a.id: a for a in self._state.assignments}
+        logger = self._logger
+        report_progress = self._report_progress
+        total = len(assignment_ids)
+
+        def work() -> _SubmissionsBatchResult:
+            saved: list[DownloadAssignmentSubmissionsResult] = []
+            skipped: list[str] = []
+            existing: list[str] = []
+            existing_ids: list[int] = []
+            existing_paths: list[str] = []
+            failed: list[str] = []
+            for index, assignment_id in enumerate(assignment_ids, start=1):
+                assignment = known.get(assignment_id)
+                name = assignment.name if assignment is not None else ""
+                logger.info(
+                    f"Assignment submissions {index} of {total}: "
+                    f"'{name or assignment_id}' (course {course_id})"
+                )
+                accepts_uploads = assignment is None or bool(
+                    assignment.submission_types and "online_upload" in assignment.submission_types
+                )
+                if not accepts_uploads:
+                    logger.warning(
+                        f"Skipped submissions download for '{assignment.name}' "
+                        f"(course {course_id}): does not accept file uploads."
+                    )
+                    skipped.append(f"'{assignment.name}' does not accept file uploads")
+                else:
+                    if assignment is None:
+                        assignment = CanvasAssignment(id=assignment_id, name="")
+                    try:
+                        result = use_case.execute(
+                            DownloadAssignmentSubmissionsRequest(
+                                course_id=course_id,
+                                assignment=assignment,
+                                folder=folder,
+                                overwrite=overwrite,
+                            )
+                        )
+                    except ArtifactExistsError as exc:
+                        logger.warning(
+                            f"Assignment submissions {assignment_id} already downloaded: {exc}"
+                        )
+                        existing.append(str(exc))
+                        existing_ids.append(assignment_id)
+                        existing_paths.append(exc.relative_path)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.error(
+                            f"Assignment submissions download failed for assignment "
+                            f"{assignment_id}: {exc}"
+                        )
+                        failed.append(f"{assignment_id}: {exc}")
+                    else:
+                        logger.info(f"Assignment submissions saved to {result.saved_path}")
+                        saved.append(result)
+                report_progress(
+                    DownloadProgress(
+                        SUBMISSIONS_PROGRESS_LABEL, index, total, name or str(assignment_id)
+                    )
+                )
+            return _SubmissionsBatchResult(
+                saved=tuple(saved),
+                skipped=tuple(skipped),
+                existing=tuple(existing),
+                failed=tuple(failed),
+                existing_ids=tuple(existing_ids),
+                existing_paths=tuple(existing_paths),
+            )
+
+        self._run_async(
+            work,
+            lambda value: self._on_submissions_downloaded(course_id, folder, value),
+            lambda exc: self._report_download_failure(
+                "Assignment submissions download failed", exc
+            ),
+        )
+
+    def _on_submissions_downloaded(
+        self, course_id: int, folder: CourseFolder, value: object
+    ) -> None:
+        res: _SubmissionsBatchResult = value  # type: ignore[assignment]
+        saved, skipped, existing, failed = res.saved, res.skipped, res.existing, res.failed
+        refused = res.existing_paths
+
+        def retry() -> None:
+            self._run_submissions(course_id, list(res.existing_ids), folder, True)
+
+        if not saved and failed:
+            message = "; ".join(failed)
+            if skipped:
+                message += ". Skipped: " + "; ".join(skipped)
+            if existing:
+                message += ". Already downloaded: " + "; ".join(existing)
+            self._set_idle(Status.CRITICAL, message)
+            self._finish(ShowError(message), refused, retry)
+            return
+
+        if not saved:
+            parts = []
+            if skipped:
+                parts.append(
+                    "Skipped: " + "; ".join(skipped) + ". "
+                    "No submission files will be produced for these assignments."
+                )
+            if existing:
+                parts.append("Already downloaded: " + "; ".join(existing))
+            message = " ".join(parts)
+            self._state = replace(
+                self._state, is_busy=False, progress=None, status=Status.WARNING, message=message
+            )
+            self.state_changed.emit(self._state)
+            self._finish(ShowInfo(message), refused, retry)
+            return
+
+        if len(saved) == 1 and not failed and not skipped and not existing:
+            message = saved[0].message
+        else:
+            counts = [f"{len(saved)} saved"]
+            if skipped:
+                counts.append(f"{len(skipped)} skipped")
+            if existing:
+                counts.append(f"{len(existing)} already downloaded")
+            counts.append(f"{len(failed)} failed")
+            message = f"Assignment submissions for course {course_id}: " + ", ".join(counts) + "."
+            if skipped:
+                message += " Skipped: " + "; ".join(skipped) + "."
+            if existing:
+                message += " Already downloaded: " + "; ".join(existing)
+            if failed:
+                message += " Failed: " + "; ".join(failed)
+
+        self._state = replace(
+            self._state,
+            is_busy=False,
+            progress=None,
+            status=Status.WARNING if (failed or skipped or existing) else Status.NOMINAL,
+            message=message,
+            last_saved_path=str(saved[-1].saved_path),
+            completed=self._state.completed | {SUBMISSIONS_DOWNLOAD},
+        )
+        self.state_changed.emit(self._state)
+        self._finish(ShowError(message) if failed else ShowInfo(message), refused, retry)
+
     def download_all_quizzes(self) -> None:
         if self._state.is_busy:
             return
@@ -1254,6 +1455,7 @@ class DownloadViewModel(QObject):
             refused_paths: list[str] = []
             refused_quiz_ids: set[int] = set()
             refused_assignment_ids: set[int] = set()
+            refused_submission_assignment_ids: set[int] = set()
             last_path: Path | None = None
             step_number = 0
 
@@ -1418,6 +1620,45 @@ class DownloadViewModel(QObject):
                 except Exception as exc:  # noqa: BLE001
                     failures.append(f"{RUBRIC_DOWNLOAD}: {exc}")
 
+            if SUBMISSIONS_DOWNLOAD in plan.steps:
+                on_progress = begin(SUBMISSIONS_DOWNLOAD)
+                try:
+                    submissions_result = DownloadAllAssignmentSubmissionsUseCase(
+                        canvas_client
+                    ).execute(
+                        DownloadAllAssignmentSubmissionsRequest(
+                            course_id=inputs.course_id,
+                            folder=folder,
+                            overwrite=overwrite,
+                            assignment_ids=plan.submission_assignment_ids,
+                        ),
+                        on_progress=on_progress,
+                    )
+                    for outcome in submissions_result.succeeded:
+                        successes.append(f"{SUBMISSIONS_DOWNLOAD} ({outcome.assignment_name})")
+                        completed.add(SUBMISSIONS_DOWNLOAD)
+                        last_path = outcome.saved_path
+                    for outcome in submissions_result.skipped:
+                        successes.append(
+                            f"{SUBMISSIONS_DOWNLOAD} ({outcome.assignment_name}) "
+                            "[skipped: no file uploads]"
+                        )
+                    for outcome in submissions_result.already_downloaded:
+                        skipped.append(f"{SUBMISSIONS_DOWNLOAD} ({outcome.assignment_name})")
+                        completed.add(SUBMISSIONS_DOWNLOAD)
+                        refused_submission_assignment_ids.add(outcome.assignment_id)
+                        if outcome.saved_path is not None:
+                            refuse(
+                                SUBMISSIONS_DOWNLOAD,
+                                [relative_posix(folder, outcome.saved_path)],
+                            )
+                    for outcome in submissions_result.failed:
+                        failures.append(
+                            f"{SUBMISSIONS_DOWNLOAD} ({outcome.assignment_name}): {outcome.error}"
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    failures.append(f"{SUBMISSIONS_DOWNLOAD}: {exc}")
+
             retry_plan = None
             if refused_steps:
                 retry_plan = _DownloadAllPlan(
@@ -1428,6 +1669,9 @@ class DownloadViewModel(QObject):
                     else None,
                     assignment_ids=frozenset(refused_assignment_ids)
                     if RUBRIC_DOWNLOAD in refused_steps
+                    else None,
+                    submission_assignment_ids=frozenset(refused_submission_assignment_ids)
+                    if SUBMISSIONS_DOWNLOAD in refused_steps
                     else None,
                 )
             return _DownloadAllResult(

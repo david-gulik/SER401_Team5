@@ -10,10 +10,12 @@ import requests
 
 from GAVEL.app.dtos.canvas_course import (
     CanvasAssignment,
+    CanvasAttachment,
     CanvasCourse,
     CanvasCourseData,
     CanvasModule,
     CanvasQuiz,
+    CanvasSubmission,
 )
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment, RubricCriterionScore
@@ -741,3 +743,41 @@ class HttpCanvasClient(CanvasClient):
             ),
             criteria=criteria,
         )
+
+    def list_assignment_submissions(
+        self, course_id: int, assignment_id: int
+    ) -> list[CanvasSubmission]:
+        """List every student's current submission to a Canvas assignment."""
+        submissions = self._get_all_pages(
+            f"/api/v1/courses/{course_id}/assignments/{assignment_id}/submissions",
+            params={"include[]": "user", "per_page": 100},
+        )
+        results = []
+        for submission in submissions:
+            user = submission.get("user") or {}
+            user_id = submission.get("user_id")
+            if user_id is None:
+                continue
+            attachments = tuple(
+                CanvasAttachment(
+                    id=int(a["id"]),
+                    display_name=str(a.get("display_name") or a.get("filename") or ""),
+                    url=str(a["url"]),
+                    size=_optional_int(a.get("size")),
+                )
+                for a in submission.get("attachments") or []
+                if a.get("id") and a.get("url")
+            )
+            results.append(
+                CanvasSubmission(
+                    user_id=int(user_id),
+                    sortable_name=str(user.get("sortable_name") or ""),
+                    late=bool(submission.get("late")),
+                    attachments=attachments,
+                )
+            )
+        return results
+
+    def fetch_attachment_bytes(self, url: str) -> bytes:
+        """Download one submission attachment's file content."""
+        return self._get_bytes(url)

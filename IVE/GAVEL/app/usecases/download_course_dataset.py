@@ -15,6 +15,10 @@ from GAVEL.app.usecases.canvas_download_course import (
     DownloadCourseDataRequest,
     DownloadCourseDataUseCase,
 )
+from GAVEL.app.usecases.download_assignment_submissions import (
+    DownloadAssignmentSubmissionsRequest,
+    DownloadAssignmentSubmissionsUseCase,
+)
 from GAVEL.app.usecases.download_consent_form import (
     DownloadConsentFormRequest,
     DownloadConsentFormUseCase,
@@ -126,6 +130,7 @@ class DownloadCourseDatasetUseCase:
         if request.assignment_ids:
             known = self._known_assignments(request.course_id)
             rubric_use_case = DownloadRubricAssessmentUseCase(self._canvas_client)
+            submissions_use_case = DownloadAssignmentSubmissionsUseCase(self._canvas_client)
             for assignment_id in request.assignment_ids:
                 assignment = known.get(assignment_id, CanvasAssignment(id=assignment_id, name=""))
                 run(
@@ -138,6 +143,17 @@ class DownloadCourseDatasetUseCase:
                         ).message
                     ),
                 )
+                if assignment.submission_types and "online_upload" in assignment.submission_types:
+                    run(
+                        f"submissions {assignment_id}",
+                        lambda a=assignment: (
+                            submissions_use_case.execute(
+                                DownloadAssignmentSubmissionsRequest(
+                                    request.course_id, a, request.folder, request.overwrite
+                                )
+                            ).message
+                        ),
+                    )
 
         result = DownloadCourseDatasetResult(
             folder=request.folder, outcomes=tuple(outcomes), message=""

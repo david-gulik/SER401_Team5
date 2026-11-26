@@ -108,10 +108,11 @@ def test_download_all_tags_progress_with_its_step(qapp, vm, monkeypatch):
     wait_for_workers(qapp)
 
     texts = [s.progress.text for s in states if s.progress is not None]
-    assert texts[:2] == ["Starting Download All", "Step 1 of 6: Roster"]
-    assert f"Step 5 of 6: {QUIZ_REPORTS_DOWNLOAD}" in texts
-    assert "Step 5 of 6: Downloading quizzes 2 of 2" in texts
-    assert "Step 6 of 6: Rubric Assessment" in texts
+    assert texts[:2] == ["Starting Download All", "Step 1 of 7: Roster"]
+    assert f"Step 5 of 7: {QUIZ_REPORTS_DOWNLOAD}" in texts
+    assert "Step 5 of 7: Downloading quizzes 2 of 2" in texts
+    assert "Step 6 of 7: Rubric Assessment" in texts
+    assert "Step 7 of 7: Assignment Submissions" in texts
     assert vm.get_state().progress is None
 
 

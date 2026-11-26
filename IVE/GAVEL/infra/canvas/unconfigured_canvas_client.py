@@ -5,6 +5,7 @@ from GAVEL.app.dtos.canvas_course import (
     CanvasCourse,
     CanvasCourseData,
     CanvasQuiz,
+    CanvasSubmission,
 )
 from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
@@ -45,4 +46,12 @@ class UnconfiguredCanvasClient(CanvasClient):
     def fetch_rubric_definition(
         self, course_id: int, assignment_id: int
     ) -> RubricDefinition | None:
+        raise RuntimeError(self._message)
+
+    def list_assignment_submissions(
+        self, course_id: int, assignment_id: int
+    ) -> list[CanvasSubmission]:
+        raise RuntimeError(self._message)
+
+    def fetch_attachment_bytes(self, url: str) -> bytes:
         raise RuntimeError(self._message)

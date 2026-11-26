@@ -30,6 +30,7 @@ from GAVEL.pages.download.viewmodel import (
     QUIZ_REPORTS_DOWNLOAD,
     ROSTER_DOWNLOAD,
     RUBRIC_DOWNLOAD,
+    SUBMISSIONS_DOWNLOAD,
     AskOverwrite,
     DownloadUiState,
     DownloadViewModel,
@@ -97,6 +98,7 @@ _CANVAS_DOWNLOAD_ORDER = (
     CONSENT_DOWNLOAD,
     QUIZ_REPORTS_DOWNLOAD,
     RUBRIC_DOWNLOAD,
+    SUBMISSIONS_DOWNLOAD,
     GRADESCOPE_DOWNLOAD,
 )
 
@@ -382,6 +384,18 @@ class DownloadTab(ScrollableTab):
         self._download_rubric_btn.setToolTip(
             "Requires a valid course and at least one assignment to be selected above."
         )
+        self._select_file_uploads_btn = QPushButton("Select File Uploads")
+        self._select_file_uploads_btn.setProperty("role", "secondary")
+        self._select_file_uploads_btn.setToolTip(
+            "Checks every assignment that accepts a direct Canvas file upload and unchecks "
+            "the rest."
+        )
+        self._assignment_picker.add_button(self._select_file_uploads_btn)
+        self._download_submissions_btn = QPushButton("Download Submission Files")
+        self._download_submissions_btn.setProperty("role", "primary")
+        self._download_submissions_btn.setToolTip(
+            "Requires a valid course and at least one assignment to be selected above."
+        )
 
         # Gradescope submissions
         self._gradescope_credentials_warning = QLabel(
@@ -418,6 +432,7 @@ class DownloadTab(ScrollableTab):
             CONSENT_DOWNLOAD: (self._download_consent_btn,),
             QUIZ_REPORTS_DOWNLOAD: (self._download_all_quizzes_btn,),
             RUBRIC_DOWNLOAD: (self._download_rubric_btn,),
+            SUBMISSIONS_DOWNLOAD: (self._download_submissions_btn,),
             GRADESCOPE_DOWNLOAD: (self._download_gradescope_btn,),
         }
         self._button_labels: dict[QPushButton, str] = {
@@ -451,6 +466,8 @@ class DownloadTab(ScrollableTab):
         self._assignment_picker.load_requested.connect(self._on_reload_assignments)
         self._select_with_rubric_btn.clicked.connect(self._on_select_with_rubric)
         self._download_rubric_btn.clicked.connect(self._vm.download_rubric_assessment)
+        self._select_file_uploads_btn.clicked.connect(self._on_select_file_uploads)
+        self._download_submissions_btn.clicked.connect(self._vm.download_assignment_submissions)
         self._download_all_quizzes_btn.clicked.connect(self._vm.download_all_quizzes)
 
         self._output_path.textEdited.connect(self._vm.set_output_dir)
@@ -534,8 +551,9 @@ class DownloadTab(ScrollableTab):
         quiz_panel.add_widget(self._download_all_quizzes_btn)
         card.add_row(quiz_panel)
 
-        # Rubric Assessment
+        # Rubric Assessment / Assignment Submissions share one assignment picker
         self._assignment_input.add_footer(self._download_rubric_btn)
+        self._assignment_input.add_footer(self._download_submissions_btn)
         card.add_row(self._assignment_input)
 
         # Gradescope Submissions
@@ -726,6 +744,14 @@ class DownloadTab(ScrollableTab):
             str(a.id) for a in self._vm.get_state().assignments if a.has_rubric
         )
 
+    def _on_select_file_uploads(self) -> None:
+        # Assignments that don't take a file upload stay listed but unchecked.
+        self._assignment_picker.set_checked(
+            str(a.id)
+            for a in self._vm.get_state().assignments
+            if a.submission_types and "online_upload" in a.submission_types
+        )
+
     def _on_download_all(self) -> None:
         self._vm.download_all()
 
@@ -840,10 +866,13 @@ class DownloadTab(ScrollableTab):
         self._download_gradescope_btn.setEnabled(not busy and state.can_download_submissions)
         self._download_consent_btn.setEnabled(not busy and state.can_download_consent)
         self._download_rubric_btn.setEnabled(not busy and state.can_download_rubric)
+        self._download_submissions_btn.setEnabled(
+            not busy and state.can_download_assignment_submissions
+        )
         self._download_all_btn.setEnabled(not busy and state.can_download_all)
         self._download_all_quizzes_btn.setEnabled(not busy and state.can_download_all_quizzes)
 
-        # Each list is refilled only when its items differ from the state, so
+        # Each list is refilled only when its items differ from the state so that
         # a user's selection survives an unrelated render.
         term_items = [(t.code, f"{t.code}  {t.name}") for t in state.terms]
         if self._term_picker.items() != term_items:
