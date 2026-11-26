@@ -3,9 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 from zipfile import BadZipFile
 
+from GAVEL.app.dtos.canvas_gradebook import CanvasGradebook
 from GAVEL.app.dtos.gradescope import GradescopeSubmission
 from GAVEL.app.dtos.rubric_assessment import RubricAssessment
 from GAVEL.app.dtos.rubric_definition import RubricDefinition
+from GAVEL.app.usecases.match_proxy_criteria_to_rubric import (
+    match_proxy_criteria_to_rubric,
+)
+from GAVEL.app.usecases.proxy_grade.compute_proxy_grade import (
+    MissingTestResultsError,
+    compute_proxy_grade,
+)
+from GAVEL.app.usecases.proxy_grade.mappings.registry import MAPPINGS
+from GAVEL.app.usecases.proxy_grade.submission_matching import (
+    gradebook_rows_by_login,
+    no_tests_ran_on_the_submitted_code,
+    student_key,
+)
 from GAVEL.app.workspace.dataset import (
     CourseDataset,
     DatasetReaders,
@@ -38,6 +52,9 @@ class InspectGradesViewModel:
         self.corrections: dict[tuple[int, str], float] = {}
         self.notes: dict[tuple[int, str], str] = {}
         self.corrections_error: str | None = None
+        self.gradebook: CanvasGradebook | None = None
+        self.gradebook_error: str | None = None
+        self.proxy_calculation_error: str | None = None
 
         self.available_autograder_zips: tuple[Path, ...] = ()
         self.selected_autograder_zip: Path | None = None
@@ -95,6 +112,11 @@ class InspectGradesViewModel:
             self.selected_course,
             self._dataset_readers,
         )
+
+        try:
+            self.gradebook = dataset.gradebook()
+        except (MissingArtifactError, OSError, ValueError, KeyError) as exc:
+            self.gradebook_error = str(exc)
 
         if assignment.has_rubric:
             try:
@@ -180,6 +202,88 @@ class InspectGradesViewModel:
                     self.notes.clear()
                     self.corrections_error = f"Could not load saved corrections: {exc}"
 
+    def resolve_mapping_name(self) -> str | None:
+        if self.selected_course is None or self.selected_assignment is None:
+            return None
+
+        module_number = self.selected_assignment.module_number
+        if module_number is None:
+            return None
+
+        key = self.selected_course.key
+        name = f"{key.subject.lower()}{key.catalog_number}_m{module_number}"
+
+        return name if name in MAPPINGS else None
+
+    def matched_proxy_submissions(self) -> dict[int, GradescopeSubmission]:
+        if self.gradebook is None:
+            return {}
+
+        rows_by_login = gradebook_rows_by_login(self.gradebook)
+        matched = {}
+        duplicate_students = set()
+
+        for submission in self.proxy_grades:
+            login = student_key(submission.submitter.email)
+            row = rows_by_login.get(login)
+
+            if row is None:
+                continue
+
+            student_id = row.canvas_id
+
+            if student_id in matched:
+                duplicate_students.add(student_id)
+            else:
+                matched[student_id] = submission
+
+        for student_id in duplicate_students:
+            matched.pop(student_id, None)
+
+        return matched
+
+    def calculated_proxy_scores(self) -> dict[int, dict[str, float]]:
+        self.proxy_calculation_error = None
+
+        mapping_name = self.resolve_mapping_name()
+
+        if mapping_name is None or self.rubric_definition is None:
+            return {}
+
+        mapping = MAPPINGS[mapping_name]
+
+        try:
+            criterion_match = match_proxy_criteria_to_rubric(
+                mapping,
+                self.rubric_definition,
+            )
+        except ValueError as exc:
+            self.proxy_calculation_error = f"Could not calculate proxy grades: {exc}"
+            return {}
+
+        scores_by_student = {}
+
+        for student_id, submission in self.matched_proxy_submissions().items():
+            try:
+                result = compute_proxy_grade(submission, mapping)
+                criterion_scores = result.criterion_scores
+            except MissingTestResultsError:
+                if no_tests_ran_on_the_submitted_code(submission):
+                    criterion_scores = tuple(0.0 for _ in mapping.criteria)
+                else:
+                    continue
+
+            scores_by_student[student_id] = {
+                criterion_match[criterion.name].id: float(score)
+                for criterion, score in zip(
+                    mapping.criteria,
+                    criterion_scores,
+                    strict=True,
+                )
+            }
+
+        return scores_by_student
+
     def _corrections_path(self) -> Path | None:
         if self.selected_course is None or self.selected_assignment is None:
             return None
@@ -226,6 +330,9 @@ class InspectGradesViewModel:
         self.proxy_grades_error = None
         self.rubric_definition = None
         self.rubric_definition_error = None
+        self.gradebook = None
+        self.gradebook_error = None
+        self.proxy_calculation_error = None
 
     def _clear_autograder_zips(self) -> None:
         self.available_autograder_zips = ()
