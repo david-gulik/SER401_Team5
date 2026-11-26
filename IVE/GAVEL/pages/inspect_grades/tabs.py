@@ -35,6 +35,13 @@ class InspectGradesTab(ScrollableTab):
         self.assignment_combo = QComboBox()
         self.autograder_zip_combo = QComboBox()
         self.autograder_zip_combo.setEnabled(False)
+
+        self.autograder_zip_combo.setStyleSheet("""
+            QComboBox:disabled {
+                color: #AAB8C8;
+            }
+        """)
+
         self.autograder_zip_combo.setToolTip(
             "Select an available autograder ZIP for the current course."
         )

@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from GAVEL.app.usecases.proxy_grade.mappings.ser334_m2 import SER334_M2
 from GAVEL.app.workspace.layout import CourseFolder, CourseKey, Workspace
 from GAVEL.app.workspace.manifest import AssignmentEntry
 from GAVEL.bootstrap import build_dataset_readers
@@ -819,3 +820,150 @@ def test_rejects_unknown_autograder_zip(vm, tmp_path):
 
     with pytest.raises(ValueError):
         vm.select_autograder_zip(tmp_path / "unknown.zip")
+
+
+def test_calculates_proxy_scores_using_real_mapping(vm, monkeypatch):
+    mapping = SER334_M2
+
+    vm.rubric_definition = SimpleNamespace(
+        criteria=[
+            SimpleNamespace(
+                id=f"crit_{index}",
+                description=criterion.name,
+            )
+            for index, criterion in enumerate(mapping.criteria, start=1)
+        ]
+    )
+
+    vm.gradebook = SimpleNamespace(
+        rows=[
+            SimpleNamespace(
+                sis_login_id="student1",
+                canvas_id=100001,
+            )
+        ]
+    )
+
+    passing_tests = {
+        "Main Menu 1",
+        "Memory Allocation 2",
+        "Memory Allocation 3",
+    }
+
+    tests = tuple(
+        SimpleNamespace(
+            name=name,
+            score=1.0 if name in passing_tests else 0.0,
+            max_score=1.0,
+        )
+        for name in mapping.test_names()
+    )
+
+    submission = SimpleNamespace(
+        submitter=SimpleNamespace(
+            email="student1@example.com",
+        ),
+        tests=tests,
+    )
+
+    vm.proxy_grades = (submission,)
+
+    monkeypatch.setattr(
+        vm,
+        "resolve_mapping_name",
+        lambda: "ser334_m2",
+    )
+
+    scores = vm.calculated_proxy_scores()
+
+    assert scores == {
+        100001: {
+            "crit_1": 1.0,
+            "crit_2": 2.0,
+            "crit_3": 0.0,
+            "crit_4": 0.0,
+            "crit_5": 0.0,
+            "crit_6": 0.0,
+            "crit_7": 0.0,
+            "crit_8": 0.0,
+            "crit_9": 0.0,
+        }
+    }
+
+    assert sum(scores[100001].values()) == 3.0
+    assert vm.proxy_calculation_error is None
+
+
+@pytest.mark.parametrize(
+    "tests, output, expected_zero",
+    [
+        (
+            (SimpleNamespace(name="Main Menu 1", score=1.0, max_score=1.0),),
+            "",
+            False,
+        ),
+        (
+            (),
+            "The submitted code could not be compiled.",
+            True,
+        ),
+        (
+            (),
+            "The autograder failed to execute correctly.",
+            False,
+        ),
+    ],
+    ids=[
+        "missing_required_tests",
+        "no_tests_ran_on_submitted_code",
+        "autograder_crashed",
+    ],
+)
+def test_proxy_scores_handle_incomplete_test_results(vm, monkeypatch, tests, output, expected_zero):
+    mapping = SER334_M2
+
+    vm.rubric_definition = SimpleNamespace(
+        criteria=[
+            SimpleNamespace(
+                id=f"crit_{index}",
+                description=criterion.name,
+            )
+            for index, criterion in enumerate(mapping.criteria, start=1)
+        ]
+    )
+
+    vm.gradebook = SimpleNamespace(
+        rows=[
+            SimpleNamespace(
+                sis_login_id="student1",
+                canvas_id=100001,
+            )
+        ]
+    )
+
+    vm.proxy_grades = (
+        SimpleNamespace(
+            submitter=SimpleNamespace(
+                email="student1@example.com",
+            ),
+            tests=tests,
+            output=output,
+        ),
+    )
+
+    monkeypatch.setattr(
+        vm,
+        "resolve_mapping_name",
+        lambda: "ser334_m2",
+    )
+
+    scores = vm.calculated_proxy_scores()
+
+    if expected_zero:
+        assert scores == {
+            100001: {f"crit_{index}": 0.0 for index in range(1, len(mapping.criteria) + 1)}
+        }
+    else:
+        assert scores == {}
+
+    assert vm.proxy_calculation_error is None
