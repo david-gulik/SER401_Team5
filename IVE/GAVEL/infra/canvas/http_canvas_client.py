@@ -747,8 +747,7 @@ class HttpCanvasClient(CanvasClient):
     def list_assignment_submissions(
         self, course_id: int, assignment_id: int
     ) -> list[CanvasSubmission]:
-        """List every student's current submission to a Canvas assignment.
-        """
+        """List every student's current submission to a Canvas assignment."""
         submissions = self._get_all_pages(
             f"/api/v1/courses/{course_id}/assignments/{assignment_id}/submissions",
             params={"include[]": "user", "per_page": 100},

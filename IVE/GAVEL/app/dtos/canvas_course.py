@@ -86,8 +86,7 @@ class CanvasAttachment:
 
 @dataclass(frozen=True)
 class CanvasSubmission:
-    """One student's current submission to a Canvas assignment.
-    """
+    """One student's current submission to a Canvas assignment."""
 
     user_id: int
     sortable_name: str
