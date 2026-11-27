@@ -15,6 +15,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from GAVEL.app.workspace import CourseFolder
+from GAVEL.app_context import AppContext
 from GAVEL.core.background import run_in_background
 from GAVEL.core.base_tab import ScrollableTab
 from GAVEL.infra.autograders.autograder_metadata import (
@@ -42,8 +44,19 @@ def get_assignment_subfolders(folder: Path) -> list[str]:
 
 
 class RunAutogradersTab(ScrollableTab):
-    def __init__(self, theme: ThemeContext) -> None:
-        super().__init__(theme)
+    def __init__(self, ctx: AppContext) -> None:
+        super().__init__(ctx.theme)
+        self._ctx = ctx
+        self._theme = self._ctx.theme
+        self._active_course = ctx.active_course
+
+        self.assignment_folder: Path | None = None
+
+        course = self._active_course.course if self._active_course else None
+
+        if course is not None and course.path is not None:
+            self.assignment_folder = course.path / "anonymized" / "gradescope_submissions"
+
         load_dotenv()
         env_dir = (os.getenv("DEFAULT_OUTPUT_DIR") or "").strip()
         self.root_path = (
@@ -51,16 +64,16 @@ class RunAutogradersTab(ScrollableTab):
         )
         self.courses_path = self.root_path / "courses"
         self.autograders_path = self.root_path / "autograders"
-        self._theme = theme
 
-        self.course_combo: QComboBox | None = None
+        # self.course_combo: QComboBox | None = None
         self.assignment_combo: QComboBox | None = None
 
         self.autograders_card: SectionCard | None = None
         self.autograder_rows: list[AutograderRow] = []
 
-        self.add_section(self._build_course_select_dropdown(self.courses_path))
-        self.add_section(self._build_assignments_dropdown(self.courses_path))
+        # self.add_section(self._build_course_select_dropdown(self.courses_path))
+        self.add_section(self._build_course_label_card())
+        self.add_section(self._build_assignments_dropdown())
         self.add_section(self._build_available_autograders_dropdown())
 
         self.run_btn = QPushButton("Run")
@@ -93,6 +106,9 @@ class RunAutogradersTab(ScrollableTab):
         self.add_section(self._log_card)
 
         self.add_stretch()
+        self._active_course.changed.connect(self._on_active_course_changed)
+
+        self._on_active_course_changed(self._active_course.course)
 
     def _clear_text_log(self):
         self.log_output.clear()
@@ -109,23 +125,28 @@ class RunAutogradersTab(ScrollableTab):
         card.add_row(description)
         return card
 
-    # this is the dropdown menu to select a course, later to be replaced by a global course select
+    def _build_course_label_card(self) -> QWidget:
+        card = SectionCard(self._theme, "Selected Course:")
+        self._course_label = QLabel(
+            self._active_course.course.key.folder_name if self._active_course else ""
+        )
+        card.add_title_suffix(self._course_label)
 
-    def _build_course_select_dropdown(self, courses_folder: Path) -> QWidget:
-        card = SectionCard(self._theme, "Select Course:")
+        assignments = len(get_assignment_subfolders(self.assignment_folder))
 
-        self.course_combo = QComboBox()
-        self.course_combo.addItems(get_assignment_subfolders(courses_folder))
-        self.course_combo.setCurrentIndex(-1)
+        self._course_assignment_count_label = QLabel(
+            f"{assignments} assignment(s) available for autograding."
+        )
+        self._active_course.changed.connect(self._update_course_label)
 
-        self.course_combo.currentTextChanged.connect(self._on_course_selected)
+        self._update_course_label(self._active_course.course)
 
-        card.add_row(self.course_combo)
+        card.add_row(self._course_assignment_count_label)
         return card
 
     # this is the assignments dropdown which will populate upon selection of a course
 
-    def _build_assignments_dropdown(self, assignments_folder: Path) -> QWidget:
+    def _build_assignments_dropdown(self) -> QWidget:
         card = SectionCard(self._theme, "Select Assignment:")
 
         self.assignment_combo = QComboBox()
@@ -184,12 +205,19 @@ class RunAutogradersTab(ScrollableTab):
 
     # this method updates the available assignments and clears the autograders
 
-    def _on_course_selected(self, course: str) -> None:
-        if not course:
+    def _on_active_course_changed(
+        self,
+        course: CourseFolder | None,
+    ) -> None:
+        if course is None:
+            self.assignment_combo.clear()
+            self._clear_autograders()
             return
-        self.course_selected = course
-        self.assignment_folder = self.courses_path / course / "anonymized/submissions"
-        self.evaluations_folder = self.courses_path / course / "anonymized/evaluations"
+
+        self.assignment_folder = course.path / "anonymized" / "gradescope_submissions"
+
+        self.evaluations_folder = course.path / "anonymized" / "evaluations"
+
         self.saved_evaluations_folder = self.evaluations_folder
 
         assignments = get_assignment_subfolders(self.assignment_folder)
@@ -197,24 +225,27 @@ class RunAutogradersTab(ScrollableTab):
         self.assignment_combo.clear()
         self.assignment_combo.addItems(assignments)
         self.assignment_combo.setCurrentIndex(-1)
-        self._update_run_button_state()
 
         self._clear_autograders()
 
-    # TODO: better logic for extracting the course name
-
-    # this method extracts the course name and calls to populate the autograder checkboxes
-
     def _on_assignment_selected(self, assignment: str) -> None:
-        course = self.course_combo.currentText().split("_")[0]
-        if not course or not assignment:
+        active_course = self._active_course.course
+
+        if active_course is None or not assignment:
             return
 
-        autograder_folder = self.autograders_path / course / assignment
-        self.evaluations_folder = self.saved_evaluations_folder
-        self.evaluations_folder = self.evaluations_folder / assignment
+        course_name = active_course.key.course_label
+
+        def normalize(s: str) -> str:
+            return "".join(s.lower().split())
+
+        course_name = normalize(course_name)
+        autograder_folder = self.autograders_path / course_name / assignment
+
+        self.evaluations_folder = self.saved_evaluations_folder / assignment
+
         self.submissions_folder = (
-            self.courses_path / self.course_selected / "anonymized/submissions" / assignment
+            active_course.path / "anonymized" / "gradescope_submissions" / assignment
         )
         self._update_run_button_state()
 
@@ -254,8 +285,6 @@ class RunAutogradersTab(ScrollableTab):
 
             def work(row=row):
                 return autograde_submissions_folder(
-                    # input_folder=r"C:/Users/dcgul/OneDrive/Desktop/SER401 Project/SER401_Team5/data_original/10_24_autograder_test",
-                    # output_folder=r"C:/Users/dcgul/OneDrive/Desktop/SER401 Project/SER401_Team5/data_original/autograder_test_output",
                     input_folder=self.submissions_folder,
                     output_folder=self.evaluations_folder,
                     autograder_folder_arg=row.autograder.path.resolve(),
@@ -289,8 +318,8 @@ class RunAutogradersTab(ScrollableTab):
         self.run_btn.setEnabled(self._can_run())
 
     def _can_run(self) -> bool:
-        course_selected = bool(self.course_combo.currentText())
-
+        # course_selected = bool(self.course_combo.currentText())
+        course_selected = self._active_course.course is not None
         assignment_selected = bool(self.assignment_combo.currentText())
 
         autograder_selected = any(row.checkbox.isChecked() for row in self.autograder_rows)
@@ -311,6 +340,27 @@ class RunAutogradersTab(ScrollableTab):
 
     def selected_autograders(self) -> list[AutograderInfo]:
         return [row.autograder for row in self.autograder_rows if row.checkbox.isChecked()]
+
+    def _update_course_label(
+        self,
+        course: CourseFolder | None,
+    ) -> None:
+        if course is None:
+            self._course_label.setText("No course selected")
+            self._course_assignment_count_label.setText(
+                "0 assignment(s) available for autograding."
+            )
+            return
+
+        self._course_label.setText(course.key.folder_name)
+
+        assignment_folder = course.path / "anonymized" / "gradescope_submissions"
+
+        assignments = len(get_assignment_subfolders(assignment_folder))
+
+        self._course_assignment_count_label.setText(
+            f"{assignments} assignment(s) available for autograding."
+        )
 
 
 class AutogradersDiagnosticsPage(ScrollableTab):

@@ -55,10 +55,10 @@ def grade_one_submission(
 
     if lang == Language.JAVA:
         worker_src = os.path.join(worker_root, config_proj_loc[19:])
-        print(f"Java worker_src: {worker_src}")
+        # print(f"Java worker_src: {worker_src}")
     else:
         worker_src = os.path.join(worker_root, config_proj_loc)
-        print(f"C worker_src: {worker_src}")
+        # print(f"C worker_src: {worker_src}")
 
     os.makedirs(worker_src, exist_ok=True)
 
