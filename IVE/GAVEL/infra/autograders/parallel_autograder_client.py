@@ -12,7 +12,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from enum import Enum
 from pathlib import Path
 
-# TODO: figure out C stuff
+# TODO: figure out why C is failing stability checks while running fine in manual runner page
 
 
 class Language(Enum):
@@ -21,14 +21,19 @@ class Language(Enum):
 
 
 class AutograderRunFailed(RuntimeError):
-    """The autograder process ended without usable results."""
 
-    def __init__(self, message, returncode, stdout, stderr):
+    def __init__(
+        self,
+        message: str,
+        returncode: int | None = None,
+        stdout: str | None = None,
+        stderr: str | None = None,
+    ):
         super().__init__(message)
+
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
-
 
 def grade_one_submission(
     filename, config, lang, autograder_root, input_folder, output_folder, timeout=None
@@ -47,18 +52,87 @@ def grade_one_submission(
     log.info(f"Starting autograder for {Path(filename).name}...")
 
     # clone workspace
-    worker_root = tempfile.mkdtemp(prefix=f"autograder_worker_{filename.split('.')[0]}_")
-    shutil.copytree(autograder_root, worker_root, dirs_exist_ok=True)
-
-    # TODO: better version of extracting worker src files
-    config_proj_loc = config["project_location"][:-1].replace("/", os.sep)
+    worker_root = tempfile.mkdtemp(
+        prefix=f"autograder_worker_{filename.split('.')[0]}_"
+    )
 
     if lang == Language.JAVA:
-        worker_src = os.path.join(worker_root, config_proj_loc[19:])
-        # print(f"Java worker_src: {worker_src}")
+
+        shutil.copytree(
+            autograder_root,
+            worker_root,
+            dirs_exist_ok=True,
+        )
+
+        worker_src_root = worker_root
+
     else:
-        worker_src = os.path.join(worker_root, config_proj_loc)
-        # print(f"C worker_src: {worker_src}")
+
+        worker_autograder = Path(worker_root) / "autograder"
+        worker_submission = Path(worker_root) / "submission"
+        worker_results = Path(worker_root) / "results"
+
+        shutil.copytree(
+            autograder_root,
+            worker_autograder,
+            ignore=shutil.ignore_patterns(
+                "venv",
+                "__pycache__",
+                ".git",
+                ".pytest_cache",
+            ),
+        )
+
+        worker_submission.mkdir(exist_ok=True)
+        worker_results.mkdir(exist_ok=True)
+
+        worker_src_root = worker_root
+    # shutil.copytree(autograder_root, worker_root, dirs_exist_ok=True)
+    # worker_autograder = Path(worker_root) / "autograder"
+    # worker_submission = Path(worker_root) / "submission"
+    # worker_results = Path(worker_root) / "results"
+    #
+    # shutil.copytree(
+    #     autograder_root,
+    #     worker_autograder,
+    #     ignore=shutil.ignore_patterns(
+    #         "venv",
+    #         "__pycache__",
+    #         ".git",
+    #         ".pytest_cache",
+    #     ),
+    # )
+    #
+    # worker_submission.mkdir(exist_ok=True)
+    # worker_results.mkdir(exist_ok=True)
+
+    # TODO: better version of extracting worker src files
+    config_proj_loc = (
+        config["project_location"]
+        .strip("/\\")
+        .replace("/", os.sep)
+    )
+
+    if lang == Language.JAVA:
+        project_location = config["project_location"]
+
+        prefix = "/autograder/source/"
+
+        if project_location.startswith(prefix):
+            project_location = project_location[len(prefix):]
+
+        project_location = project_location.strip("/\\")
+        project_location = project_location.replace("/", os.sep)
+
+        worker_src = os.path.join(
+            worker_root,
+            project_location,
+        )
+    else:
+        worker_src = os.path.join(
+            worker_root,
+            "submission",
+        )
 
     os.makedirs(worker_src, exist_ok=True)
 
@@ -109,6 +183,15 @@ def grade_one_submission(
 
     try:
         if lang == Language.JAVA:
+            log.info(f"worker_src = {worker_src}")
+
+            for req in required_files:
+                path = os.path.join(worker_src, req)
+
+                log.info(
+                    f"{req}: exists={os.path.exists(path)} "
+                    f"path={path}"
+                )
             result = subprocess.run(
                 ["mvn", "-q", "compile", "exec:java"],
                 cwd=worker_root,
@@ -119,7 +202,11 @@ def grade_one_submission(
             )
             if result.returncode != 0:
                 raise AutograderRunFailed(
-                    f"mvn exited with status {result.returncode}",
+                    (
+                        f"mvn exited with status {result.returncode}\n\n"
+                        f"STDOUT:\n{result.stdout}\n\n"
+                        f"STDERR:\n{result.stderr}"
+                    ),
                     result.returncode,
                     result.stdout,
                     result.stderr,
@@ -134,30 +221,81 @@ def grade_one_submission(
             with open(output_path, "w", encoding="utf-8") as out:
                 json.dump(parsed, out, indent=4)
 
-        else:  # C autograder
-            log_path = os.path.splitext(output_path)[0] + "_stdout.txt"
-            results_path = os.path.join(worker_root, "results", "results.json")
 
-            if os.path.exists(results_path):
-                os.remove(results_path)
+        else:  # C autograder
+
+
+            log_path = os.path.splitext(output_path)[0] + "_stdout.txt"
+
+
+            results_path = os.path.join(
+
+                worker_root,
+
+                "results",
+
+                "results.json",
+
+            )
+
+
+            docker_cmd = [
+                "docker",
+                "run",
+                "--rm",
+                "--mount",
+                f"type=bind,source={Path(worker_root).resolve()},target=/work",
+                "-w",
+                "/work/autograder",
+                "gavel-c-runtime",
+                "python3",
+                "main.py",
+            ]
 
             result = subprocess.run(
-                [sys.executable, "main.py"],
-                cwd=worker_root,
+                docker_cmd,
                 capture_output=True,
                 text=True,
-                shell=False,
                 timeout=timeout,
             )
+
+
             with open(log_path, "w", encoding="utf-8") as out:
+
                 out.write(result.stdout)
-            if result.returncode != 0 or not os.path.exists(results_path):
+
+                out.write("\n=== STDERR ===\n")
+
+                out.write(result.stderr)
+
+
+            if result.returncode != 0:
                 raise AutograderRunFailed(
-                    f"main.py exited with status {result.returncode}",
+                    (
+                        f"Docker exited with status {result.returncode}\n\n"
+                        f"STDOUT:\n{result.stdout}\n\n"
+                        f"STDERR:\n{result.stderr}"
+                    ),
                     result.returncode,
                     result.stdout,
                     result.stderr,
                 )
+
+
+            if not os.path.exists(results_path):
+
+                raise AutograderRunFailed(
+
+                    "Autograder produced no results.json",
+
+                    result.returncode,
+
+                    result.stdout,
+
+                    result.stderr,
+
+                )
+
 
             shutil.copy(results_path, output_path)
 
@@ -220,6 +358,10 @@ def autograde_submissions_folder(
     config_file_location = os.path.join(autograder_folder_arg, "config.json")
     with open(config_file_location, encoding="utf-8") as file:
         config = json.load(file)
+
+    if "files_required" not in config and "required_files" in config:
+        config["files_required"] = config["required_files"]
+
     # Determine autograder root
     autograder_root = autograder_folder_arg
     # Ensure output folder exists
@@ -262,8 +404,10 @@ def autograde_submissions_folder(
             f"Autograding complete! ({Path(input_folder).name} using autograder {Path(autograder_folder_arg).name}.)"
         )
         return time.perf_counter() - start
-    except Exception:
-        log.warning(
-            f"Autograding failed!! ({Path(input_folder).name} using autograder {Path(autograder_folder_arg).name}.)"
+    except Exception as exc:
+        log.exception(
+            f"Autograding failed!! "
+            f"({Path(input_folder).name} using "
+            f"autograder {Path(autograder_folder_arg).name}.)"
         )
-        return Exception
+        raise
