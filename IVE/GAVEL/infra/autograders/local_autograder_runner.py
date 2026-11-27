@@ -45,6 +45,8 @@ class LocalAutograderRunner(AutograderRunner):
         try:
             try:
                 config = json.loads((autograder_dir / CONFIG_FILE).read_text(encoding="utf-8"))
+                if "files_required" not in config and "required_files" in config:
+                    config["files_required"] = config["required_files"]
             except (OSError, ValueError) as exc:
                 return self._crashed(
                     started, "", f"Could not read {CONFIG_FILE} in {autograder_dir}: {exc}"
